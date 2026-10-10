@@ -1,0 +1,20 @@
+SPDX-License-Identifier: Apache-2.0
+$ npm test
+
+> test
+> playwright test
+
+
+Running 7 tests using 1 worker
+
+  ✓  1 test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (1.2s)
+  ✓  2 test/acceptance.spec.ts:37:1 › C-T2 WebSocket replay updates board without reload (2.6s)
+  ✓  3 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 200 response (350ms)
+  ✓  4 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 403 response (308ms)
+  ✓  5 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response (373ms)
+  ✓  6 test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion (266ms)
+  ✓  7 test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (998ms)
+
+  7 passed (7.3s)
+(node:148) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

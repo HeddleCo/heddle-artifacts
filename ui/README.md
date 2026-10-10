@@ -45,3 +45,20 @@ npm run test:negative
 Playwright uses `wrangler dev --local` with the mock Worker above, covering real static-assets routing and WebSockets.
 It checks fixture screens, replay without navigation, exact decisions (200/403/409), keyboard access, and light/dark screenshots at 1280×720.
 Production Worker/engine integration and owner visual approval remain integration checks.
+
+The sandbox has a read-only home configuration directory. Run Wrangler with
+`XDG_CONFIG_HOME=/tmp/heddle-c-config WRANGLER_SEND_METRICS=false` there (the Playwright harness already does this).
+For browser downloads in the sandbox, set `PLAYWRIGHT_BROWSERS_PATH=/runner/heddleco-build/scratch/heddle-artifacts-C-target/browsers`
+for both `npx playwright install chromium` and the test commands. On other machines the default Playwright cache is fine.
+
+`test:negative` starts its own Wrangler harness on loopback port 8790, verifies a green baseline,
+removes board/conflict/narrative rendering, live events, decision heads, forbidden/stale handling,
+the rationale bound, discussion updates and Why routing one at a time, and requires the matching
+browser assertion to fail. It restores the source and reruns all acceptance checks even when a mutation fails.
+Do not run another UI build/test or edit `src/app.tsx`/`src/api.ts` concurrently with this script.
+Exact transcripts live in `evidence/`; screenshots are generated at a 1280×720 viewport, with full-page
+captures for the compare and Why pages. Browser evidence covers the local mock, not deployed Artifacts.
+
+Assets use a restrictive same-origin CSP and do not load remote scripts or fonts. Diff and narrative
+content are rendered as text. The directory-match badge compares public keys; it is not a cryptographic
+signature verification claim. Reconnection marks compare data stale; refresh explicitly before landing.

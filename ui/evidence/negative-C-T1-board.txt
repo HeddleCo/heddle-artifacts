@@ -1,0 +1,45 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: view.tasks.map(task => → view.tasks.slice(0, 0).map(task =>
+$ npm test -- --grep 'C-T1'
+Exit: 1
+
+> test
+> playwright test --grep C-T1
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (6.3s)
+
+
+  1) test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('.lane-card')
+    Expected: 3
+    Received: 0
+    Timeout:  6000ms
+
+    Call log:
+      - Expect "toHaveCount" locator('.lane-card') with timeout 6000ms
+      - waiting for locator('.lane-card')
+        16 × locator resolved to 0 elements
+           - unexpected value "0"
+
+
+      17 |   await reset(request, 'pushing'); await page.goto('/p/demo');
+      18 |   await expect(page.getByRole('heading', { name: 'Work in parallel. Decide together.' })).toBeVisible();
+    > 19 |   await expect(page.locator('.lane-card')).toHaveCount(3);
+         |                                            ^
+      20 |   await expect(page.getByTestId('lane-alice')).toContainText('Waiting for a push');
+      21 |   await reset(request, 'conflict'); await page.goto('/p/demo/t/parser-escapes');
+      22 |   await expect(page.getByRole('region', { name: 'Conflict regions' })).toContainText('src/table.ts:parseRow');
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:19:44
+
+    Error Context: test-results/acceptance-C-T1-fixture-sc-ba6b8-onflict-compare-decided-why/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
+(node:419) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

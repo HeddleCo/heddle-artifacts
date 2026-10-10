@@ -1,0 +1,45 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: setChanged(true); setError('Candidates changed, review again'); → setError('Candidates changed, review again');
+$ npm test -- --grep 'C-T3 decision exact body and 409'
+Exit: 1
+
+> test
+> playwright test --grep C-T3 decision exact body and 409
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response (6.3s)
+
+
+  1) test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response ─────────────────────
+
+    Error: expect(locator).toBeDisabled() failed
+
+    Locator:  getByRole('button', { name: 'Land candidate →' })
+    Expected: disabled
+    Received: enabled
+    Timeout:  6000ms
+
+    Call log:
+      - Expect "toBeDisabled" getByRole('button', { name: 'Land candidate →' }) with timeout 6000ms
+      - waiting for getByRole('button', { name: 'Land candidate →' })
+        16 × locator resolved to <button class="land-button">Land candidate →</button>
+           - unexpected value "enabled"
+
+
+      60 |   if (status === 409) {
+      61 |     await expect(page.getByRole('alert')).toContainText('Candidates changed, review again');
+    > 62 |     await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+         |                                                                          ^
+      63 |     await page.getByRole('button', { name: 'Review current candidates' }).click();
+      64 |     await expect(page.getByRole('alert')).toHaveCount(0);
+      65 |     await expect(page.getByRole('radio', { name: /bob/ })).not.toBeChecked();
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:62:74
+
+    Error Context: test-results/acceptance-C-T3-decision-exact-body-and-409-response/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response ──────────────────────
+(node:1436) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

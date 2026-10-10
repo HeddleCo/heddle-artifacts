@@ -1,0 +1,47 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: onTurn(turn); → /* Discussion render update removed. */
+$ npm test -- --grep 'C-T3 required rationale'
+Exit: 1
+
+> test
+> playwright test --grep C-T3 required rationale
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion (6.3s)
+
+
+  1) test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ────────────
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.discussion')
+    Expected substring: "Keep the API stable."
+    Received string:    "Discussion 1reviewerreviewer · 08:15 PMBob preserves the public API and handles escaped pipes. Alice changes the API.ed25519:dddddddd…ddddddddReply to reviewerSpeak asSelect a human identityLukeYour replyPost signed reply"
+    Timeout: 6000ms
+
+    Call log:
+      - Expect "toContainText" locator('.discussion') with timeout 6000ms
+      - waiting for locator('.discussion')
+        - locator resolved to <section class="panel discussion">…</section>
+        - unexpected value "Discussion 1reviewerreviewer · 08:15 PMBob preserves the public API and handles escaped pipes. Alice changes the API.ed25519:dddddddd…ddddddddReply to reviewerSpeak asSelect a human identityLukeYour replyReplying to turn-review Cancel replyPosting…"
+        15 × locator resolved to <section class="panel discussion">…</section>
+           - unexpected value "Discussion 1reviewerreviewer · 08:15 PMBob preserves the public API and handles escaped pipes. Alice changes the API.ed25519:dddddddd…ddddddddReply to reviewerSpeak asSelect a human identityLukeYour replyPost signed reply"
+
+
+      76 |   await page.getByLabel('Your reply').fill('Keep the API stable.');
+      77 |   await page.getByRole('button', { name: 'Post signed reply' }).click();
+    > 78 |   await expect(page.locator('.discussion')).toContainText('Keep the API stable.');
+         |                                             ^
+      79 |   const posted = await (await request.get('/__mock/requests')).json();
+      80 |   expect(posted[0].body).toEqual({ body: 'Keep the API stable.', as: 'luke', replyTo: 'turn-review' });
+      81 | });
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:78:45
+
+    Error Context: test-results/acceptance-C-T3-required-r-5dd21-and-signed-human-discussion/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ─────────────
+(node:1777) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

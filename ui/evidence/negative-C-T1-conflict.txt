@@ -1,0 +1,43 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: !!regions.size && → false && !!regions.size &&
+$ npm test -- --grep 'C-T1'
+Exit: 1
+
+> test
+> playwright test --grep C-T1
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (6.3s)
+
+
+  1) test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByRole('region', { name: 'Conflict regions' })
+    Expected substring: "src/table.ts:parseRow"
+    Timeout: 6000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" getByRole('region', { name: 'Conflict regions' }) with timeout 6000ms
+      - waiting for getByRole('region', { name: 'Conflict regions' })
+
+
+      20 |   await expect(page.getByTestId('lane-alice')).toContainText('Waiting for a push');
+      21 |   await reset(request, 'conflict'); await page.goto('/p/demo/t/parser-escapes');
+    > 22 |   await expect(page.getByRole('region', { name: 'Conflict regions' })).toContainText('src/table.ts:parseRow');
+         |                                                                        ^
+      23 |   await expect(page.locator('.candidate')).toHaveCount(2);
+      24 |   await expect(page.getByLabel('alice candidate')).toContainText('fail · 12/14');
+      25 |   await expect(page.getByLabel('bob candidate')).toContainText('pass · 14/14');
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:22:72
+
+    Error Context: test-results/acceptance-C-T1-fixture-sc-ba6b8-onflict-compare-decided-why/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
+(node:584) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

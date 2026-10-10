@@ -2,21 +2,37 @@
 // Wrangler-only fixture harness. Production API and auth belong to Track A.
 import { createMock } from './mock-api';
 import replayText from './fixtures/feed.jsonl';
-const mock = createMock();
-const sockets = new Set<WebSocket>();
 const replay = replayText.trim().split('\n').map(line => JSON.parse(line)).filter(event => event.type);
-export default {
-  async fetch(request: Request, env: { ASSETS: { fetch(request: Request): Promise<Response> } }, ctx: { waitUntil(promise: Promise<unknown>): void }) {
+
+// A single local DO owns fixture data and sockets, just as ProjectDO owns the real feed.
+export class FixtureProject {
+  private mock = createMock();
+  constructor(private ctx: DurableObjectState) {}
+  async fetch(request: Request) {
     const url = new URL(request.url);
     if (url.pathname === '/api/projects/demo/ws' && request.headers.get('Upgrade') === 'websocket') {
-      const pair = new WebSocketPair(), client = pair[0], server = pair[1];
-      server.accept(); sockets.add(server); server.addEventListener('close', () => sockets.delete(server));
-      return new Response(null, { status: 101, webSocket: client });
+      const pair = new WebSocketPair();
+      this.ctx.acceptWebSocket(pair[1]);
+      return new Response(null, { status: 101, webSocket: pair[0] });
     }
     if (url.pathname === '/__mock/replay' && request.method === 'POST') {
-      ctx.waitUntil((async () => { for (const event of replay) { await new Promise(resolve => setTimeout(resolve, 180)); mock.apply(event); for (const socket of sockets) { try { socket.send(JSON.stringify(event)); } catch { sockets.delete(socket); } } } })());
+      // Await the replay so tests know when the entire feed has reached connected clients.
+      for (const event of replay) {
+        await new Promise(resolve => setTimeout(resolve, 180)); this.mock.apply(event);
+        for (const socket of this.ctx.getWebSockets()) socket.send(JSON.stringify(event));
+      }
       return Response.json({ ok: true });
     }
-    return await mock.handle(request) || env.ASSETS.fetch(request);
+    return await this.mock.handle(request) || new Response('Not found', { status: 404 });
+  }
+  webSocketClose(socket: WebSocket) { socket.close(1000, 'Fixture disconnected'); }
+  webSocketError(socket: WebSocket) { socket.close(1011, 'Fixture socket error'); }
+}
+export default {
+  async fetch(request: Request, env: { ASSETS: { fetch(request: Request): Promise<Response> }; FIXTURE_PROJECT: DurableObjectNamespace }) {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/__mock/') || (url.pathname === '/login' && request.method === 'POST'))
+      return env.FIXTURE_PROJECT.get(env.FIXTURE_PROJECT.idFromName('demo')).fetch(request);
+    return env.ASSETS.fetch(request);
   }
 };

@@ -20,14 +20,14 @@ function Signature({ signedBy, agent }: { signedBy: string; agent?: Agent }) {
   const matches = agent?.publicKey === signedBy;
   return <span class={`signature ${agent && !matches ? 'error-text' : ''}`} title={signedBy}>{fingerprint(signedBy)}{agent ? matches ? ' · directory match' : ' · key mismatch' : ''}</span>;
 }
-function useFeed(p: string, onEvent: (event: FeedEvent) => void, onConnect: () => void) {
+function useFeed(p: string, onEvent: (event: FeedEvent) => void, onConnect: (reconnected: boolean) => void) {
   const callbacks = useRef({ onEvent, onConnect }); callbacks.current = { onEvent, onConnect };
   const [status, setStatus] = useState('Connecting');
   useEffect(() => {
-    let stopped = false, socket: WebSocket, timer: ReturnType<typeof setTimeout>, attempt = 0;
+    let stopped = false, socket: WebSocket, timer: ReturnType<typeof setTimeout>, attempt = 0, opened = false;
     const connect = () => {
       socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${projectPath(p)}/ws`);
-      socket.onopen = () => { attempt = 0; setStatus('Live'); callbacks.current.onConnect(); };
+      socket.onopen = () => { attempt = 0; setStatus('Live'); callbacks.current.onConnect(opened); opened = true; };
       socket.onmessage = e => {
         try { const event = JSON.parse(e.data) as FeedEvent; if (event && typeof event.type === 'string') callbacks.current.onEvent(event); }
         catch { setStatus('Invalid live event'); }
@@ -122,7 +122,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     if (event.type === 'candidate.ready' && event.candidate.task === t) { version.current++; setReviewing(false); setChanged(true); }
     setView(v => v && updateTask(v, event));
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Review current candidates before retrying.`);
-  }, () => { if (hydrated.current) setChanged(true); else void load(); });
+  }, reconnected => { if (reconnected && hydrated.current) setChanged(true); else void load(); });
   const humans = agents.filter(a => a.kind === 'human'), who = decider || humans[0]?.id || '';
   const submit = async (e: Event) => { e.preventDefault(); if (!view || !pick || !rationale.trim() || !who || busy || changed || reviewing) return; setBusy(true); setError('');
     try {
@@ -172,7 +172,7 @@ function Why({ p, sha }: { p: string; sha: string }) {
   const proof = `git fsck --strict${view?.decision && /^[a-zA-Z0-9_-]+$/.test(view.decision.task) && /^[a-zA-Z0-9_-]+$/.test(view.decision.pick) ? `\ngit rev-parse 'origin/main^{tree}' 'origin/candidates/${view.decision.task}/${view.decision.pick}^{tree}'` : ''}`;
   return <><Header p={p}/><main><a class="breadcrumb" href={link(p)}>← {p} / board</a><PageTitle eyebrow="THE WHY / PLAIN GIT" title="The decision stays with the code."><p>Commit <code>{short(sha)}</code> · the chosen work, the alternatives, and the reasoning.</p></PageTitle>{error && <ErrorNotice text={error}/>}
     <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2><pre>{view?.narrative || 'Loading narrative…'}</pre>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
-      <section class="panel verification"><p class="eyebrow">VERIFIED BYTE-EXACT</p><h2>Verification evidence</h2><p class="notice">Unavailable from the current API.</p><p class="muted">The §7.2 Why response does not expose the engine’s verify result. No verification claim is made here.</p><ul><li>Candidate SHA preserved: awaiting evidence</li><li>Chosen tree matches main: awaiting evidence</li><li>Export reproduces main: awaiting evidence</li><li>Git objects valid: awaiting evidence</li></ul><p>Inspect the published objects locally:</p><pre><code>{proof}</code></pre></section></div>
+      <section class="panel verification"><p class="eyebrow">BYTE-EXACT VERIFICATION</p><h2>Verification evidence</h2><p class="notice">Unavailable from the current API.</p><p class="muted">Published verification results are not available yet. Run the checks below against a fresh clone.</p><ul><li>Candidate SHA preserved: awaiting evidence</li><li>Chosen tree matches main: awaiting evidence</li><li>Export reproduces main: awaiting evidence</li><li>Git objects valid: awaiting evidence</li></ul><p>Inspect the published objects locally:</p><pre><code>{proof}</code></pre></section></div>
     <section class="panel git-instructions"><div class="section-heading"><h2>See it in plain Git</h2><button class="quiet" onClick={async () => { try { await navigator.clipboard.writeText(commands); setCopied('Copied'); } catch { setCopied('Select and copy the commands below.'); } }}>Copy commands</button></div><p class="muted">Use Bash. Enter your repo-scoped read token at the hidden prompt.{cloneRemote === '<CANONICAL_REMOTE>' ? ' Replace <CANONICAL_REMOTE> with the project’s Artifacts HTTPS clone URL.' : ''}</p><pre tabIndex={0}><code>{commands}</code></pre><p role="status">{copied}</p></section>
   </main></>;
 }

@@ -1,0 +1,45 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: 'Access denied. Sign in with an operator session.' → 'Forbidden handling removed.'
+$ npm test -- --grep 'C-T3 decision exact body and 403'
+Exit: 1
+
+> test
+> playwright test --grep C-T3 decision exact body and 403
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 403 response (6.3s)
+
+
+  1) test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 403 response ─────────────────────
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByRole('alert')
+    Expected substring: "Access denied"
+    Received string:    "Forbidden handling removed. Sign in"
+    Timeout: 6000ms
+
+    Call log:
+      - Expect "toContainText" getByRole('alert') with timeout 6000ms
+      - waiting for getByRole('alert')
+        15 × locator resolved to <p role="alert" class="notice error">…</p>
+           - unexpected value "Forbidden handling removed. Sign in"
+
+
+      57 |   expect(r.postDataJSON()).toEqual({ pick: 'bob', rationale: 'API stability matters more than the shorter regex.', decider: 'luke', expectHeads: ['state-alice-1', 'state-bob-1'] });
+      58 |   if (status === 200) await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+    > 59 |   if (status === 403) { await expect(page.getByRole('alert')).toContainText('Access denied'); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled(); }
+         |                                                               ^
+      60 |   if (status === 409) {
+      61 |     await expect(page.getByRole('alert')).toContainText('Candidates changed, review again');
+      62 |     await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:59:63
+
+    Error Context: test-results/acceptance-C-T3-decision-exact-body-and-403-response/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 403 response ──────────────────────
+(node:1261) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

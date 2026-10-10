@@ -1,0 +1,45 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: callbacks.current.onEvent(event); → ; /* Live event reducer removed. */
+$ npm test -- --grep 'C-T2'
+Exit: 1
+
+> test
+> playwright test --grep C-T2
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:37:1 › C-T2 WebSocket replay updates board without reload (8.4s)
+
+
+  1) test/acceptance.spec.ts:37:1 › C-T2 WebSocket replay updates board without reload ─────────────
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator:  getByTestId('lane-alice')
+    Expected: "received"
+    Received: "idle"
+    Timeout:  6000ms
+
+    Call log:
+      - Expect "toHaveAttribute" getByTestId('lane-alice') with timeout 6000ms
+      - waiting for getByTestId('lane-alice')
+        16 × locator resolved to <article data-push="idle" class="lane-card" data-testid="lane-alice">…</article>
+           - unexpected value "idle"
+
+
+      42 |   const apiReads: string[] = []; page.on('request', r => { if (r.url().includes('/api/') && r.method() === 'GET') apiReads.push(r.url()); });
+      43 |   const response = await request.post('/__mock/replay'); expect(response.status()).toBe(200);
+    > 44 |   await expect(page.getByTestId('lane-alice')).toHaveAttribute('data-push', 'received');
+         |                                                ^
+      45 |   await expect(page.getByTestId('lane-alice')).toContainText('fail · 12/14');
+      46 |   await expect(page.getByTestId('lane-bob')).toContainText('pass · 14/14');
+      47 |   await expect(page.getByTestId('lane-carol')).toContainText('Clean candidate');
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:44:48
+
+    Error Context: test-results/acceptance-C-T2-WebSocket--d4b20-pdates-board-without-reload/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:37:1 › C-T2 WebSocket replay updates board without reload ──────────────
+(node:919) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
