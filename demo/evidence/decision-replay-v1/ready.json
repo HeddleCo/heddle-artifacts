@@ -1,0 +1,19 @@
+{
+  "origin": "http://127.0.0.1:33865",
+  "project": "genuine-c63e100c",
+  "task": "parser-escapes",
+  "baseSha": "f4904fb643b3c283017e69817420e39c11c0ae56",
+  "clones": {
+    "native-scan": "<ENTRY_WORKSPACE>/decision-replay-v1/forks/native-scan",
+    "native-parity": "<ENTRY_WORKSPACE>/decision-replay-v1/forks/native-parity"
+  },
+  "identity": {
+    "provider": "openai-native-collaboration",
+    "model": "runtime-selected-not-exposed"
+  },
+  "startedAt": "2026-10-10T21:13:43.720Z",
+  "runKind": "historical-candidate-decision-replay",
+  "replaySource": "<ENTRY_WORKSPACE>/repo/demo/evidence/genuine-native-v1",
+  "freshCodingTasks": false,
+  "freshReviewerTask": false
+}

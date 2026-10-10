@@ -1,0 +1,40 @@
+{
+  "provider": "openai-native-collaboration",
+  "exactModel": "not exposed by this runtime",
+  "codingTasks": [
+    {
+      "agent": "native-scan",
+      "taskIdentity": "/root/refresh_artifacts_gateway_prototype/rehearse_genuine_entry_agents/implement_scan_candidate",
+      "sourceSha": "167c9385e04e1b9028588f6534b51c5e1c398494",
+      "startedAt": "2026-10-10T21:02:50Z",
+      "finishedAt": "2026-10-10T21:04:14Z",
+      "sourceFiles": [
+        "src/table.ts",
+        "test/escapes.test.ts"
+      ],
+      "newTests": 42
+    },
+    {
+      "agent": "native-parity",
+      "taskIdentity": "/root/refresh_artifacts_gateway_prototype/rehearse_genuine_entry_agents/implement_parity_candidate",
+      "sourceSha": "299f09558f9bb50b99127c122dcaa827a98752c1",
+      "startedAt": "2026-10-10T21:03:05Z",
+      "finishedAt": "2026-10-10T21:04:28Z",
+      "sourceFiles": [
+        "src/table.ts",
+        "test/escapes.test.ts"
+      ],
+      "newTests": 56
+    }
+  ],
+  "concurrentCodingOverlapSeconds": 69,
+  "reviewerTask": "/root/refresh_artifacts_gateway_prototype/rehearse_genuine_entry_agents/review_genuine_candidates",
+  "initialRuntimeStartedAt": "2026-10-10T21:02:10.684Z",
+  "runtimeRestart": {
+    "beforeAnyCandidatePush": true,
+    "reason": "Corrected a local proof assertion to accept the existing why-note whitespace format; no production engine or Worker changes.",
+    "originalCodingForksPreserved": true,
+    "originalCommitsTransferredBy": "local Git fetch and fast-forward into newly enrolled forks; exact source OIDs unchanged"
+  },
+  "identityLimit": "Custodial synthetic Git/Heddle identities map to actual native tasks; provider/model labels are declared provenance, not provider attestation."
+}

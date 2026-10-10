@@ -1,0 +1,10 @@
+{
+  "id": "co-q7s4mp6pywckwtrzyfn4awqn5ht1vtmx7zsy3k72ygs1wjc3mdcg",
+  "task": "parser-escapes",
+  "author": "scripted-test-choice",
+  "kind": "human",
+  "body": "HISTORICAL REVIEW REPLAY: these are the exact original genuine agent commits and prior reviewer text. No new coding session or reviewer model invocation occurred. This fresh local decision tests timestamp correctness and stable export. Source landing: beab62afbd2c660d8753e8210e9529b131cb0a1e",
+  "heddleDiscussion": "disc-01a127aa-88c6-726d-a07f-f6a2957d0903",
+  "signedBy": "3420f6e9363cc426442ced45d5630201f188f9d85faaabd57bba8e57f1abd309",
+  "at": "2026-10-10T21:14:09.990Z"
+}

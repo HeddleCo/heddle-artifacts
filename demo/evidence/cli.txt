@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+✔ CLI URL guards reject credentials, nonlocal HTTP and invalid identifiers (2.042936ms)
+✔ join refuses a populated destination and never alters the parent repository (133.70849ms)
+✔ API authorization errors are typed and do not expose server credentials (13.128294ms)
+✔ setup none creates an independent clone inside a parent Git checkout (566.42991ms)
+✔ setup child creates an independent clone inside a parent Git checkout (658.250753ms)
+✔ setup track-A creates an independent clone inside a parent Git checkout (568.818341ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2186.922285
+keep duplicate setup headers: exit 1; ℹ fail 2
+remove project URL credential guard: exit 1; ℹ fail 1

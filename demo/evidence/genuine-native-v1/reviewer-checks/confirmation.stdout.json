@@ -1,0 +1,21 @@
+{
+  "status": "pass",
+  "implementations": [
+    "native-scan",
+    "native-parity"
+  ],
+  "exhaustiveRows": 335923,
+  "alphabet": [
+    "a",
+    "|",
+    "\\",
+    " ",
+    "\t",
+    "α"
+  ],
+  "maxLength": 7,
+  "backslashRunCounts": "0..4096 inclusive",
+  "targetedRows": 32776,
+  "nonEscapeBaselineRows": 21845,
+  "method": "Read-only execution of independently inspected pure parser source, type-erased in memory; regex-token oracle and baseline comparison; no dependencies or source edits"
+}

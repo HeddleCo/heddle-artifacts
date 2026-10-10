@@ -1,0 +1,5 @@
+SPDX-License-Identifier: Apache-2.0
+$ node demo/test/reviewer-mutations.mjs
+bypass schema/candidate validation: exit 1; Tests  5 failed | 12 passed (17)
+remove labeled fallback: exit 1; Tests  11 failed | 6 passed (17)
+remove two retries: exit 1; Tests  8 failed | 9 passed (17)

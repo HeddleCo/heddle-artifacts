@@ -1,0 +1,43 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: disabled={!pick || !rationale.trim() || !who → disabled={!pick || !who
+$ npm test -- --grep 'C-T3 required rationale'
+Exit: 1
+
+> test
+> playwright test --grep C-T3 required rationale
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion (9.5s)
+
+
+  1) test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ────────────
+
+    Error: expect(locator).toBeDisabled() failed
+
+    Locator:  getByRole('button', { name: 'Land candidate →' })
+    Expected: disabled
+    Received: enabled
+    Timeout:  6000ms
+
+    Call log:
+      - Expect "toBeDisabled" getByRole('button', { name: 'Land candidate →' }) with timeout 6000ms
+      - waiting for getByRole('button', { name: 'Land candidate →' })
+        16 × locator resolved to <button class="land-button">Land candidate →</button>
+           - unexpected value "enabled"
+
+
+      72 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+      73 |   await page.getByLabel('Why this candidate?').fill('   ');
+    > 74 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+         |                                                                        ^
+      75 |   await page.getByRole('button', { name: 'Reply to reviewer' }).click();
+      76 |   await page.getByLabel('Your reply').fill('Keep the API stable.');
+      77 |   await page.getByRole('button', { name: 'Post signed reply' }).click();
+        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:74:72
+
+    Error Context: test-results/acceptance-C-T3-required-r-5dd21-and-signed-human-discussion/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ─────────────

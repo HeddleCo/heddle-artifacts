@@ -1,0 +1,25 @@
+{
+  "reply": {
+    "id": "co-mny5q2m3ytg6a4ac4g4z22mg0tmpwrxtmj955v8h7metn5g1daag",
+    "task": "parser-escapes",
+    "author": "scripted-test-choice",
+    "kind": "human",
+    "body": "SCRIPTED TEST CHOICE, not a human product decision. Follow the independent native reviewer recommendation: Both implementations pass the same independent behavioral checks. Native-parity's committed matrix explicitly protects unknown-escape handling for every tested run length and long-run behavior, and its source directly encodes the requested parity rule. These are concrete maintenance advantages; raw test count alone is not the basis for the recommendation.",
+    "heddleDiscussion": "disc-01a127a4-cdce-7113-af12-2c8c0d4cab79",
+    "signedBy": "a103a8a38b394eb86992b673ff537aad2ffc4143969b82b5d62bb124aaf19d78",
+    "at": "2026-10-10T21:07:54.446Z"
+  },
+  "decision": {
+    "task": "parser-escapes",
+    "decider": "scripted-test-choice",
+    "pick": "native-parity",
+    "rationale": "SCRIPTED TEST CHOICE, not a human product decision. Follow the independent native reviewer recommendation: Both implementations pass the same independent behavioral checks. Native-parity's committed matrix explicitly protects unknown-escape handling for every tested run length and long-run behavior, and its source directly encodes the requested parity rule. These are concrete maintenance advantages; raw test count alone is not the basis for the recommendation.",
+    "alternatives": [
+      "native-scan"
+    ],
+    "resolutionState": "hs-fw8f0k3pwvf3q91xrp8ev1b1x4fj6bm1g485pq0503qm9d1f6kmg",
+    "landState": "hs-fw8f0k3pwvf3q91xrp8ev1b1x4fj6bm1g485pq0503qm9d1f6kmg",
+    "mainSha": "beab62afbd2c660d8753e8210e9529b131cb0a1e",
+    "at": "2026-10-10T21:05:18.487550132+00:00"
+  }
+}

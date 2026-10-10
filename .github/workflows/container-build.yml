@@ -1,0 +1,156 @@
+# SPDX-License-Identifier: Apache-2.0
+# Publication and the initial PR-triggered run require owner approval first.
+name: Container build and native fixture tests
+
+'on':
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Reviewed full commit SHA at the selected branch tip
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  container:
+    # No fork code, unrelated PRs, pull_request_target, environments or secrets.
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'integration/demo-hardening') ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.ref == 'refs/heads/integration/demo-hardening' || github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      DOCKER_CONFIG: ${{ runner.temp }}/heddle-docker-config
+      DOCKER_BUILDKIT: '1'
+      IMAGE: heddle-artifacts-engine:ci
+      CI: '1'
+
+    steps:
+      - name: Check out exact reviewed source
+        # Official actions/checkout v4.2.2, pinned to the full release commit.
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+
+      - name: Verify source identity and anonymous upstream access
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$EXPECTED_SHA" = "$SOURCE_SHA"
+          fi
+          mkdir -m 700 "$DOCKER_CONFIG"
+          printf '{}\n' > "$DOCKER_CONFIG/config.json"
+          probe=$(mktemp -d "$RUNNER_TEMP/heddle-upstream-XXXXXX")
+          mkdir -m 700 "$probe/home"
+          # No repository token, credential helper, Git config, SSH agent or
+          # application credentials are available to this public-source check.
+          env -i PATH="$PATH" HOME="$probe/home" GIT_CONFIG_NOSYSTEM=1 \
+            GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false \
+            git init -q "$probe/repo"
+          env -i PATH="$PATH" HOME="$probe/home" GIT_CONFIG_NOSYSTEM=1 \
+            GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false \
+            timeout 120 git -C "$probe/repo" -c credential.helper= fetch --depth=1 \
+            https://github.com/HeddleCo/heddle 878fea434d2eed86865c0daf3f3b1ab7da6d2e4f
+          test "$(git -C "$probe/repo" rev-parse FETCH_HEAD)" = 878fea434d2eed86865c0daf3f3b1ab7da6d2e4f
+          printf 'Source commit: %s\n' "$SOURCE_SHA"
+
+      - name: Build current production image without publishing
+        timeout-minutes: 40
+        run: |
+          set -euo pipefail
+          # Root .dockerignore remains the production default-deny allowlist.
+          # No build secrets, SSH forwarding, registry login or remote cache.
+          docker build --pull --progress=plain --file engine/Dockerfile --tag "$IMAGE" .
+
+      - name: Check image size, identity, versions and production contents
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          docker image inspect "$IMAGE" > "$RUNNER_TEMP/engine-image.json"
+          printf '{}\n' | docker run --rm -i --read-only --network none \
+            --cap-drop ALL --security-opt no-new-privileges "$IMAGE" selftest \
+            | tee "$RUNNER_TEMP/engine-selftest.json"
+          printf '{}\n' | docker run --rm -i --read-only --network none \
+            --cap-drop ALL --security-opt no-new-privileges -e HEDDLE_BIN=/usr/bin/git \
+            "$IMAGE" selftest > "$RUNNER_TEMP/engine-wrong-version.json"
+          docker run --rm --read-only --network none --cap-drop ALL \
+            --security-opt no-new-privileges --entrypoint sh "$IMAGE" \
+            -c 'cd /usr/local/bin && sha256sum -c heddle.sha256'
+          docker run --rm --read-only --network none --cap-drop ALL \
+            --security-opt no-new-privileges --entrypoint node "$IMAGE" \
+            -e 'const fs=require("node:fs"),assert=require("node:assert/strict"); for(const p of ["/opt/engine/test","/opt/demo/evidence","/opt/demo/briefs"]) assert.equal(fs.existsSync(p),false,p+" must not be shipped");'
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          image = json.loads((root / 'engine-image.json').read_text())[0]
+          good = json.loads((root / 'engine-selftest.json').read_text())
+          wrong = json.loads((root / 'engine-wrong-version.json').read_text())
+          assert image['Size'] < 400_000_000, f"Image exceeds 400 MB: {image['Size']}"
+          assert image['Config']['User'] == '65532:65532'
+          assert good['ok'] is True, good
+          assert wrong['ok'] is False, 'Version check must reject Git as Heddle'
+          print(f"Image PASS: {image['Size']} bytes; UID/GID 65532; {image['Id']}")
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"Source: {os.environ['SOURCE_SHA']}\n\nImage: {image['Id']}\n\n")
+              summary.write(f"Size: {image['Size']} bytes (< 400000000). User: 65532:65532.\n\n")
+              summary.write('Image selftest and wrong-version rejection passed. Native tests follow below.\n')
+          PY
+
+      - name: Run native acceptance and mutation tests without network
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          # Mount ONLY reviewed tests. Production engine, libs, contracts and
+          # public fixture manifest come from the image, never a source overlay.
+          docker run --rm --read-only --network none \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 256 --memory 4g --cpus 2 \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=2147483648,mode=1777 \
+            --tmpfs /state:rw,nosuid,nodev,size=16777216,mode=0700,uid=65532,gid=65532 \
+            --tmpfs /home/engine:rw,nosuid,nodev,size=16777216,mode=0700,uid=65532,gid=65532 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/engine/test,target=/opt/engine/test,readonly" \
+            -e HEDDLE_BIN=/usr/local/bin/heddle -e HOME=/home/engine -e CI=1 \
+            --entrypoint bash "$IMAGE" /opt/engine/test/e2e.sh
+          printf '\nNative acceptance, trust guard, mutations, hardening and ordered-publication tests passed.\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run reviewed dependency fixture with isolated npm configuration
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          # This separate synthetic fixture needs public npm registry access.
+          # No host HOME, npm config, Git config, token or credential is mounted.
+          docker run --rm --read-only \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 256 --memory 2g --cpus 2 \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1073741824,mode=1777 \
+            --tmpfs /state:rw,nosuid,nodev,size=16777216,mode=0700,uid=65532,gid=65532 \
+            --tmpfs /home/engine:rw,nosuid,nodev,size=16777216,mode=0700,uid=65532,gid=65532 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/engine/test,target=/opt/engine/test,readonly" \
+            -e HEDDLE_BIN=/usr/local/bin/heddle -e HOME=/home/engine -e CI=1 \
+            --entrypoint node "$IMAGE" /opt/engine/test/vitest.mjs
+          printf '\nReviewed dependency positive/negative tests and unknown-tree rejection passed.\n' >> "$GITHUB_STEP_SUMMARY"

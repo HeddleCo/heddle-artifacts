@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: Apache-2.0
+import { describe, it, expect } from "vitest";
+import { parseRow, parseTable } from "../src/table";
+
+describe("parseRow escapes", () => {
+  it.each<[string, string[]]>([
+    [String.raw`| a\|b | c |`, ["a|b", "c"]],
+    [String.raw`a\|b|c`, ["a|b", "c"]],
+    [String.raw`a\|`, ["a|"]],
+    [String.raw`| a\|`, ["a|"]],
+    [String.raw`| a\||`, ["a|"]],
+    [String.raw`\|`, ["|"]],
+    [String.raw`\|a|b`, ["|a", "b"]],
+    [String.raw`| C:\temp\file | \q \* \_ |`,
+      [String.raw`C:\temp\file`, String.raw`\q \* \_`]],
+    [String.raw`| a\\b |`, [String.raw`a\b`]],
+    [String.raw`|a\|||b|`, ["a|", "", "b"]],
+    [String.raw`||\|| |`, ["", "|", ""]],
+    [" \t| a\\|b | c |\t ", ["a|b", "c"]],
+    [String.raw`| α\|β | 😀 |`, ["α|β", "😀"]],
+    [String.raw`| \| \| |`, ["| |"]],
+    ["|", [""]],
+    ["||", [""]],
+    ["|||", ["", ""]],
+  ])("parses %s", (row, cells) => expect(parseRow(row)).toEqual(cells));
+
+  const runLengths = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+  it.each(runLengths)("uses parity for %i backslashes before an internal pipe", count => {
+    const row = "left" + "\\".repeat(count) + "|right";
+    const decoded = "left" + "\\".repeat(Math.floor(count / 2));
+    expect(parseRow(row)).toEqual(count % 2 === 1 ? [decoded + "|right"] : [decoded, "right"]);
+  });
+
+  it.each(runLengths)("uses parity for %i backslashes before a trailing pipe", count => {
+    const row = "| left" + "\\".repeat(count) + "|  ";
+    const decoded = "left" + "\\".repeat(Math.floor(count / 2));
+    expect(parseRow(row)).toEqual([decoded + (count % 2 === 1 ? "|" : "")]);
+  });
+
+  it.each(runLengths)("preserves an unmatched backslash in an ending run of %i", count => {
+    expect(parseRow("left" + "\\".repeat(count)))
+      .toEqual(["left" + "\\".repeat(Math.ceil(count / 2))]);
+  });
+
+  it.each(runLengths)("decodes pairs and preserves unrelated escapes in a run of %i", count => {
+    expect(parseRow("left" + "\\".repeat(count) + "q|right"))
+      .toEqual(["left" + "\\".repeat(Math.ceil(count / 2)) + "q", "right"]);
+  });
+
+  it("handles a long odd run without losing its escaped trailing pipe", () => {
+    expect(parseRow("\\".repeat(1025) + "|"))
+      .toEqual(["\\".repeat(512) + "|"]);
+  });
+});
+
+describe("parseTable with escaped cells", () => {
+  it("keeps separator filtering, blank lines, CRLF and empty cells", () => {
+    const markdown = [
+      String.raw`| A\|B | C |`,
+      "| :--- | ---: |",
+      "",
+      String.raw`| left\\| right |`,
+      "   ",
+      String.raw`| value\|| |`,
+    ].join("\r\n");
+    expect(parseTable(markdown)).toEqual([
+      ["A|B", "C"],
+      ["left\\", "right"],
+      ["value|", ""],
+    ]);
+  });
+
+  it("preserves an escaped pipe at the end of a table without an outer border", () => {
+    expect(parseTable("A | B\n--- | ---\n" + String.raw`one|two\|`))
+      .toEqual([["A", "B"], ["one", "two|"]]);
+  });
+});

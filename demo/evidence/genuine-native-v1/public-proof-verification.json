@@ -1,0 +1,23 @@
+{
+  "verifiedAt": "2026-10-10T21:09:19.876Z",
+  "passed": true,
+  "verifiedAttestations": 4,
+  "reviewerProof": {
+    "operationId": "co-aapddt5jp4fpzpv3hphnsvyvdbf2zw64aj01tg3km3bf9ncj336g",
+    "publicKey": "872a63e2de73406d83ab628bfc4279383bb39e6ceb16e3865603ffe8ce8ea1fc",
+    "envelopeSha256": "d2c07ee7054f520d565d870711c775054e9e9960ad97e07e910397550be74045"
+  },
+  "checks": [
+    "exact review body and native operation ID",
+    "Ed25519 signatures on exported native-envelope attestations",
+    "SHA-256 of signed native envelopes",
+    "public reviewer key matches signed turn",
+    "exact original Git OID and tree linkage",
+    "manifest file digest",
+    "candidate test status",
+    "selected tree equality",
+    "SHA-bound publication verification",
+    "scripted choice explicitly labeled"
+  ],
+  "limitation": "Custodial gateway attestations on stock native operations; not a model-provider signature or a claim that stock discussion objects are inherently signed."
+}

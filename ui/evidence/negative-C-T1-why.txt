@@ -1,0 +1,43 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: view?.narrative || 'Loading narrative…' → 'Narrative removed'
+$ npm test -- --grep 'C-T1'
+Exit: 1
+
+> test
+> playwright test --grep C-T1
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (6.3s)
+
+
+  1) test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.narrative')
+    Expected substring: "Chosen:    bob"
+    Received string:    "Decision narrativeNarrative removedBack to the candidates →"
+    Timeout: 6000ms
+
+    Call log:
+      - Expect "toContainText" locator('.narrative') with timeout 6000ms
+      - waiting for locator('.narrative')
+        16 × locator resolved to <section class="panel narrative">…</section>
+           - unexpected value "Decision narrativeNarrative removedBack to the candidates →"
+
+
+      28 |   await expect(page.getByRole('heading', { name: 'Recommendation: bob' })).toBeVisible();
+      29 |   await reset(request, 'decided'); await page.goto(why);
+    > 30 |   await expect(page.locator('.narrative')).toContainText('Chosen:    bob');
+         |                                            ^
+      31 |   await expect(page.locator('.narrative')).toContainText('Rejected:  alice');
+      32 |   await expect(page.locator('.verification')).toContainText('Unavailable from the current API');
+      33 |   await expect(page.locator('.git-instructions')).toContainText("git log --notes='heddle*' -3");
+        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:30:44
+
+    Error Context: test-results/acceptance-C-T1-fixture-sc-ba6b8-onflict-compare-decided-why/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 

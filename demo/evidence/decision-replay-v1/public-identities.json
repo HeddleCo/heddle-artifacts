@@ -1,0 +1,24 @@
+[
+  {
+    "id": "scripted-test-choice",
+    "kind": "human",
+    "displayName": "Scripted test choice (not a real human decision)",
+    "publicKey": "3420f6e9363cc426442ced45d5630201f188f9d85faaabd57bba8e57f1abd309"
+  },
+  {
+    "id": "native-scan",
+    "kind": "agent",
+    "displayName": "native-scan",
+    "provider": "openai-native-collaboration",
+    "model": "runtime-selected-not-exposed",
+    "publicKey": "4840cdc1a591d828795b8bcdb6651b9cb35630b7cb3c1dd19f8d4a937f155678"
+  },
+  {
+    "id": "native-parity",
+    "kind": "agent",
+    "displayName": "native-parity",
+    "provider": "openai-native-collaboration",
+    "model": "runtime-selected-not-exposed",
+    "publicKey": "4bfb127947c5b0f71a48a2a036647b3c957552206e1b541f697a6c1263df7a69"
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-10-10T21:16:46.515Z",
+  "sourceHash": {
+    "engine/lib/commands.mjs": "830b6d6f7b1cded8cd359762c16489629192d1ac8aba3d04e84d9a69359ca62e",
+    "engine/test/e2e.mjs": "90036e578dff7bee2350e3e3765ba21b2405f301d1e213fe03723c3a16fcfed2",
+    "dev/genuine-rehearsal.mjs": "59979e222678c4c440202a1ffa0a336e379d02cc681ca4e1eaa669526defea96",
+    "dev/check-decision-replay.mjs": "35bc1532435887fe9a0c7f1b64e558408fa8730945131a1b859dfee4db582fcc",
+    "dev/verify-genuine-evidence.mjs": "1b89834053a0aaa12230335c3ea09b222eda00ee6888e26a964fc4d92f5de85c"
+  },
+  "note": "Working-tree file hashes for the reviewed timestamp fix and local replay checks; not a claim of a published Git revision."
+}

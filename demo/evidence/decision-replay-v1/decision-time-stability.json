@@ -1,0 +1,26 @@
+{
+  "checkedAt": "2026-10-10T21:15:50.923Z",
+  "passed": true,
+  "main": "37c8e617aedbdce0fc33a42a6ba3b42148149c67",
+  "decisionAt": "2026-10-10T21:14:15.737Z",
+  "nativeRationaleTurnAt": "2026-10-10T21:14:15.737Z",
+  "nativeRationaleOperationId": "co-wyjfn10mhygw8qy7hr4c7z2w2pmbrmja2xxck0q48m1kx59b2bxg",
+  "reviewerTurnAt": "2026-10-10T21:14:12.673Z",
+  "publicationCheckedAt": "2026-10-10T21:14:18.641Z",
+  "gitCommitEpochSeconds": 1791666855,
+  "repeatedOriginalExports": [
+    "37c8e617aedbdce0fc33a42a6ba3b42148149c67",
+    "37c8e617aedbdce0fc33a42a6ba3b42148149c67"
+  ],
+  "repeatedRestoredExports": [
+    "37c8e617aedbdce0fc33a42a6ba3b42148149c67",
+    "37c8e617aedbdce0fc33a42a6ba3b42148149c67"
+  ],
+  "projectionTimestampPreserved": true,
+  "exactNativeRationalePreserved": true,
+  "originalStateUnavailableDuringRestoredExports": true,
+  "limits": [
+    "This is a replay of historical genuine candidates/reviewer text; no new coding or reviewer session.",
+    "Snapshot and restored custodial state remain private and excluded from evidence."
+  ]
+}

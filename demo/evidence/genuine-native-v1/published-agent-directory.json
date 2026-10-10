@@ -1,0 +1,32 @@
+[
+  {
+    "id": "native-parity",
+    "kind": "agent",
+    "displayName": "native-parity",
+    "provider": "openai-native-collaboration",
+    "model": "runtime-selected-not-exposed",
+    "publicKey": "08318184c244692dc1647e737aa77f93507faf9e41159ce34eddf18a58000271"
+  },
+  {
+    "id": "native-reviewer",
+    "kind": "reviewer",
+    "displayName": "Independent native collaboration reviewer",
+    "provider": "openai-native-collaboration",
+    "model": "runtime-selected-not-exposed",
+    "publicKey": "872a63e2de73406d83ab628bfc4279383bb39e6ceb16e3865603ffe8ce8ea1fc"
+  },
+  {
+    "id": "native-scan",
+    "kind": "agent",
+    "displayName": "native-scan",
+    "provider": "openai-native-collaboration",
+    "model": "runtime-selected-not-exposed",
+    "publicKey": "b81a5414d8f45b4b6e89a1aa12ef2efe084025698ddfc259336af1cce74706bc"
+  },
+  {
+    "id": "scripted-test-choice",
+    "kind": "human",
+    "displayName": "Scripted test choice (not a real human decision)",
+    "publicKey": "a103a8a38b394eb86992b673ff537aad2ffc4143969b82b5d62bb124aaf19d78"
+  }
+]

@@ -1,0 +1,55 @@
+{
+  "reviewedCompleteTrees": true,
+  "reviewedBy": "/root/refresh_artifacts_gateway_prototype/rehearse_genuine_entry_agents",
+  "reviewKind": "operator-assistant out-of-band full source and dependency metadata review",
+  "reviewedAt": "2026-10-10T21:05:16.543Z",
+  "manifestSha256": "51267306fd342e5eee7623bfd48f05ed028b5a0130e65ad5a06b2f8ac5b621fc",
+  "candidates": {
+    "native-scan": {
+      "sourceSha": "167c9385e04e1b9028588f6534b51c5e1c398494",
+      "treeSha": "3daa7fe43712cbab5b75e8804a0863b35a79ea8a",
+      "manifestTree": "genuine-native-scan",
+      "treeDigest": "266e3f9e01bb63cd2f4139b9a225b83557733d656520869f856f8c764c7aff61",
+      "files": [
+        "README.md",
+        "package-lock.json",
+        "package.json",
+        "src/table.ts",
+        "test/escapes.test.ts",
+        "test/table.test.ts",
+        "tsconfig.json"
+      ],
+      "sourceFork": "<ENTRY_WORKSPACE>/genuine-v1/forks/native-scan",
+      "pushFork": "<ENTRY_WORKSPACE>/genuine-v2/forks/native-scan"
+    },
+    "native-parity": {
+      "sourceSha": "299f09558f9bb50b99127c122dcaa827a98752c1",
+      "treeSha": "01ee577e5987a2329d46390960abfcbdecb773cb",
+      "manifestTree": "genuine-native-parity",
+      "treeDigest": "d3782809f58026c35839bc7226d1b54e43d46e5fc7f6320a12b9b4b5fdb37287",
+      "files": [
+        "README.md",
+        "package-lock.json",
+        "package.json",
+        "src/table.ts",
+        "test/escapes.test.ts",
+        "test/table.test.ts",
+        "tsconfig.json"
+      ],
+      "sourceFork": "<ENTRY_WORKSPACE>/genuine-v1/forks/native-parity",
+      "pushFork": "<ENTRY_WORKSPACE>/genuine-v2/forks/native-parity"
+    }
+  },
+  "checks": [
+    "explicit seven-file inventory",
+    "all Git objects regular non-executable files",
+    "working trees clean",
+    "all source and test text inspected",
+    "five unchanged baseline files byte-equal",
+    "complete lockfile package metadata reviewed: registry.npmjs.org and SHA-512 integrity only",
+    "locked installs use --ignore-scripts; no candidate lifecycle or dependency changes",
+    "pure parser source and Vitest-only tests; no I/O, network, process spawning or dynamic imports",
+    "exact original agent commits transferred by local fetch and fast-forward after pre-push runtime restart"
+  ],
+  "dependencyCount": 70
+}

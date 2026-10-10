@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: Apache-2.0
+$ apt-get update && apt-get install git ca-certificates
+$ git clone <private local source mirror> heddle-artifacts
+$ node --version; git --version
+v22.23.3
+git version 2.39.5
+$ ./demo/run.sh --mode scripted
+Three agents enrolled in independent forks.
+alice pushed 800653814d5a73622e31e30700ca6005a161d4e7
+bob pushed 5d879de5e99ab07bf16ced2dd9bc7048a3f86a22
+carol pushed 98304fa48b04f10672ab5cb6859b215d043a5983
+Conflict candidates ready; independent docs clean. Reviewer: @cf/qwen/qwen2.5-coder-32b-instruct
+commit ae35c9efa983be431dfe05a9fcd88a9e3518a32b
+Author: Luke <luke@demo.local>
+Date:   Sat Oct 10 20:32:18 2026 +0200
+
+    Bob preserves string[] and handles escaped pipes and backslash parity; Alice remains a recorded alternative.
+    
+    Heddle-State: fixture-land
+    Heddle-Change: fixture-change
+
+Notes (heddle):
+    fixture Heddle machine note
+
+Notes (heddle-why):
+    Heddle decision · task parser-escapes
+    Intent: Support escaped pipes (\|) inside table cells while preserving the string[] API and backslash parity.
+    Chosen: bob
+    Rejected: alice
+    Review: Bob preserves the API and slash parity.
+    Discussion: luke: Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.
+    Decided by luke fixture-key
+PASS scripted: full storyline in 13.1s; candidates exact; tree match; fsck/index-pack strict; why retained.
+$ node cli/ha.mjs join "$DEMO_URL/p/$DEMO_PROJECT" --task docs-readme --as guest --dir /tmp/heddle-guest
+Joined clean-demo/docs-readme as guest. Clone: /tmp/heddle-guest
+$ ha status
+$ git fetch upstream main +refs/notes/*:refs/notes/*
+$ git log --notes=heddle* -1 upstream/main
+commit ae35c9efa983be431dfe05a9fcd88a9e3518a32b
+Author: Luke <luke@demo.local>
+Date:   Sat Oct 10 20:32:18 2026 +0200
+
+    Bob preserves string[] and handles escaped pipes and backslash parity; Alice remains a recorded alternative.
+    
+    Heddle-State: fixture-land
+    Heddle-Change: fixture-change
+
+Notes (heddle):
+    fixture Heddle machine note
+
+Notes (heddle-why):
+    Heddle decision · task parser-escapes
+    Intent: Support escaped pipes (\|) inside table cells while preserving the string[] API and backslash parity.
+    Chosen: bob
+    Rejected: alice
+    Review: Bob preserves the API and slash parity.
+    Discussion: luke: Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.
+    Decided by luke fixture-key
+$ ha why $(git rev-parse upstream/main)
+Heddle decision · task parser-escapes
+Intent: Support escaped pipes (\|) inside table cells while preserving the string[] API and backslash parity.
+Chosen: bob
+Rejected: alice
+Review: Bob preserves the API and slash parity.
+Discussion: luke: Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.
+Decided by luke fixture-key
+
+PASS D-T3 clean container, local contract mock: 35s to Git notes; no Heddle install.

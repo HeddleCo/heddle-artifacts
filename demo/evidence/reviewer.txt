@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+
+> test
+> vitest run --maxWorkers=1 --reporter=verbose
+
+
+ RUN  v4.1.11 <TRACK_D_WORKSPACE>/reviewer
+
+ ✓ test/reviewer.test.ts > D-T2 validates 1 candidates 2ms
+ ✓ test/reviewer.test.ts > D-T2 validates 2 candidates 0ms
+ ✓ test/reviewer.test.ts > D-T2 validates 3 candidates 0ms
+ ✓ test/reviewer.test.ts > D-T2 AI failure is labeled fallback 0ms
+ ✓ test/reviewer.test.ts > retries malformed JSON twice, then succeeds on attempt three 1ms
+ ✓ test/reviewer.test.ts > rejects extra properties, exhausts exactly two retries, returns valid fallback 0ms
+ ✓ test/reviewer.test.ts > rejects unknown pick, exhausts exactly two retries, returns valid fallback 0ms
+ ✓ test/reviewer.test.ts > rejects duplicate verdict, exhausts exactly two retries, returns valid fallback 0ms
+ ✓ test/reviewer.test.ts > rejects missing candidate, exhausts exactly two retries, returns valid fallback 0ms
+ ✓ test/reviewer.test.ts > rejects failing recommendation, exhausts exactly two retries, returns valid fallback 0ms
+ ✓ test/reviewer.test.ts > rejects model spoof, exhausts exactly two retries, returns valid fallback 0ms
+ ✓ test/reviewer.test.ts > rejects blank summary, exhausts exactly two retries, returns valid fallback 0ms
+ ✓ test/reviewer.test.ts > AI errors fallback immediately, never expose error contents 0ms
+ ✓ test/reviewer.test.ts > rejects duplicate input agents before invoking AI 1ms
+ ✓ test/reviewer.test.ts > bounds diff/log context and keeps evidence inside a user message 1ms
+ ✓ test/reviewer.test.ts > hung AI returns fallback after its deadline 3ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  20:33:06
+   Duration  160ms (transform 21ms, setup 0ms, import 60ms, tests 11ms, environment 0ms)
+
+
+> check
+> tsc --noEmit
+
+bypass schema/candidate validation: exit 1; Tests  5 failed | 11 passed (16)
+remove labeled fallback: exit 1; Tests  10 failed | 6 passed (16)
+remove two retries: exit 1; Tests  8 failed | 8 passed (16)

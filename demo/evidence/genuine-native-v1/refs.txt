@@ -1,0 +1,6 @@
+refs/heads/main beab62afbd2c660d8753e8210e9529b131cb0a1e
+refs/notes/heddle 7ef8ec1b44743e0fe3991003366f690d1d1d5b30
+refs/notes/heddle-why 730b247558b42488cea98535feca8558fc8aa8c7
+refs/remotes/origin/candidates/parser-escapes/native-parity 299f09558f9bb50b99127c122dcaa827a98752c1
+refs/remotes/origin/candidates/parser-escapes/native-scan 167c9385e04e1b9028588f6534b51c5e1c398494
+refs/remotes/origin/heddle/agents a2e30e432df987edbf4b2d169d29b9344b727fe2

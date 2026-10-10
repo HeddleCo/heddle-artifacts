@@ -66,13 +66,12 @@ From the terms PDF, sections 2–6, and the blog post.
 - 2,000 Git requests per 10 s per repo.
 - 1 GB per repo, 32 MB per blob, 1 TB per account.
 - Unlimited repos.
-- Billing starts **Oct 14/15**: 10k operations and 1 GB-month included, then $0.15 per 1k operations and $0.50 per GB-month. The demo cost is negligible.
+- Billing starts **Oct 14/15**: 10k operations and 1 GB-month included, then $0.15 per 1k operations and $0.50 per GB-month. Recheck the provider's current pricing and obtain a bounded usage approval; the harness does not enforce a provider billing cap or verify the final invoice.
 
-**Unknowns we must smoke-test on day 1** (Track A, test A-S1)
-- Whether Artifacts accepts pushes of `refs/notes/*` and arbitrary `refs/heads/candidates/*/*`.
-- Whether it accepts `--atomic` pushes.
-- Whether it accepts non-fast-forward pushes to notes.
-- How quickly events are delivered.
+**Live compatibility status, October 10** (Track A, test A-S1)
+- A2 accepted a synthetic main, a candidate ref and `refs/notes/heddle-why`, plus repository fork/token operations. It did not reach clone or exact remote readback.
+- A2 rejected `--atomic`. The integrated engine now implements an explicitly recoverable main-last publication protocol; it stages immutable proof snapshots and advances main with an expected-old lease after verification. Auxiliary aliases can be pending. See `engine/README.md` and `docs/SMOKE.md`.
+- Revised live ordered publication, clone/readback and Queue delivery remain gated until their own successful run. Non-fast-forward notes compatibility was not reached; production parents notes rather than unconditionally replacing them.
 
 ### Containers
 - A container is addressed per Durable Object name, as in `getContainer(env.X, name)` / `getByName`. Each name is its own instance, so there is **no single-flight requirement**.
@@ -170,7 +169,7 @@ Every agent gets its **own Artifacts fork** and a repo-scoped write token, and p
 
 1. **Heddle cannot run in a Worker.** Real wasm32 checks show repo, objects, refs and git-projection blocked on `errno`/rustix, `fs2`, `ring`, `memmap2` and `zstd-sys`. Porting them is weeks of work, not days.
 2. **The CLI already has every verb we need:** fan-out lanes, writer leases, per-agent signing, ADR-0053 conflict candidates, discussions and annotations, and Git export with notes and trailers. **Target: zero Heddle code changes.**
-3. **The prototype's 429 bottleneck disappears.** It existed because *Git transport* ran inside the one container. Here Git transport is Artifacts. The engine sits **off the push path**: it ingests asynchronously, batches, and is one instance per project. There is no `max_instances: 1` and no `busy → 429`.
+3. **Git transport is independent of engine serialization.** Here Git transport is Artifacts. The engine sits **off the push path**: it ingests asynchronously, batches, and is one instance per project. The bounded single-project demo currently caps Containers at one instance; Git transport does not wait on that engine's writer lease. Multi-project capacity is not established by the demo.
 4. **State persistence.** The Heddle repo lives on container disk and is snapshotted to R2 after every mutating operation; ProjectDO compare-and-swaps `stateGeneration`. On a cold start the engine restores the latest generation by streaming it from R2 into `exec` stdin. Tokens and the R2 credential never live in the image.
    - *Rejected: DO storage* (Heddle needs a filesystem).
    - *Rejected: an Artifacts repo for Heddle-native state* (Heddle's format is not Git; Artifacts is the Git face).
@@ -204,7 +203,7 @@ Engine ingest (batch of k pushes):
   heddle agent capture --token <lease> -m "<commit subject>"  (+ provenance: provider/model)
   → signed State on lane task/<t>/<a>
   integrate preview into task/<t>: no overlap → lane is a clean candidate;
-     overlap → conflicted State with attributed Conflict Candidates (ADR-0053)
+     overlap → Git merge-tree conflict preview attributed to the two signed lane candidates (G2 b2)
   run project tests in the lane checkout (≤60 s budget) → evidence
   publish: push refs/heads/candidates/<t>/<a> = agent's ORIGINAL commit sha to canonical
   snapshot /state → R2 (gen n+1)
@@ -220,7 +219,7 @@ ProjectDO: update candidate index → WS event candidate.ready → UI updates li
 1. The browser calls `POST …/decision {pick, rationale, expectHeads}`.
 2. ProjectDO checks that `expectHeads` matches the current candidate set; if not, it returns 409 (stale and fail-closed, mirroring ADR-0053).
 3. The engine, running as the decider's `HEDDLE_HOME`, does three things:
-   - `heddle resolve --pick <head>` on the conflicted State, or absorbs the chosen lane if it is clean;
+   - named G2 b2 fallback: `heddle thread absorb <chosen-lane> --into <task>`; this is not an ADR-0053 concurrent-head resolution;
    - `heddle discuss resolve --into-annotation --kind rationale`;
    - lands `task/<t>` into `main`, with the landing message holding the rationale and `Heddle-Task/Chosen/Alternative` lines.
 4. `engine publish` runs `heddle git export` into `/state/export.git`, writes `refs/notes/heddle-why`, and pushes `main`, `candidates/*`, `refs/notes/heddle` and `refs/notes/heddle-why` to canonical.
@@ -229,7 +228,7 @@ ProjectDO: update candidate index → WS event candidate.ready → UI updates li
 
 **F6. Clone and see why.**
 ```sh
-git clone https://x:$READ@<acct>.artifacts.cloudflare.net/git/heddle-demo/<p>.git && cd <p>
+git -c "http.extraHeader=Authorization: Bearer $READ" clone https://<acct>.artifacts.cloudflare.net/git/heddle-demo/<p>.git && cd <p>
 git fetch origin '+refs/notes/*:refs/notes/*'
 git config notes.displayRef 'refs/notes/heddle*'
 git log -3            # landing commit: rationale + Heddle-* lines; notes show agent/decision/alternatives
@@ -248,8 +247,8 @@ git log --oneline origin/candidates/parser-escapes/alice   # the losing alternat
 4. **Conflicts become candidates, not rejections.**
    - Every push becomes a signed State on that agent's lane. A lane head is a **candidate**.
    - The engine computes an integration preview of all lanes against `task/<t>`. Non-overlapping lanes are "clean candidates".
-   - Overlapping lanes produce a **conflicted State** whose Conflict Set lists each conflicting region with its **attributed candidates** (producer, source State, source Thread, per ADR-0053). The UI renders them side by side. Nothing is "ours" or "theirs" and nothing is lost.
-   - A decision is an attributed, signed resolution that cites the exact conflict version. A stale decision fails closed with 409 and raises attention.
+   - The selected stock CLI path uses **G2 fallback b2**: `git merge-tree` previews overlapping Git changes, and the UI compares the separately signed native lane Captures. It does not claim an ADR-0053 Conflict Set or concurrent native source heads.
+   - A decision checks the exact reviewed candidate States, absorbs the selected lane, and records a custodial signed attestation of the native discussion-resolution envelope and decision fields. A stale candidate set fails closed with 409.
 5. **Writer lease = fork token.** The lease and the Artifacts write token are minted together at enrollment and revoked together: `heddle agent release` plus `revokeToken`. An agent can only influence its own lane.
 
 ---
@@ -266,7 +265,7 @@ git log --oneline origin/candidates/parser-escapes/alice   # the losing alternat
 | Directory | ProjectDO `agents` table holds the public keys. They are published at `refs/notes/heddle-why` and in `.heddle-agents.json` on the `heddle/agents` branch. | Anyone can match signatures to names |
 
 - **Humans and the reviewer** each get their own `HEDDLE_HOME` and key in the same way. Discussion turns and decisions are signed per person or agent.
-- **Honest caveat, stated in the README.** Keys are held by the engine (custodial), and the R2 bucket is private. Agents never handle Heddle keys because agents only speak Git.
+- **Honest caveat, stated in the README.** Keys are held by the engine (custodial), and the R2 bucket is private. Git clients receive fork credentials, not native keys. Candidate code must not execute beside those keys unless its complete tree matches the separately reviewed demo allowlist; arbitrary candidate execution is withheld. This is a controlled demo, not a general untrusted-code sandbox.
 - **Stretch: non-repudiable Git commits (Track B, 2 h).** Agents SSH-sign their commits (`gpg.format=ssh`) and register their SSH public key at enrollment. Ingest runs `git verify-commit` against an `allowed_signers` file and rejects mismatches when `requireSignedCommits` is on.
 - **Untrusted fields.** The Git author name and email in agent commits are recorded but never trusted. The Heddle attribution comes from the lane.
 
@@ -284,7 +283,7 @@ git log --oneline origin/candidates/parser-escapes/alice   # the losing alternat
 |---|---|---|
 | `refs/heads/main` | engine only | Heddle's `main` thread projected by `heddle git export`. Each landing commit carries the rationale, `Heddle-Task/Chosen/Alternative/Decided-by` lines, and Heddle's footer `Heddle-State`/`Heddle-Change`. |
 | `refs/heads/candidates/<task>/<agent>` | engine only | **The agent's original pushed commit, same SHA.** Losers stay forever as recorded alternatives. |
-| `refs/notes/heddle` | engine via `heddle git export` | Heddle's own machine notes per projected commit: change id, agent, confidence, status. **We never hand-edit this ref.** Heddle rebuilds it on every export. |
+| `refs/notes/heddle` | engine via `heddle git export` | Untouched Heddle machine-note blobs keyed to native exported commits. The fixed G3 fallback landing SHA has native State/Change trailers and a separate why note; it need not have a machine note directly attached. Notes commits may be parented onto the remote tip without changing their tree. |
 | `refs/notes/heddle-why` | engine | Human-readable narrative per landing commit and per candidate commit (format in §7 contracts) |
 | `refs/heads/heddle/agents` | engine | `.heddle-agents.json`: agent id, kind, display name, ed25519 public key, provider/model |
 
@@ -299,9 +298,9 @@ git log --oneline origin/candidates/parser-escapes/alice   # the losing alternat
 - No custom client and no Heddle install are needed. Running `heddle` locally is optional, for deep inspection.
 
 ### 4.3 Byte-exactness guarantees (each one is an engine acceptance test and appears in the video)
-1. **Candidates are untouched.** `git rev-parse candidates/<t>/<a>` equals the SHA the agent pushed, which is checked against the fork's `main` at publish.
+1. **Candidates are untouched.** `git rev-parse candidates/<t>/<a>` equals the SHA the agent pushed, which is checked against the captured immutable candidate snapshot at publish. A later mutable fork tip does not rewrite an already signed decision.
 2. **The landed content is identical to the chosen work.** For a whole-candidate pick on the same base, `git rev-parse main^{tree}` equals `candidates/<t>/<chosen>^{tree}`.
-3. **The projection is reproducible.** Re-running `heddle git export` from the restored `/state` produces the same `main` SHA, so the Artifacts `main` equals the Heddle projection exactly.
+3. **The projection is reproducible.** Re-running stock `heddle git export` from the restored `/state`, followed by the persisted G3 fixed `commit-tree` projection, produces the same adapter landing `main` SHA. Stock export alone is not claimed to reproduce the fallback commit.
 4. **Objects are well-formed.** A fresh `git clone` passes `git fsck --strict`, and a repack passes `git index-pack --strict`. This is the same evidence standard the prototype used.
 
 *Rejected for main:* fast-forwarding `main` to the agent's own commit. That cannot carry the decision trailers or Heddle's signed history. Candidate refs already preserve the agent's exact commits.
@@ -477,7 +476,7 @@ Decided by luke ed25519:c0de… · resolution <state> · land <state>
 - `wrangler.jsonc` with these bindings:
   - Artifacts `ARTIFACTS` (namespace `heddle-demo`);
   - DO `PROJECT` (SQLite);
-  - Container `ENGINE` (class `HeddleEngine`, image `./engine/Dockerfile`, `standard-1`, `max_instances: 20`);
+  - Container `ENGINE` (class `HeddleEngine`, image `./engine/Dockerfile`, root build context with a strict runtime allowlist, `standard-1`, `max_instances: 1`, five-minute idle timeout for the bounded single-project demo);
   - Queue producer and consumer `artifacts-events`;
   - R2 `STATE`;
   - `AI`;
@@ -499,9 +498,9 @@ Decided by luke ed25519:c0de… · resolution <state> · land <state>
 **Acceptance**
 - **A-S1 live smoke on the real account** (first hour after the account is live), `scripts/smoke-artifacts.sh`:
   - create, fork, mint token;
-  - push `main`, `refs/heads/candidates/x/y`, `refs/notes/heddle-why` and an `--atomic` multi-ref push;
-  - `git ls-remote` shows all of them;
-  - a `pushed` event arrives in the Queue (record the latency).
+  - stage pinned candidates, why notes and a recoverable directory manifest, verify exact OIDs, then advance only `main` with expected-old CAS;
+  - prove stale CAS rejection and fresh mirror clone with strict fsck, exact refs/history/notes and a final remote readback;
+  - the exact landed main's `pushed` event arrives in the Queue; retain phase timings and label one observation as such, not a latency percentile.
 
   Write the results to `docs/SMOKE.md`. **Notes rejected → switch to the §9 fallback R1 immediately.**
 - **A-T1:** enrollment is idempotent and creates the fork name `p--t--a` (truncated and hashed if over the length limit).
@@ -523,7 +522,7 @@ Tests run on `@cloudflare/vitest-pool-workers`.
   - non-root user.
 - `engine.mjs`, implementing every §7.3 command over the Heddle CLI with `--output json`.
 - The `/state` layout: `repo/`, `lanes/<t>/<a>/`, `agents/<id>/home/`, `export.git`, `ops.jsonl`.
-- Test runner: run `npm test --silent` inside the lane checkout with a 60 s timeout. The demo seed provides vitest.
+- Test runner: only complete operator-reviewed fixture trees may run `npm test --silent`, with a 60 s total timeout, in a fresh copy of verified source bytes. Native metadata and candidate `node_modules` are never copied. Unknown or changed trees return `Tests withheld:` before execution. The operator-owned locked npm cache can be prewarmed; user/global npm configuration is isolated. This fixture allowlist is not an untrusted-code sandbox.
 - The `heddle-why` notes writer and the publish/verify steps from §4.3.
 
 **Gates, spiked first. Each gate's result goes into `engine/GATES.md` with commands and output.**
