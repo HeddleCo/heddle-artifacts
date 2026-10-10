@@ -20,6 +20,7 @@ console.log(JSON.stringify(result));
 
 const wrongVersion = JSON.parse((await docker(['run', '--rm', '-e', 'HEDDLE_BIN=/usr/bin/git', target, 'selftest'])).stdout);
 assert.equal(wrongVersion.ok, false);
+assert.throws(() => assert.equal(wrongVersion.ok, true, 'Docker pinned versions'), { code: 'ERR_ASSERTION' });
 console.log('Docker version negative PASS: substitute Git for Heddle → selftest ok=false');
 
 const temp = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'track-b-image-negative-'));
@@ -30,4 +31,5 @@ const negative = 'heddle-artifacts-engine:negative-full-runtime';
 await docker(['build', '-f', file, '-t', negative, '.']);
 const full = await inspect(negative);
 assert(full.Size >= 400000000, 'Reverting minimal root filesystem must break image acceptance');
+assert.throws(() => assert(full.Size < 400000000, 'Docker image must be under 400 MB'), { code: 'ERR_ASSERTION' });
 console.log(`Docker size negative PASS: revert minimal root filesystem → ${full.Size} bytes; under-400-MB assertion fails`);
