@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Env } from './env';
-import { artifacts } from './artifacts';
+import { DemoCredentials } from './credentials';
 import { HttpError } from './auth';
 import { streamSnapshot } from './snapshot';
 import { Store } from './store';
@@ -16,7 +16,7 @@ function canonical(value: any): string {
 }
 export class EngineClient {
   private tail: Promise<unknown> = Promise.resolve();
-  constructor(private env: Env, private store: Store, private project: () => string, private apply: (cmd: string, input: any, result: any, context: any) => FeedEvent[], private emit: (e: FeedEvent) => void) {}
+  constructor(private env: Env, private store: Store, private project: () => string, private apply: (cmd: string, input: any, result: any, context: any) => FeedEvent[], private emit: (e: FeedEvent) => void, private credentials = new DemoCredentials(env, store)) {}
   serial<T>(fn: () => Promise<T>): Promise<T> {
     const result = this.tail.then(fn); this.tail = result.catch(() => {}); return result;
   }
@@ -46,31 +46,36 @@ export class EngineClient {
     await this.parsed(await this.transport('restore', snapshot.body));
   }
   private async tokens<T>(fn: (env: Record<string, string>) => Promise<T>): Promise<T> {
-    const project = this.store.get('meta', 'project');
-    const namespace = artifacts(this.env), leases: Array<{ repo: string; token: string }> = [];
+    this.credentials.assertOpen();
+    const project = this.store.get('meta', 'project'), leases: Array<{ repo: string; token: string }> = [];
     try {
       const reads: Record<string, string> = {};
       for (const lane of this.store.all<Lane>('lanes')) {
-        using repo = await namespace.get(lane.forkRepo); const token = await repo.createToken('read', 600);
+        const token = await this.credentials.issue(lane.forkRepo, 'read', 'engine-read', lane.agent, 600);
         leases.push({ repo: lane.forkRepo, token: token.id }); reads[lane.forkRemote] = token.plaintext;
       }
       let write = '';
       if (project) {
-        using repo = await namespace.get(project.id);
-        const read = await repo.createToken('read', 600); leases.push({ repo: project.id, token: read.id }); reads[project.canonicalRemote] = read.plaintext;
-        const token = await repo.createToken('write', 600); leases.push({ repo: project.id, token: token.id }); write = token.plaintext;
+        const read = await this.credentials.issue(project.id, 'read', 'engine-read', 'engine', 600);
+        leases.push({ repo: project.id, token: read.id }); reads[project.canonicalRemote] = read.plaintext;
+        const token = await this.credentials.issue(project.id, 'write', 'engine-write', 'engine', 600);
+        leases.push({ repo: project.id, token: token.id }); write = token.plaintext;
       }
+      this.credentials.assertOpen();
       return await fn({ ARTIFACTS_READ_TOKENS: JSON.stringify(reads), ARTIFACTS_WRITE_TOKEN: write });
     } finally {
-      for (const lease of leases) { try { using repo = await namespace.get(lease.repo); await repo.revokeToken(lease.token); } catch {} }
+      // Failures are durable cleanup debt, never silently forgotten.
+      for (const lease of leases) await this.credentials.revoke(lease.repo, lease.token);
     }
   }
   async read(command: string, input: any): Promise<any> { await this.restore(); return this.parsed(await this.transport(command, JSON.stringify(input))); }
   async replay(): Promise<void> {
+    if (!this.credentials.isOpen()) return;
     const pending = this.store.rows<any>("SELECT * FROM ops WHERE status='pending' ORDER BY rowid");
     for (const op of pending) await this.perform(op);
   }
   async mutate(command: string, input: any, context: any = {}): Promise<any> {
+    this.credentials.assertOpen();
     const previous = this.store.rows<any>('SELECT * FROM ops WHERE id=?', input.opId)[0];
     if (previous && (previous.command !== command || canonical(JSON.parse(previous.input)) !== canonical(JSON.parse(JSON.stringify(input))) || canonical(JSON.parse(previous.context)) !== canonical(JSON.parse(JSON.stringify(context))))) throw new HttpError(409, 'operation_mismatch');
     if (previous?.status === 'done') return JSON.parse(previous.result!);
@@ -83,12 +88,16 @@ export class EngineClient {
     for (let attempt = 0; attempt < 3; attempt++) {
       this.store.storage.sql.exec('UPDATE ops SET attempts=attempts+1 WHERE id=?', op.id);
       try {
+        this.credentials.assertOpen();
         await this.restore();
+        this.credentials.assertOpen();
         const result = await this.tokens(env => this.parsedPromise(op.command, input, env));
+        this.credentials.assertOpen();
         const generation = this.store.get<number>('meta', 'stateGeneration') ?? 0;
         const response = await this.transport('snapshot', '{}');
         if (!response.ok || !response.body) throw new Error('snapshot_failed');
         await streamSnapshot(this.env.STATE, `projects/${this.project()}/gen-${generation + 1}.tar.zst`, response.body);
+        this.credentials.assertOpen();
         let events: FeedEvent[] = [];
         this.store.storage.transactionSync(() => {
           if ((this.store.get<number>('meta', 'stateGeneration') ?? 0) !== generation) throw new Error('generation_conflict');

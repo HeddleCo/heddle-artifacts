@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Publication and the initial PR-triggered run require owner approval first.
+# Publication, one new job and private one-day image artifacts require fresh owner approval.
 name: Container build and native fixture tests
 
 'on':
@@ -40,6 +40,7 @@ jobs:
       DOCKER_BUILDKIT: '1'
       IMAGE: heddle-artifacts-engine:ci
       CI: '1'
+      REVIEWED_BASE_SHA: 6c08b3654425831008feedd458f760c6301ba6ce
 
     steps:
       - name: Check out exact reviewed source
@@ -48,7 +49,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-          fetch-depth: 1
+          fetch-depth: 2
           submodules: false
           lfs: false
 
@@ -58,6 +59,11 @@ jobs:
           set -euo pipefail
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$GITHUB_REPOSITORY" = HeddleCo/heddle-artifacts
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          # This single approved publication must directly extend the reviewed base.
+          test "$(git rev-parse HEAD^)" = "$REVIEWED_BASE_SHA"
+          test "$(git rev-list --parents -n 1 HEAD | wc -w)" = 2
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
             [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
             test "$EXPECTED_SHA" = "$SOURCE_SHA"
@@ -126,6 +132,7 @@ jobs:
           PY
 
       - name: Run native acceptance and mutation tests without network
+        id: native_tests
         timeout-minutes: 15
         run: |
           set -euo pipefail
@@ -143,6 +150,7 @@ jobs:
           printf '\nNative acceptance, trust guard, mutations, hardening and ordered-publication tests passed.\n' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run reviewed dependency fixture with isolated npm configuration
+        id: dependency_tests
         timeout-minutes: 4
         run: |
           set -euo pipefail
@@ -158,3 +166,452 @@ jobs:
             -e HEDDLE_BIN=/usr/local/bin/heddle -e HOME=/home/engine -e CI=1 \
             --entrypoint node "$IMAGE" /opt/engine/test/vitest.mjs
           printf '\nReviewed dependency positive/negative tests and unknown-tree rejection passed.\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare bounded image handoff after all tests pass
+        id: image_export
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success'
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUNNER_TEMP" == /* && "$RUNNER_TEMP" != *$'\n'* && "$RUNNER_TEMP" != *$'\r'* ]]
+          # upload-artifact treats its path as a glob; keep the runner prefix literal too.
+          [[ "$RUNNER_TEMP" != *'*'* && "$RUNNER_TEMP" != *'?'* && "$RUNNER_TEMP" != *'['* && "$RUNNER_TEMP" != *']'* && "$RUNNER_TEMP" != *'!'* ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^)" = "$REVIEWED_BASE_SHA"
+          export SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          export EXPORT_DIR="$RUNNER_TEMP/heddle-image-export"
+          # Refuse a preexisting directory; upload only explicitly named generated files.
+          mkdir -m 700 "$EXPORT_DIR"
+          docker image inspect "$IMAGE" > "$EXPORT_DIR/image-inspect.json"
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { createReadStream, createWriteStream, readFileSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
+          import { spawn } from 'node:child_process';
+          import { Transform } from 'node:stream';
+          import { pipeline } from 'node:stream/promises';
+          import { createGzip } from 'node:zlib';
+          const env = process.env, root = env.EXPORT_DIR;
+          const previous = JSON.parse(readFileSync(`${env.RUNNER_TEMP}/engine-image.json`, 'utf8'))[0];
+          const current = JSON.parse(readFileSync(`${root}/image-inspect.json`, 'utf8'))[0];
+          assert.match(env.SOURCE_SHA, /^[0-9a-f]{40}$/);
+          assert.match(env.SOURCE_TREE, /^[0-9a-f]{40}$/);
+          assert.equal(env.REVIEWED_BASE_SHA, '6c08b3654425831008feedd458f760c6301ba6ce');
+          assert.equal(env.GITHUB_REPOSITORY, 'HeddleCo/heddle-artifacts');
+          assert.match(env.GITHUB_RUN_ID, /^[1-9][0-9]*$/);
+          assert.equal(env.GITHUB_RUN_ATTEMPT, '1');
+          assert.equal(env.IMAGE, 'heddle-artifacts-engine:ci');
+          assert.equal(current.Id, previous.Id, 'Image changed after test inspection');
+          assert.match(current.Id, /^sha256:[0-9a-f]{64}$/);
+          assert.equal(current.Size, previous.Size);
+          assert(Number.isSafeInteger(current.Size) && current.Size > 0 && current.Size < 400000000);
+          assert.equal(current.Config.User, '65532:65532');
+          assert.equal(current.Os, 'linux');
+          assert.equal(current.Architecture, 'amd64');
+          const chunkBytes = 24 * 1024 * 1024, maxParts = 16;
+          const maxCompressed = chunkBytes * maxParts, maxTar = 512 * 1024 * 1024;
+          const stats = { tar: { size_bytes: 0 }, gzip: { size_bytes: 0 } };
+          function meter(kind, max) {
+            const hash = createHash('sha256');
+            return new Transform({
+              transform(data, encoding, done) {
+                stats[kind].size_bytes += data.length;
+                if (stats[kind].size_bytes > max) return done(new Error(`${kind} exceeds ${max} bytes`));
+                hash.update(data); done(null, data);
+              },
+              flush(done) { stats[kind].sha256 = hash.digest('hex'); done(); }
+            });
+          }
+          const archive = `${root}/image.tar.gz`;
+          // Export the inspected immutable ID. No registry, login, credentials or network.
+          const child = spawn('docker', ['image', 'save', current.Id], { stdio: ['ignore', 'pipe', 'inherit'] });
+          const completion = new Promise((resolve, reject) => {
+            child.once('error', reject);
+            child.once('close', (code, signal) => code === 0 ? resolve() : reject(new Error(`docker save failed: ${code ?? signal}`)));
+          });
+          try {
+            // Node gzip writes zero timestamp and no filename; no timestamp-bearing header.
+            await Promise.all([
+              completion,
+              pipeline(child.stdout, meter('tar', maxTar), createGzip({ level: 6 }),
+                meter('gzip', maxCompressed), createWriteStream(archive, { flags: 'wx', mode: 0o600 }))
+            ]);
+          } catch (error) { child.kill('SIGTERM'); throw error; }
+          assert(stats.tar.size_bytes > 0 && stats.gzip.size_bytes > 0);
+          const count = Math.ceil(stats.gzip.size_bytes / chunkBytes);
+          assert(count >= 1 && count <= maxParts);
+          const prefix = `heddle-image-${env.SOURCE_SHA}-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}`;
+          const parts = [];
+          for (let index = 0; index < count; index++) {
+            const name = `image.tar.gz.part-${String(index).padStart(3, '0')}`;
+            const start = index * chunkBytes, end = Math.min(start + chunkBytes, stats.gzip.size_bytes) - 1;
+            const hash = createHash('sha256');
+            await pipeline(createReadStream(archive, { start, end }), new Transform({
+              transform(data, encoding, done) { hash.update(data); done(null, data); }
+            }), createWriteStream(`${root}/${name}`, { flags: 'wx', mode: 0o600 }));
+            const size = statSync(`${root}/${name}`).size;
+            assert(size > 0 && size <= chunkBytes && size === end - start + 1);
+            parts.push({ index, file: name, artifact_name: `${prefix}-part-${String(index).padStart(3, '0')}`,
+              size_bytes: size, sha256: hash.digest('hex') });
+          }
+          const manifest = {
+            schema: 'heddle-ci-image-v1',
+            source: { repository: env.GITHUB_REPOSITORY, sha: env.SOURCE_SHA, parent_sha: env.REVIEWED_BASE_SHA,
+              tree_sha: env.SOURCE_TREE, upstream_heddle_sha: '878fea434d2eed86865c0daf3f3b1ab7da6d2e4f' },
+            run: { id: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT },
+            image: { id: current.Id, tag: env.IMAGE, size_bytes: current.Size, os: current.Os,
+              architecture: current.Architecture, user: current.Config.User },
+            tests: { native: 'success', dependency: 'success' },
+            archive: { format: 'docker-image-save+gzip', file: 'image.tar.gz', gzip_level: 6,
+              compressed: stats.gzip, uncompressed: stats.tar },
+            limits: { part_bytes: chunkBytes, max_parts: maxParts, max_compressed_bytes: maxCompressed,
+              max_uncompressed_bytes: maxTar, retention_days: 1 },
+            parts
+          };
+          function canonical(value) {
+            if (Array.isArray(value)) return value.map(canonical);
+            if (value !== null && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])]));
+            return value;
+          }
+          const manifestBytes = JSON.stringify(canonical(manifest), null, 2) + '\n';
+          writeFileSync(`${root}/manifest.json`, manifestBytes, { flag: 'wx', mode: 0o600 });
+          const manifestHash = createHash('sha256').update(manifestBytes).digest('hex');
+          writeFileSync(`${root}/manifest.sha256`, `${manifestHash}  manifest.json\n`, { flag: 'wx', mode: 0o600 });
+          appendFileSync(env.GITHUB_OUTPUT, `part_count=${count}\nmanifest_sha256=${manifestHash}\n`);
+          appendFileSync(env.GITHUB_STEP_SUMMARY,
+            `\nPrepared image handoff (uploads follow): ${prefix}\n\n` +
+            `Source: ${env.SOURCE_SHA}; parent: ${env.REVIEWED_BASE_SHA}; image: ${current.Id}\n\n` +
+            `Compressed bytes: ${stats.gzip.size_bytes}; tar bytes: ${stats.tar.size_bytes}; parts: ${count}\n\n` +
+            `Manifest SHA-256: ${manifestHash}\n\n` +
+            `Archive SHA-256: ${stats.gzip.sha256}; tar SHA-256: ${stats.tar.sha256}\n`);
+          JS
+
+      - name: Upload private image part 000
+        id: upload_part_000
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 0
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-000
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-000
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 001
+        id: upload_part_001
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 1
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-001
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-001
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 002
+        id: upload_part_002
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 2
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-002
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-002
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 003
+        id: upload_part_003
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 3
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-003
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-003
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 004
+        id: upload_part_004
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 4
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-004
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-004
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 005
+        id: upload_part_005
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 5
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-005
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-005
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 006
+        id: upload_part_006
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 6
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-006
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-006
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 007
+        id: upload_part_007
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 7
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-007
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-007
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 008
+        id: upload_part_008
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 8
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-008
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-008
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 009
+        id: upload_part_009
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 9
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-009
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-009
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 010
+        id: upload_part_010
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 10
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-010
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-010
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 011
+        id: upload_part_011
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 11
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-011
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-011
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 012
+        id: upload_part_012
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 12
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-012
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-012
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 013
+        id: upload_part_013
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 13
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-013
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-013
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 014
+        id: upload_part_014
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 14
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-014
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-014
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Upload private image part 015
+        id: upload_part_015
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' &&
+          steps.image_export.outcome == 'success' &&
+          fromJSON(steps.image_export.outputs.part_count) > 15
+        # Official actions/upload-artifact v4.6.2; no registry or OIDC permissions.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-part-015
+          path: ${{ runner.temp }}/heddle-image-export/image.tar.gz.part-015
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Verify every required image part uploaded
+        id: verify_uploads
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' && steps.image_export.outcome == 'success'
+        timeout-minutes: 1
+        env:
+          PART_COUNT: ${{ steps.image_export.outputs.part_count }}
+          PART_OUTCOMES: ${{ toJSON(steps) }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const n = Number(process.env.PART_COUNT), steps = JSON.parse(process.env.PART_OUTCOMES);
+          assert(Number.isInteger(n) && n >= 1 && n <= 16);
+          for (let i = 0; i < n; i++) {
+            const step = steps[`upload_part_${String(i).padStart(3, '0')}`];
+            assert.equal(step?.outcome, 'success');
+            assert.match(step.outputs['artifact-id'], /^[1-9][0-9]*$/);
+            assert.match(step.outputs['artifact-digest'], /^[0-9a-f]{64}$/);
+          }
+          JS
+
+      - name: Upload manifest only after the complete image handoff
+        id: upload_manifest
+        if: >-
+          success() && steps.native_tests.outcome == 'success' && steps.dependency_tests.outcome == 'success' && steps.verify_uploads.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: heddle-image-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-manifest
+          path: |
+            ${{ runner.temp }}/heddle-image-export/manifest.json
+            ${{ runner.temp }}/heddle-image-export/manifest.sha256
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false

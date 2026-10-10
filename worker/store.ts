@@ -4,6 +4,8 @@ export class Store {
   constructor(public storage: DurableObjectStorage) {
     const sql = storage.sql;
     sql.exec(`CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, data TEXT NOT NULL, keyHash TEXT, enrollment TEXT)`);
+    if (!this.rows<{ name: string }>('PRAGMA table_info(agents)').some(c => c.name === 'keyExpiresAt')) sql.exec('ALTER TABLE agents ADD COLUMN keyExpiresAt TEXT');
+    sql.exec(`CREATE TABLE IF NOT EXISTS credentials (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
     sql.exec(`CREATE TABLE IF NOT EXISTS tasks (slug TEXT PRIMARY KEY, data TEXT NOT NULL)`);
     sql.exec(`CREATE TABLE IF NOT EXISTS lanes (id TEXT PRIMARY KEY, forkRepo TEXT UNIQUE NOT NULL, data TEXT NOT NULL, tokenId TEXT, subscription TEXT)`);
     sql.exec(`CREATE TABLE IF NOT EXISTS candidates (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);

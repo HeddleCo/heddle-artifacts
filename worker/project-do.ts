@@ -7,21 +7,26 @@ import { artifacts, forkName, setupScript, subscribeFork } from './artifacts';
 import { bodyText, checkOrigin, credential, digest, HttpError, jsonBody, operator, randomKey, responseError, slug, text } from './auth';
 import { Store } from './store';
 import { EngineClient } from './engine-client';
+import { DemoCredentials } from './credentials';
 
 type Task = { slug: string; intent: string; thread: string; baseSha: string; status: 'open' | 'decided' };
 export class ProjectDO extends DurableObject<Env> {
   store: Store;
   engine: EngineClient;
+  credentials: DemoCredentials;
+  private credentialRecovery = true;
   private draining: Promise<void> | undefined;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, { ...env, REVIEW: env.REVIEW ?? { review: createReviewer(env) } }); this.store = new Store(ctx.storage);
-    this.engine = new EngineClient(env, this.store, () => this.store.get('meta', 'project')?.id ?? '', this.apply.bind(this), this.emit.bind(this));
+    this.credentials = new DemoCredentials(env, this.store);
+    this.engine = new EngineClient(env, this.store, () => this.store.get('meta', 'project')?.id ?? '', this.apply.bind(this), this.emit.bind(this), this.credentials);
   }
   // Internal RPC registry: event routing never trusts task/agent fields in event input.
   registerFork(fork: string, project: string) { this.store.put('meta', `fork:${fork}`, project); }
   lookupFork(fork: string): string | undefined { return this.store.get('meta', `fork:${fork}`); }
   private emit(event: FeedEvent) {
-    for (const socket of this.ctx.getWebSockets()) { try { socket.send(JSON.stringify(event)); } catch { socket.close(1011, 'feed unavailable'); } }
+    this.expireAccess();
+    for (const socket of this.ctx.getWebSockets()) { if (!this.feedAuthorized(socket)) continue; try { socket.send(JSON.stringify(event)); } catch { socket.close(1011, 'feed unavailable'); } }
   }
   private apply(command: string, input: any, result: any, context: any): FeedEvent[] {
     const events: FeedEvent[] = [];
@@ -83,7 +88,25 @@ export class ProjectDO extends DurableObject<Env> {
   private candidates(task: string): Candidate[] { return this.store.all<Candidate>('candidates').filter(c => c.task === task); }
   private heads(task: string): string[] { return this.candidates(task).map(c => c.state).sort(); }
   private task(task: string): Task { const value = this.store.get<Task>('tasks', task); if (!value) throw new HttpError(404, 'task_not_found'); return value; }
+  private expireAccess(): boolean {
+    const open = this.credentials.enforce();
+    for (const socket of this.ctx.getWebSockets()) this.feedAuthorized(socket);
+    return open;
+  }
+  private feedAuthorized(socket: WebSocket): boolean {
+    const attachment = socket.deserializeAttachment() as { op?: boolean; agent?: string; hash?: string; expiresAt?: string } | null;
+    let valid = this.credentials.isOpen() && !!attachment?.expiresAt && Date.parse(attachment.expiresAt) > Date.now();
+    if (valid && !attachment?.op) {
+      const row = this.store.rows<{ keyHash: string | null; keyExpiresAt: string | null }>('SELECT keyHash,keyExpiresAt FROM agents WHERE id=?', attachment?.agent ?? '')[0];
+      valid = !!row?.keyHash && row.keyHash === attachment?.hash && !!row.keyExpiresAt && Date.parse(row.keyExpiresAt) > Date.now();
+    }
+    if (!valid) { try { socket.close(1008, 'credentials expired or project closed'); } catch {} }
+    return valid;
+  }
   private async recover() {
+    const open = this.expireAccess();
+    await this.credentials.sweep(!open, this.credentialRecovery); this.credentialRecovery = false;
+    if (!open || !this.expireAccess()) return;
     await this.engine.replay();
     await this.syncCandidates();
     await this.revokeReleased();
@@ -96,17 +119,20 @@ export class ProjectDO extends DurableObject<Env> {
   private async revokeReleased() {
     for (const lane of this.store.all<Lane>('lanes').filter(l => l.status !== 'active')) {
       const id = `${lane.task}/${lane.agent}`, token = this.store.rows<{ tokenId: string | null }>('SELECT tokenId FROM lanes WHERE id=?', id)[0]?.tokenId;
-      if (token) { using repo = await artifacts(this.env).get(lane.forkRepo); await repo.revokeToken(token); this.store.storage.sql.exec('UPDATE lanes SET tokenId=NULL WHERE id=?', id); }
+      if (token) { await this.credentials.revoke(lane.forkRepo, token); this.store.storage.sql.exec('UPDATE lanes SET tokenId=NULL WHERE id=?', id); }
     }
   }
   private async nextAlarm() {
-    const active = this.store.all<Lane>('lanes').some(l => l.status === 'active');
-    const reviews = this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'reviewDue:%'").map(r => JSON.parse(r.data) as number);
-    const pending = this.store.rows<any>("SELECT id FROM pushes WHERE status='pending' LIMIT 1").length > 0;
-    if (active || pending || reviews.length) await this.ctx.storage.setAlarm(Math.max(Date.now() + 100, Math.min(active || pending ? Date.now() + 3000 : Infinity, ...reviews)));
+    const open = this.expireAccess(), credentialCheck = this.credentials.nextCheck();
+    const active = open && this.store.all<Lane>('lanes').some(l => l.status === 'active');
+    const reviews = open ? this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'reviewDue:%'").map(r => JSON.parse(r.data) as number) : [];
+    const pending = open && this.store.rows<any>("SELECT id FROM pushes WHERE status='pending' LIMIT 1").length > 0;
+    const when = Math.min(credentialCheck ?? Infinity, active || pending ? Date.now() + 3000 : Infinity, ...reviews);
+    if (Number.isFinite(when)) await this.ctx.storage.setAlarm(Math.max(Date.now() + 100, when));
     else await this.ctx.storage.deleteAlarm();
   }
   async notePush(fork: string, ref: string, sha: string, via: 'event' | 'poll'): Promise<boolean> {
+    if (!this.expireAccess()) { await this.nextAlarm(); return false; }
     if (ref !== 'refs/heads/main' || !/^[a-f0-9]{40}$/.test(sha) || sha === '0'.repeat(40)) return false;
     const row = this.store.rows<{ id: string; data: string }>('SELECT id,data FROM lanes WHERE forkRepo=?', fork)[0];
     if (!row) return false; const lane = JSON.parse(row.data) as Lane;
@@ -118,11 +144,13 @@ export class ProjectDO extends DurableObject<Env> {
     if (inserted) this.scheduleDrain(); await this.nextAlarm(); return inserted;
   }
   private scheduleDrain() {
+    if (!this.expireAccess()) return;
     if (this.draining) return;
-    this.draining = new Promise<void>(resolve => setTimeout(resolve, 25)).then(() => this.engine.serial(async () => { await this.recover(); await this.drain(); })).catch(() => {}).finally(() => { this.draining = undefined; });
+    this.draining = new Promise<void>(resolve => setTimeout(resolve, 25)).then(() => this.engine.serial(async () => { await this.recover(); if (this.expireAccess()) await this.drain(); await this.nextAlarm(); })).catch(() => {}).finally(() => { this.draining = undefined; });
     this.ctx.waitUntil(this.draining);
   }
   private async syncCandidates() {
+    if (!this.expireAccess()) return;
     for (const task of this.store.all<Task>('tasks')) {
       if (!this.store.get('meta', `candidateSync:${task.slug}`)) continue;
       const result = await this.engine.read('candidates', { task: task.slug });
@@ -141,6 +169,7 @@ export class ProjectDO extends DurableObject<Env> {
     }
   }
   private async drain() {
+    if (!this.expireAccess()) return;
     for (let batch = 0; batch < 10; batch++) {
     const rows = this.store.rows<{ id: string; data: string }>("SELECT id,data FROM pushes WHERE status='pending' ORDER BY rowid LIMIT 100");
     if (!rows.length) return;
@@ -159,11 +188,13 @@ export class ProjectDO extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + 3000);
   }
   async poll() {
+    if (!this.expireAccess()) return;
     for (const lane of this.store.all<Lane>('lanes').filter(l => l.status === 'active')) {
       try { using repo = await artifacts(this.env).get(lane.forkRepo); const [tip] = await repo.log({ ref: 'main', limit: 1 }); if (tip && tip.id !== lane.lastSeenSha) await this.notePush(lane.forkRepo, 'refs/heads/main', tip.id, 'poll'); } catch {}
     }
   }
   private async reviews() {
+    if (!this.expireAccess()) return;
     for (const task of this.store.all<Task>('tasks')) {
       const due = this.store.get<number>('meta', `reviewDue:${task.slug}`); if (!due || due > Date.now()) continue;
       const candidates = this.candidates(task.slug);
@@ -180,22 +211,44 @@ export class ProjectDO extends DurableObject<Env> {
       } catch { this.store.put('meta', `reviewDue:${task.slug}`, Date.now() + 5000); }
     }
   }
-  async alarm() { await this.poll(); await this.engine.serial(async () => { await this.recover(); await this.drain(); await this.reviews(); await this.revokeReleased(); }); await this.nextAlarm(); }
+  async alarm() {
+    this.expireAccess();
+    try { await this.engine.serial(async () => { await this.recover(); if (!this.expireAccess()) return; await this.poll(); await this.drain(); await this.reviews(); await this.revokeReleased(); }); }
+    finally { await this.nextAlarm(); }
+  }
   private async authorize(request: Request): Promise<{ op: boolean; agent?: Agent }> {
+    this.expireAccess();
     checkOrigin(request); if (await operator(request, this.env.OPERATOR_TOKEN)) return { op: true };
-    if (!credential(request)) throw new HttpError(403, 'forbidden');
+    if (!this.credentials.isOpen() || !credential(request)) throw new HttpError(403, 'forbidden');
     const hash = await digest(credential(request));
-    const row = this.store.rows<{ data: string }>('SELECT data FROM agents WHERE keyHash=?', hash)[0];
-    if (!row) throw new HttpError(403, 'forbidden'); return { op: false, agent: JSON.parse(row.data) };
+    const row = this.store.rows<{ data: string; keyExpiresAt: string | null }>('SELECT data,keyExpiresAt FROM agents WHERE keyHash=?', hash)[0];
+    if (!row?.keyExpiresAt || !Number.isFinite(Date.parse(row.keyExpiresAt)) || Date.parse(row.keyExpiresAt) <= Date.now()) throw new HttpError(403, 'forbidden'); return { op: false, agent: JSON.parse(row.data) };
   }
   async fetch(request: Request): Promise<Response> {
     try {
       const url = new URL(request.url), parts = url.pathname.split('/').filter(Boolean), projectId = slug(parts[2]);
       const publicWhy = request.method === 'GET' && parts[3] === 'why' && projectId === this.env.DEMO_PROJECT;
       const actor = publicWhy ? { op: false, agent: undefined } : await this.authorize(request);
+      this.expireAccess();
+      if (parts[3] === 'credentials' && (parts.length === 4 || parts[4] === 'status' && parts.length === 5) && request.method === 'GET' || parts[3] === 'cleanup' && parts.length === 4 && request.method === 'POST') {
+        if (!actor.op) throw new HttpError(403, 'forbidden');
+        if (!this.store.get('meta', 'project') && !this.credentials.lifetime()) throw new HttpError(404, 'project_not_found');
+        if (parts[3] === 'cleanup') {
+          if (request.body) await bodyText(request);
+          this.credentials.close(); this.expireAccess();
+          await this.ctx.storage.sync();
+          await this.credentials.sweep(true);
+          await this.nextAlarm();
+        } else await this.credentials.importDebt();
+        const status = this.credentials.status();
+        return Response.json(status, { status: parts[3] === 'cleanup' && !status.complete ? 202 : 200, headers: { 'cache-control': 'no-store' } });
+      }
       if (parts[3] === 'ws' && request.method === 'GET') {
         if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, 'websocket_required');
-        const pair = new WebSocketPair(); this.ctx.acceptWebSocket(pair[1]);
+        this.credentials.assertOpen();
+        const pair = new WebSocketPair();
+        pair[1].serializeAttachment({ op: actor.op, agent: actor.agent?.id, hash: actor.agent ? await digest(credential(request)) : undefined, expiresAt: this.credentials.lifetime()!.expiresAt });
+        this.ctx.acceptWebSocket(pair[1]); await this.nextAlarm();
         return new Response(null, { status: 101, webSocket: pair[0] });
       }
       if (request.method !== 'GET' && !actor.op && !(parts[3] === 'tasks' && parts[5] === 'turns') && !(parts[3] === 'agents' && parts[5] === 'token')) throw new HttpError(403, 'forbidden');
@@ -213,8 +266,10 @@ export class ProjectDO extends DurableObject<Env> {
         const taskId = slug(parts[4]), task = this.task(taskId);
         return Response.json({ task, candidates: this.candidates(taskId), turns: this.store.all<Turn>('turns').filter(t => t.task === taskId), review: this.store.get('meta', `review:${taskId}`), decision: this.store.get('decisions', taskId), heads: this.heads(taskId) });
       }
-      return await this.engine.serial(async () => {
-        await this.recover();
+      const response = await this.engine.serial(async () => {
+        if (!publicWhy) await this.recover();
+        if (actor.agent) await this.authorize(request);
+        if (request.method !== 'GET' && !(parts.length === 3 && request.method === 'POST' && !this.store.get('meta', 'project'))) this.credentials.assertOpen();
         const pending = this.store.all<Decision>('decisions').find(d => !d.mainSha);
         const retryingPending = parts[3] === 'tasks' && parts[4] === pending?.task && parts[5] === 'decision';
         if (pending && request.method !== 'GET' && !retryingPending) {
@@ -227,16 +282,17 @@ export class ProjectDO extends DurableObject<Env> {
           const body = await jsonBody(request), seed = body.seed;
           if (body.id !== projectId || !(seed?.template === 'demo' || typeof seed?.importUrl === 'string')) throw new HttpError(400, 'invalid_seed');
           if (seed.importUrl) { const parsed = new URL(seed.importUrl); if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new HttpError(400, 'invalid_seed'); }
+          this.credentials.initialize(); await this.nextAlarm();
           let project = this.store.get('meta', 'project');
           if (!project) {
             let created;
-            try { using existing = await artifacts(this.env).get(projectId); created = await existing.info(); } catch { created = await artifacts(this.env).create(projectId, { setDefaultBranch: 'main' }); }
+            try { using existing = await artifacts(this.env).get(projectId); created = await existing.info(); this.credentials.noteExistingRepository(projectId); } catch { created = await this.credentials.bootstrap(projectId, () => artifacts(this.env).create(projectId, { setDefaultBranch: 'main' })); }
             project = { id: projectId, canonicalRemote: created.remote }; this.store.put('meta', 'project', project);
-            if ('token' in created && created.token) { using repo = await artifacts(this.env).get(projectId); await repo.revokeToken(created.token as string); }
           }
           await this.engine.mutate('init', { opId: `init:${projectId}`, project: projectId, canonical: { remote: project.canonicalRemote }, seed });
-          using canonical = await artifacts(this.env).get(projectId); const token = await canonical.createToken('read', 43200);
-          return Response.json({ ...project, readToken: token.plaintext });
+          const token = await this.credentials.issue(projectId, 'read', 'canonical-read', 'operator');
+          await this.nextAlarm();
+          return Response.json({ ...project, readToken: token.plaintext, expiresAt: token.expiresAt, projectExpiresAt: this.credentials.lifetime()!.expiresAt }, { headers: { 'cache-control': 'no-store' } });
         }
         if (!this.store.get('meta', 'project')) throw new HttpError(404, 'project_not_found');
         if (parts[3] === 'humans' && request.method === 'POST') {
@@ -274,18 +330,20 @@ export class ProjectDO extends DurableObject<Env> {
           const laneId = `${taskId}/${id}`; let lane = this.store.get<Lane>('lanes', laneId);
           if (!lane) {
             using canonical = await artifacts(this.env).get(projectId); const name = await forkName(projectId, taskId, id);
-            let fork; try { using existing = await artifacts(this.env).get(name); fork = await existing.info(); } catch { fork = await canonical.fork(name, { defaultBranchOnly: true }); }
+            let fork; try { using existing = await artifacts(this.env).get(name); fork = await existing.info(); this.credentials.noteExistingRepository(name); } catch { fork = await this.credentials.bootstrap(name, () => canonical.fork(name, { defaultBranchOnly: true })); }
             lane = { project: projectId, task: taskId, agent: id, forkRepo: name, forkRemote: fork.remote, laneThread: `task/${taskId}/${id}`, status: 'active', lastSeenSha: task.baseSha };
             this.store.storage.sql.exec('INSERT INTO lanes (id,forkRepo,data) VALUES (?,?,?)', laneId, name, JSON.stringify(lane));
-            if ('token' in fork && fork.token) { using repo = await artifacts(this.env).get(name); await repo.revokeToken(fork.token as string); }
           }
           await this.env.PROJECT.getByName('__routing__').registerFork(lane.forkRepo, projectId);
           await this.engine.mutate('lane.open', { opId: `lane:${laneId}`, task: taskId, agent: id });
           const subscription = await subscribeFork(this.env, lane.forkRepo);
           this.store.storage.sql.exec('UPDATE lanes SET subscription=? WHERE id=?', subscription, laneId);
-          const agentKey = randomKey(); this.store.storage.sql.exec('UPDATE agents SET keyHash=? WHERE id=?', await digest(agentKey), id);
-          const fork = await this.forkToken(lane); using canonical = await artifacts(this.env).get(projectId); const read = await canonical.createToken('read', 43200);
-          await this.nextAlarm(); return Response.json({ agentKey, fork: { remote: lane.forkRemote, ...fork }, upstream: { remote: this.store.get('meta', 'project').canonicalRemote, readToken: read.plaintext }, setup: setupScript(lane.forkRemote, fork.token, this.store.get('meta', 'project').canonicalRemote, read.plaintext) });
+          const agentKey = randomKey(), agentKeyExpiresAt = this.credentials.lifetime()!.expiresAt;
+          this.credentials.assertOpen();
+          this.store.storage.sql.exec('UPDATE agents SET keyHash=?,keyExpiresAt=? WHERE id=?', await digest(agentKey), agentKeyExpiresAt, id);
+          await this.ctx.storage.sync(); this.expireAccess();
+          const fork = await this.forkToken(lane); const read = await this.credentials.issue(projectId, 'read', 'canonical-read', id);
+          await this.nextAlarm(); return Response.json({ agentKey, agentKeyExpiresAt, projectExpiresAt: this.credentials.lifetime()!.expiresAt, fork: { remote: lane.forkRemote, ...fork }, upstream: { remote: this.store.get('meta', 'project').canonicalRemote, readToken: read.plaintext, expiresAt: read.expiresAt }, setup: setupScript(lane.forkRemote, fork.token, this.store.get('meta', 'project').canonicalRemote, read.plaintext) }, { headers: { 'cache-control': 'no-store' } });
         }
         if (parts[5] === 'candidates' && parts[7] === 'diff' && request.method === 'GET') {
           const agent = slug(parts[6]); if (!this.candidates(taskId).some(c => c.agent === agent)) throw new HttpError(404, 'candidate_not_found');
@@ -314,16 +372,20 @@ export class ProjectDO extends DurableObject<Env> {
         }
         throw new HttpError(404, 'not_found');
       });
+      if (actor.agent) await this.authorize(request);
+      if (request.method !== 'GET') this.credentials.assertOpen();
+      return response;
     } catch (error) { return responseError(error); }
   }
   private async forkToken(lane: Lane): Promise<{ token: string; expiresAt: string }> {
-    using repo = await artifacts(this.env).get(lane.forkRepo); const id = `${lane.task}/${lane.agent}`;
+    this.credentials.assertOpen(); const id = `${lane.task}/${lane.agent}`;
     const old = this.store.rows<{ tokenId: string | null }>('SELECT tokenId FROM lanes WHERE id=?', id)[0]?.tokenId;
-    const token = await repo.createToken('write', 43200);
+    const token = await this.credentials.issue(lane.forkRepo, 'write', 'fork-write', lane.agent);
     this.store.storage.sql.exec('UPDATE lanes SET tokenId=? WHERE id=?', token.id, id);
-    if (old) await repo.revokeToken(old);
+    if (old) await this.credentials.revoke(lane.forkRepo, old);
+    this.credentials.assertOpen();
     return { token: token.plaintext, expiresAt: token.expiresAt };
   }
-  webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) { if (message === 'ping') socket.send('pong'); }
+  webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) { this.expireAccess(); if (this.feedAuthorized(socket) && message === 'ping') socket.send('pong'); }
   webSocketClose(socket: WebSocket, code: number) { socket.close(code === 1005 || code === 1006 ? 1000 : code, 'closed'); }
 }

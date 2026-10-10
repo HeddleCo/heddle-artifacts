@@ -1,25 +1,143 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Current production-container build proposal
+# Current container result and approved bounded image handoff
 
-Status, 2026-10-10: **PR #6 published; first Actions attempt failed workflow
-validation before any runner job. A narrow context repair is prepared locally.**
-[Run 38090841378](https://github.com/HeddleCo/heddle-artifacts/actions/runs/38090841378)
-for head `6a0578e64b52e0b9d8a0df89343f79f6002d51d4` returned `jobs: []` and
-`billable: {}`. No checkout, build or container tests ran. This is a workflow
-validation failure, not a failed image build or evidence of a successful image.
-The hardened runtime differs from the historical PR #4 image. Its earlier
-338,926,309-byte result does not establish the current image's size or behavior.
-This executor has no Docker, Podman or BuildKit, so YAML/shell/static checks here
-are not a substitute for the proposed container run.
+Status, 2026-10-10: **the context repair was published, one actual runner job
+built and measured the production image, and the overall run failed in a native
+test fixture. A fresh publication/run with bounded private image export is
+described below was approved for one job on October 10. At source preparation,
+that follow-up has not yet run; its actual result must be read from the new CI receipt.**
+
+[Run 38091165407](https://github.com/HeddleCo/heddle-artifacts/actions/runs/38091165407),
+[job 114327720861](https://github.com/HeddleCo/heddle-artifacts/actions/runs/38091165407/job/114327720861),
+at source `6c08b3654425831008feedd458f760c6301ba6ce` completed on October 10:
+
+- The production image built in **29 minutes 56 seconds** and measured
+  **237,172,298 bytes**, below the 400,000,000-byte cap.
+- Image config ID:
+  `sha256:db90306668034e6d562a49ccf2dd501c124c3a3a71b9d450be090537b656b0da`.
+  This is the Docker config digest, not a published registry manifest digest.
+- Source identity, anonymous pinned-upstream access, image selftest,
+  wrong-version rejection, binary checksum, UID/GID `65532:65532` and production
+  content exclusions passed.
+- The native suite reached and passed 26 trusted-execution checks, B-T1–B-T5
+  baselines/mutations, B-T6, fork naming and replay binding.
+- The hardening fixture then tried to write its synthetic bare repository's
+  `hooks/update` without creating `hooks/`. The minimized production image omits
+  Git templates. `engine/test/hardening.mjs:93` failed with `ENOENT`.
+- Later hardening/recovery/race and independent ordered-publication checks were
+  not reached. The separate dependency fixture step was **skipped**. Full
+  in-image acceptance is not established.
+- No saved image or Actions artifact was retained; no registry image was
+  published. The eight-file credential changes and two fixture setup repairs
+  remain local and were not part of this tested source.
+
+The earlier [run 38090841378](https://github.com/HeddleCo/heddle-artifacts/actions/runs/38090841378)
+for `6a0578e64b52e0b9d8a0df89343f79f6002d51d4` failed workflow validation with
+`jobs: []` and `billable: {}`. It allocated no runner. The published two-file
+context repair fixed the invalid job-level `runner.temp` expression and led to
+the single actual job above. Preserve both records: the zero-job failure and
+the later failed test job are different events.
+
+The prior one-actual-job authorization was consumed. The owner approved the
+one bounded follow-up below; any additional publication or run requires fresh approval. Historical PR #4's 338,926,309-byte image remains a
+separate result. This local executor has no Docker, Podman or BuildKit; local
+YAML/shell/synthetic checks are not additional container evidence.
+
+## Approved follow-up scope: twelve files and one job
+
+Review the exact combined delta: eight credential-related files, the two fixture
+setup files, `.github/workflows/container-build.yml` and this document, for
+**12 repository files total**. No part of that combined delta has been published
+by this preparation. Recheck the integration and main heads before publishing.
+The proposed commit must have the sole direct parent
+`6c08b3654425831008feedd458f760c6301ba6ce`; the workflow checks that relationship
+using a two-commit checkout before building. It rejects `GITHUB_RUN_ATTEMPT != 1`.
+
+The owner approved one existing-job run with a **US$1 total limit** on standard
+`ubuntu-24.04`, retaining the **60-minute
+whole-job timeout**, same-repository integration-branch guards, no push trigger
+and no matrix. Any rerun, reopen, manual dispatch or further publication needs
+new authority; branch guards and a timeout do not impose an account spending cap.
+A same-commit reopen may still start a first-attempt workflow record. Review
+account quota; the approved US$1 limit includes compute and this bounded private storage.
+
+After **all** existing image/native/dependency checks succeed, the proposed
+workflow saves the immutable inspected image ID, gzips it and exports only
+bounded production-image files to the private repository's Actions storage:
+
+- At most 16 payload parts of 24 MiB (25,165,824 bytes) each, each in a separate
+  artifact, and one small final manifest artifact: **17 artifacts maximum**.
+- At most 384 MiB (402,653,184 bytes) compressed payload and 512 MiB
+  (536,870,912 bytes) uncompressed Docker-save tar. Both streaming bounds reject
+  excess before publishing a usable handoff. Artifact ZIP framing/manifest add
+  small storage overhead to the payload cap.
+- Every artifact has **one-day retention**, `overwrite: false`, hidden-file
+  exclusion and error-on-missing-file behavior. Repository readers with access
+  can download this retained production code/dependency copy.
+- Native/dependency test outcomes must both be success. No `always()` or
+  `continue-on-error` weakens this gate. The manifest uploads only after every
+  required part's upload ID/digest is present and its outcome is successful.
+- Failed or partial uploads can leave already-uploaded parts for their one-day
+  retention, but no complete manifest handoff. Never consume a partial set or a
+  non-successful run.
+
+The actual number of parts cannot be inferred from image byte size; it is
+`ceil(actual gzip size / 25,165,824)`, at most 16. Only after a real approved export
+will the normal count and precise retained ZIP storage be known.
+
+The official upload action is
+[`actions/upload-artifact` v4.6.2](https://github.com/actions/upload-artifact/releases/tag/v4.6.2),
+pinned at `ea165f8d65b6e75b540449e92b4886f43607fa02`; its release and pinned action
+metadata were verified. The only new network handoff uses that action's normal
+GitHub runtime. Existing `contents: read` permissions remain; there are no new
+secrets, OIDC, Cloudflare/registry credentials, registry push, cache, deployments,
+software installs or extra jobs. Official checkout/upload use GitHub's existing
+ephemeral job authentication, not newly supplied user/application credentials.
+
+### Manifest and later import
+
+The manifest binds exact source/parent/tree/upstream commit, run ID/attempt,
+image config ID/size/platform/user, passed test statuses, ordered part names,
+artifact names, byte sizes and SHA-256 values, plus full compressed and
+uncompressed archive hashes/sizes. Its own hash goes to the exact run's summary.
+Gzip has no embedded filename and a zero timestamp; sorted-key manifest output
+is deterministic for identical bytes and metadata. Separate builds are not
+claimed bit-for-bit reproducible.
+
+The Actions connector downloads whole artifact ZIPs, so chunks inside a single
+artifact would not bound transfer. Each part is a distinct artifact. Verify
+provider ZIP size/digest and exact artifact identity, then safely materialize
+only expected basenames into a new staging directory. Reject duplicate ZIP
+entries, traversal, symlinks and unexpected files. The available GitHub download
+contract itself does not document a universal 32 MiB limit. A separate Sediment
+materializer has that limit; use only the route matching the returned file type.
+Actual executor-local transfer remains unverified until real artifacts exist.
+
+Before any later import, require caller-trusted reviewed source, parent, run,
+attempt, image config ID and manifest hash. Verify exact part count/order/names,
+sizes and hashes, both full archive hashes and bounded gzip decoding. Checksums
+are not an OIDC attestation. Do not extract or execute container contents merely
+to verify the stream. Retention approval does not authorize software install,
+registry authentication, image push, credential changes or deployment.
+
+A Docker config ID, image archive SHA-256 and eventual registry manifest digest
+identify different objects. The latter must be measured after a separately
+approved import and checked against the expected config ID before deployment.
+No registry digest or import/push success is claimed here. Pinned Crane v0.22.1
+supports a single Docker-save descriptor even with `RepoTags: null`, but expects
+the outer input to be raw tar. A later separately approved import must first
+stream-decompress the verified transport gzip into a new bounded, hash-checked
+tar, without extracting its members. Do not hand the outer gzip directly to
+Crane. No Crane software was installed or executed by this preparation.
 
 ## Original approval boundary and repair scope
 
 The initial approval covered publication of the reviewed source, draft PR #6 and
 one actual build job as described below. The rejected workflow never allocated
-that job. The proposed repair changes only workflow initialization and this
-status document; the remaining source and build scope stay the same. Publish
-or run it only through the approved release procedure. No credential-source
-changes are included in this repair.
+that job. The published context repair changed only workflow initialization and this
+status document; all other 269 files remained byte/mode-identical. It included
+no credential-source changes. That historical boundary does not approve the
+new twelve-file publication or image retention described above.
 
 The original actions were:
 
@@ -38,9 +156,11 @@ The original actions were:
    selftest and synthetic test results. They do not include native state bundles,
    private signing keys, tokens, source archives or a saved container image.
 
-This proposal does not authorize a merge, a deployment, image/registry
-publication, Actions artifact uploads, new secrets, billing changes, persistent
-runners or permissions changes. No such action has been performed. Future pushes
+The original approval excluded merge, deployment, image/registry publication,
+Actions artifact uploads, new secrets, billing changes, persistent runners and
+permission changes. None occurred in the completed run. The next proposal
+requests only the bounded private Actions retention described above in addition
+to one publication/run; other exclusions remain. Future pushes
 can retrigger CI, so approving a first run must not be treated as unlimited
 permission to publish revisions or spend on reruns.
 
@@ -83,9 +203,11 @@ or change the default branch just to bypass that restriction. See
 - The production `.dockerignore` remains default-deny and unchanged. Tests,
   Git metadata, environment files, native state, logs, dependencies and demo
   evidence do not enter the build context.
-- No upload or persistent cache action is present. The image and temporary
-  state exist only on the disposable runner. Job logs/summary still leave that
-  runner and are visible according to the repository's Actions access policy.
+- In the completed baseline run, no upload or persistent cache action was
+  present; the image and test state existed only on its disposable runner. The
+  proposed next workflow adds only the bounded private image artifacts described
+  above. Test state stays temporary. Job logs/summary follow repository access
+  and retention policies separately from the one-day image artifact setting.
 
 Build-time network reads include Docker Hub/frontend/base images, Debian package
 repositories, GitHub's stock Heddle source and the Rust crate registry. The
@@ -141,8 +263,8 @@ An unauthenticated HTTPS request to the
 returned HTTP 200 and that exact commit SHA on 2026-10-10. The source commit is
 publicly readable through that API without a GitHub token. A local Git transport
 probe with all environment configuration removed could not resolve `github.com`
-in this executor, so anonymous Git transport is a pending runner preflight,
-not a claimed local pass.
+in this executor. The completed Actions job subsequently passed its anonymous
+pinned-upstream Git transport preflight; local connectivity is not claimed.
 
 The Dockerfile's Heddle source revision and Cargo lockfile are pinned, and a
 between-stage checksum verifies binary identity. Its `rust:1.98-trixie`,
@@ -164,19 +286,19 @@ read-only organization usage endpoint, subject to organization Administration
 (read) permission; do not create a credential or expand access just to query it.
 See [GitHub billing usage API](https://docs.github.com/en/rest/billing/usage).
 
-GitHub charges private-repository runner usage to the repository owner, with
-included allowances varying by plan. The currently documented baseline Linux
-2-core rate is **US$0.006/minute**. If all 60 minutes were billable at that rate,
-the compute component would be **US$0.36 for one run**, before taxes or
-account-specific terms. That is an estimate, not a verified account bill or a
-hard billing cap. Reruns are additional. No artifacts or remote caches are
-uploaded by this workflow. Verify current pricing and approve an explicit limit
-before starting: [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+GitHub charges compute/storage according to account plan, allowances and current
+rates; check [Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
+before the next run. The completed authorization covered one actual job with a
+US$1 limit. The timing endpoint reported one Ubuntu job and zero billable
+milliseconds, but no invoice or remaining allowance was independently verified.
+Do not treat that API response as proof future usage is free. The proposed next
+run retains bounded artifacts for one day and requires a fresh explicit
+compute-plus-storage spending limit; reruns and further runs are additional.
 
 ## Local validation versus pending acceptance
 
-Local preparation checks YAML shape, exact action pin, read-only permission
-scope, branch/event restrictions, absence of secrets/publish/upload steps,
+The original pre-publication preparation checked YAML shape, exact action pin,
+read-only permission scope, branch/event restrictions and no upload steps,
 read-only test mount paths, shell syntax and unchanged runtime/context inputs.
 Those checks passed without a Docker daemon. A synthetic shell harness also
 executed all five shell blocks with mocked Docker/Git commands and proved that
@@ -186,33 +308,46 @@ native test evidence. Those earlier checks missed GitHub's expression-context
 restrictions: `${{ runner.temp }}` is invalid in `jobs.<job_id>.env`, so the
 published first attempt failed before executing any step.
 
-The local repair removes that job-level expression. The first shell step derives
+The now-published context repair removed that job-level expression. The first shell step derives
 and exports `DOCKER_CONFIG` from `$RUNNER_TEMP`, creates a private empty config,
 and appends that exact path to `$GITHUB_ENV` for subsequent steps. Absolute-path
 and CR/LF checks prevent a malformed path from adding another environment entry.
 No untrusted value is interpolated into the shell program.
 
-A dedicated regression now checks every expression location used here against
+The context-repair regression checked its expression locations against
 [GitHub's context-availability table](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability):
 workflow concurrency uses `github`; job `if` uses `github`; job `env` uses
 `github`/`inputs`; checkout `with.ref` uses `github`. These are permitted in their
-respective locations. All other values are literals or runner-side shell
-variables. The regression rejects the original `runner`-in-job-env form and
+respective locations. The new export uses `steps` at step conditions/environment,
+`env`/`github` in artifact names and `runner` only in step inputs, all covered by
+the separate export regression. Other values are literals or shell variables. The regression rejects the original `runner`-in-job-env form and
 checks the environment-file handoff, including spaces and shell metacharacters
 as literal path bytes and rejection of CR/LF injection. YAML, all five Bash
 blocks and these focused positive/negative checks pass locally. `actionlint`
-and GitHub's service have not validated the repaired version; the next actual
-run remains the service-level verification.
+was not run locally. GitHub's service accepted the repaired workflow and
+allocated the completed actual job; its build/image checks passed and the native
+fixture failure above remains the full-suite blocker. The new export delta has
+not yet been validated by a real GitHub run.
 
-Still pending until separately approved and actually observed:
+The prepared export workflow additionally passed local YAML/Bash/Node and
+synthetic streaming checks: success-only test/upload gates, exact action pin,
+fixed bounded file names and artifact count, deterministic gzip/manifest,
+513 MiB uncompressed rejection, compressed-meter rejection, source/run/image
+binding, ordered reconstruction and corruption/missing/extra/symlink/traversal
+negatives. These do not execute Docker or upload an artifact and are not GitHub
+service-level validation.
 
-- Publication of the narrow workflow repair and its resulting PR #6 head SHA
-- Observation of the first actual runner job under the approved build scope;
-  the account's remaining included allowance is still unverified
-- Anonymous Git fetch and current image build on the runner
-- Current image ID, measured bytes, selftest and in-image native/dependency tests
-- New Actions run URL and terminal result for the exact repaired commit
+Still pending actual execution and verification (registry/deployment remain separately unapproved):
 
-If the run fails, keep the failed stage explicit. Inspect logs before proposing
-a change or retry, preserve the trusted-tree/context boundaries, and seek new
-approval if publication, spend or permissions would exceed the approved scope.
+- Publication of the exact twelve-file delta as a direct child of the reviewed base
+- One new actual job within an approved spend limit; no implicit retry authority
+- Full native/recovery/race/ordered-publication and dependency-fixture passes
+- New source/image identity and all tests tied to that new image
+- Bounded private artifact export, actual part count and complete successful manifest
+- Real artifact download/materialization and all source/part/archive checks
+- Any separately approved software installation, registry import or hosted deployment
+
+If a run fails, preserve the exact failed stage, inspect logs and seek fresh
+approval for any new publication, spending or permission scope. Do not weaken
+the trusted-tree, production context or credential boundaries to obtain a green
+result. A complete hosted Worker/Container/R2 application remains unproven.

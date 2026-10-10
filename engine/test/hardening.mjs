@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { webcrypto } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -66,7 +66,10 @@ if (selected === 'all' || selected === 'publish') {
   await writeFile(join(seed, 'README.md'), '# Public synthetic publication fixture\n');
   await git(seed, ['add', '.']);
   await git(seed, ['commit', '-m', 'Synthetic seed'], { env: fixedIdentity() });
-  await git(root, ['init', '--bare', '--initial-branch=main', canonical]);
+  await git(root, ['init', '--bare', '--template=', '--initial-branch=main', canonical]);
+  // The minimal runtime has no Git templates; fixtures own their hook directory.
+  await assert.rejects(stat(join(canonical, 'hooks')), { code: 'ENOENT' });
+  await mkdir(join(canonical, 'hooks'));
   await call('init', { opId: 'fixture-init', project: 'fixture-project', canonical: { remote: canonical }, seed: { importUrl: seed } });
   await call('task.create', { opId: 'fixture-task', task: 'fixture-task', intent: 'Exercise local publication recovery' });
   for (const [id, kind] of [['fixture-actor', 'agent'], ['fixture-decider', 'human']]) {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Independent protocol tests: only synthetic local repositories and native Heddle.
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { run, git } from '../lib/process.mjs';
@@ -37,7 +37,10 @@ await git(join(root, 'seed'), ['init', '-b', 'main']);
 await writeFile(join(root, 'seed/README.md'), '# Independent ordered-publication fixture\n');
 await git(join(root, 'seed'), ['add', '.']);
 await git(join(root, 'seed'), ['commit', '-m', 'Synthetic initial tree'], { env: fixedIdentity() });
-await git(root, ['init', '--bare', '--initial-branch=main', canonical]);
+await git(root, ['init', '--bare', '--template=', '--initial-branch=main', canonical]);
+// Create this before the baseline copy so every reset also restores the directory.
+await assert.rejects(stat(join(canonical, 'hooks')), { code: 'ENOENT' });
+await mkdir(join(canonical, 'hooks'));
 await git(canonical, ['config', 'receive.advertiseAtomic', 'false']);
 const initial = await mutate('init', { project: 'fixture', canonical: { remote: canonical }, seed: { importUrl: join(root, 'seed') } });
 await mutate('task.create', { task: 'first', intent: 'Keep exact reviewed proof' });
@@ -64,6 +67,7 @@ await cp(canonical, baselineRemote, { recursive: true });
 async function reset() {
   await rm(canonical, { recursive: true, force: true });
   await cp(baselineRemote, canonical, { recursive: true });
+  assert((await stat(join(canonical, 'hooks'))).isDirectory(), 'reset preserves the fixture hook directory');
   await call('restore', baseline);
 }
 async function expectFrozenWhy() {

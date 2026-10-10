@@ -32,6 +32,7 @@ export interface Env {
   EVENTS_QUEUE_ID?: string;
   ARTIFACTS_NAMESPACE?: string;
   DEMO_PROJECT?: string;
+  DEMO_CREDENTIAL_TTL_SECONDS?: string;
   DEV?: string;
   FAKE_ARTIFACTS_URL?: string;
   ENGINE_DEV_URL?: string;
