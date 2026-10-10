@@ -26,7 +26,7 @@ RUN printf '#!/bin/sh\n# SPDX-License-Identifier: Apache-2.0\nexec node /opt/eng
 RUN mkdir -p /rootfs/usr/bin /rootfs/usr/lib/git-core /rootfs/usr/local/bin /rootfs/usr/local/lib /rootfs/etc /rootfs/opt /rootfs/tmp /rootfs/state /rootfs/home/engine \
     && cp -a /usr/local/bin/* /rootfs/usr/local/bin/ && cp -a /usr/local/lib/node_modules /rootfs/usr/local/lib/ \
     && cp -a /opt/* /rootfs/opt/ && cp -a /etc/passwd /etc/group /etc/nsswitch.conf /etc/os-release /etc/ssl /rootfs/etc/ \
-    && for program in git tar zstd env bash dash sleep sha256sum; do cp /usr/bin/$program /rootfs/usr/bin/; done \
+    && for program in git tar zstd env bash dash sleep sha256sum dirname; do cp /usr/bin/$program /rootfs/usr/bin/; done \
     && cp /usr/lib/git-core/git-remote-http /rootfs/usr/lib/git-core/ \
     && ln -s git-remote-http /rootfs/usr/lib/git-core/git-remote-https \
     && for helper in git-upload-pack git-receive-pack git-upload-archive; do ln -s /usr/bin/git /rootfs/usr/lib/git-core/$helper; done \

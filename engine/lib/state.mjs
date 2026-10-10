@@ -9,8 +9,11 @@ export const repoRoot = join(stateRoot, 'repo');
 export const exportRoot = join(stateRoot, 'export.git');
 
 export async function load() {
-  try { return JSON.parse(await readFile(join(stateRoot, 'engine.json'), 'utf8')); }
-  catch (error) { if (error.code === 'ENOENT') return { format: 1, generation: 0, root: stateRoot, tasks: {}, agents: {}, lanes: {}, operations: {}, decisions: {}, turns: [], narratives: {} }; throw error; }
+  let state;
+  try { state = JSON.parse(await readFile(join(stateRoot, 'engine.json'), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; state = { format: 1, generation: 0, root: stateRoot, turns: [] }; }
+  for (const name of ['tasks', 'agents', 'lanes', 'operations', 'decisions', 'narratives', 'attestations', 'decisionAttestations']) state[name] = Object.assign(Object.create(null), state[name] || {});
+  return state;
 }
 
 export async function save(state, record) {

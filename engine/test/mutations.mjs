@@ -14,6 +14,7 @@ const baseline = await run(process.execPath, [runner], { env, timeout: 180000, a
 await writeFile(join(root, 'baseline.log'), baseline.stdout.toString() + baseline.stderr.toString());
 assert.equal(baseline.code, 0, `Baseline failed: ${join(root, 'baseline.log')}`);
 assert.match(baseline.stdout.toString(), /B-T5 PASS/);
+process.stdout.write(baseline.stdout);
 console.log('Baseline PASS: unchanged B-T1–B-T5 assertions pass before mutation');
 const evidence = /Evidence scratch: (.+)/.exec(baseline.stdout.toString())[1];
 

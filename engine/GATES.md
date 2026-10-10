@@ -10,6 +10,12 @@ Ed25519 attachments from the stock v4 snapshot pack against the recomputed
 `heddle show --output json` content hash. `show` itself omits the public key;
 this independent attachment verification closes that inspection gap.
 
+```text
+G1 signature: 0982b3b4e76e0ec41d2972e04df29c43175a9b36de400fbb27b10da5dc84d525
+G1 alice native signature: 31d00b54ad7e7981c6fa31a2e3b811b0868fa6ac487922cbd16fdc00d6cba3b8
+G1 bob native signature: 5b5dbe16f0788f3a4f259305501b98d9a1b8e04f8d9bb2c5ca518ab1a7daffef
+```
+
 G2 selects **fallback b2**. `agent fanout start` creates both checkouts and
 leases; explicit reserve and token-authenticated capture work on each. Overlap
 does not create the ADR-0053 source heads required by this design:
@@ -56,6 +62,11 @@ land State, native Change, task, decider, chosen and alternative trailers.
 A restored snapshot runs stock export and the same fixed commit construction;
 the SHA must match. Candidate refs always retain the agent's original SHA.
 
+```text
+G3 FALLBACK PASS: original 5c4ad4735db9e9a0b12a095c1d341fa567fe24ab; restored 5c4ad4735db9e9a0b12a095c1d341fa567fe24ab; native notes and trailers present
+G3 negative PASS: skip export pin gives 9624ae1fc73dc31e4a8ba7e35bc2fa6a957cfdbb, differs from 5c4ad4735db9e9a0b12a095c1d341fa567fe24ab
+```
+
 The Git landing commit is the named fallback projection, not the raw stock
 export commit. No Heddle sources are modified and no unpublished code is used.
 
@@ -68,8 +79,10 @@ TMPDIR=/home/scratch bash engine/test/e2e.sh
 ```text
 B-T1 PASS: one ingest batch; parser candidates alice↔bob; docs candidate carol clean
 B-T2 PASS: all native signatures match enrolled keys; alice fork→bob rejected lane_mismatch; capture without token rejected
-B-T4 PASS: stale expectHeads exits 2 with stale; engine state unchanged
+B-T4 PASS: stale expectHeads exits 2 with stale; every state file unchanged
 B-T3 PASS: original candidate SHAs; chosen tree; export round trip; fresh fsck/index-pack --strict; Chosen: bob / Rejected: alice in git log
 B-T5 PASS: fresh-directory restore; candidates byte-identical; restored publish same main SHA
 Idempotency PASS: repeated lane/SHA batch returns duplicates
 ```
+
+Full acceptance and production-code mutation proofs: [EVIDENCE.md](EVIDENCE.md).

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, readlink, rename } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, readlink, rename, appendFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -19,9 +19,12 @@ const call = async (cmd, body = {}, expected = 0, target = state, raw = false) =
   assert.equal(result.code, expected, `${cmd}: ${result.stdout.toString()} ${result.stderr.toString()}`);
   if (cmd === 'snapshot' || raw) return result.stdout;
   assert.equal(result.stdout.toString().trim().split('\n').length, 1, 'one JSON line');
-  return JSON.parse(result.stdout);
+  const parsed = JSON.parse(result.stdout);
+  await appendFile(join(root, 'contract.jsonl'), JSON.stringify({ cmd, ...(Buffer.isBuffer(body) ? {} : { input: body }), output: parsed, exit: result.code }) + '\n');
+  return parsed;
 };
 const mutate = (cmd, body) => call(cmd, { opId: `e2e-${++counter}`, ...body });
+assert.equal((await call('selftest')).ok, true);
 const digest = async (dir, hash = createHash('sha256')) => {
   for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a,b) => a.name.localeCompare(b.name))) {
     const path = join(dir, entry.name); hash.update(entry.name);
@@ -43,11 +46,17 @@ await writeFile(join(seed, 'test.mjs'), '// SPDX-License-Identifier: Apache-2.0\
 await git(seed, ['add', '.']);
 await git(seed, ['commit', '-m', 'Seed']);
 await git(root, ['init', '--bare', '--initial-branch=main', canonical]);
+assert.equal((await call('init', { opId: 'bad-seed', project: 'p', canonical: { remote: canonical }, seed: {} }, 2)).error.code, 'invalid_seed');
 await mutate('init', { project: 'p', canonical: { remote: canonical }, seed: { importUrl: seed } });
 await mutate('task.create', { task: 'parser-escapes', intent: 'Support escaped pipes' });
 await mutate('task.create', { task: 'docs-readme', intent: 'Document the parser' });
 const agents = {};
 for (const id of ['alice', 'bob', 'carol', 'reviewer', 'luke']) agents[id] = await mutate('agent.enroll', { agent: { id, kind: id === 'luke' ? 'human' : id === 'reviewer' ? 'reviewer' : 'agent', displayName: id, provider: 'scripted', model: 'fixture' } });
+const unusualOp = { opId: 'constructor', agent: { id: 'reviewer', kind: 'reviewer', displayName: 'reviewer' } };
+assert.deepEqual(await call('agent.enroll', unusualOp), agents.reviewer);
+const journalBeforeReplay = await readFile(join(state, 'engine.json'));
+assert.deepEqual(await call('agent.enroll', unusualOp), agents.reviewer);
+assert.deepEqual(await readFile(join(state, 'engine.json')), journalBeforeReplay);
 const pushes = [];
 for (const [id, task] of [['alice', 'parser-escapes'], ['bob', 'parser-escapes'], ['carol', 'docs-readme']]) {
   const fork = join(root, `p--${task}--${id}.git`);
@@ -64,6 +73,11 @@ for (const [id, task] of [['alice', 'parser-escapes'], ['bob', 'parser-escapes']
   await git(checkout, ['push', 'origin', 'HEAD:main']);
   pushes.push({ task, agent: id, fork: { remote: fork }, ref: 'refs/heads/main', sha: await git(checkout, ['rev-parse', 'HEAD']) });
 }
+const privateLeaseFile = join(state, 'lanes/parser-escapes/bob/.heddle/engine-lease.json');
+const leaseBytes = await readFile(privateLeaseFile), badLease = JSON.parse(leaseBytes); badLease.token = 'invalid-token';
+await writeFile(privateLeaseFile, JSON.stringify(badLease), { mode: 0o600 });
+try { assert.equal((await call('ingest', { opId: 'invalid-lease', items: [pushes[1]], runTests: false }, 2)).error.code, 'lease_invalid'); }
+finally { await writeFile(privateLeaseFile, leaseBytes, { mode: 0o600 }); }
 const ingested = await mutate('ingest', { items: pushes, runTests: true });
 assert.equal(ingested.results.length, 3);
 assert(ingested.results.every(r => r.status === 'captured'), 'B-T1 every batch item captured');

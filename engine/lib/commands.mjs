@@ -31,6 +31,8 @@ export function candidates(state, id) {
 export async function init(state, request) {
   if (state.project) throw new Rejection('already_initialized', 'Project is already initialized');
   slug(request.project); remote(request.canonical?.remote);
+  if (!request.seed?.importUrl && request.seed?.template !== 'demo') throw new Rejection('invalid_seed', 'Specify template demo or importUrl');
+  if (request.seed?.importUrl) remote(request.seed.importUrl);
   await identity('_engine');
   await mkdir(repoRoot, { recursive: true });
   await heddle(['init', '--no-harness-install']);
@@ -111,6 +113,7 @@ export async function ingest(state, request) {
   if (!Array.isArray(request.items)) throw new Rejection('invalid_items', 'items must be an array');
   const results = [], pending = [];
   for (const item of request.items) {
+    if (!item || typeof item !== 'object' || typeof item.sha !== 'string' || !/^[0-9a-f]{40}$/.test(item.sha)) throw new Rejection('invalid_sha', 'Every push requires a complete SHA-1 commit id');
     const lane = state.lanes[`${item.task}/${item.agent}`];
     if (!lane || item.fork?.remote !== lane.remote || item.ref !== 'refs/heads/main') results.push({ agent: item.agent, task: item.task, status: 'rejected', reason: 'lane_mismatch' });
     else if (lane.seen[item.sha]) results.push({ agent: item.agent, task: item.task, status: 'duplicate', candidate: lane.seen[item.sha] });
@@ -215,7 +218,7 @@ export async function decide(state, request) {
   if (typeof request.rationale !== 'string' || !request.rationale.trim()) throw new Rejection('invalid_rationale', 'Decision rationale is required');
   if (task.baseSha !== state.mainSha) {
     const containsMain = await run('git', ['--git-dir', exportRoot, 'merge-base', '--is-ancestor', state.mainSha, lane.candidate.sourceSha], { allowFailure: true });
-    if (containsMain.code !== 0) throw new Rejection('base_changed', 'Main advanced; merge or rebase upstream main into the chosen fork and push again');
+    if (containsMain.code !== 0) throw new Rejection('base_changed', 'Main advanced; merge upstream main into the chosen fork and push again');
   }
   const alternatives = current.candidates.map(c => c.agent).filter(id => id !== request.pick);
   // G2 fallback b2: absorb only the selected native lane; other alternatives remain addressable.

@@ -46,7 +46,7 @@ export function gitAuth(remote, write = false) {
 export function remote(value) {
   if (typeof value !== 'string' || !value || value.startsWith('-') || /[\r\n\0]/.test(value)) throw new Rejection('invalid_remote', 'Invalid Git remote');
   if (value.includes('://')) {
-    const url = new URL(value);
+    let url; try { url = new URL(value); } catch { throw new Rejection('invalid_remote', 'Invalid Git remote'); }
     if (!['https:', 'http:', 'file:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Rejection('invalid_remote', 'Use credential-free HTTP(S) or file remotes');
   } else if (!value.startsWith('/')) throw new Rejection('invalid_remote', 'Local remotes must be absolute paths');
   return value;
