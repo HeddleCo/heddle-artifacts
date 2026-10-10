@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { run, Rejection } from './lib/process.mjs';
+import { load, save } from './lib/state.mjs';
+import { snapshot, restore } from './lib/snapshots.mjs';
+import { init, createTask, enroll, openLane, ingest, candidates, diff, discuss, decide } from './lib/commands.mjs';
+import { publish } from './lib/publish.mjs';
 
 export async function selftest() {
   const heddleVersion = (await run(process.env.HEDDLE_BIN || 'heddle', ['--version'])).stdout.toString().trim();
@@ -8,9 +12,51 @@ export async function selftest() {
 }
 
 try {
-  if (process.argv[2] !== 'selftest') throw new Rejection('unknown_command', 'Engine command is not implemented yet');
-  process.stdout.write(JSON.stringify(await selftest()) + '\n');
+  const cmd = process.argv[2];
+  const mutating = { init, 'task.create': createTask, 'agent.enroll': enroll, 'lane.open': openLane, ingest, discuss, decide, publish };
+  if (![...Object.keys(mutating), 'selftest', 'snapshot', 'restore', 'candidates', 'diff', 'why'].includes(cmd)) throw new Rejection('unknown_command', 'Unknown engine command');
+  const chunks = []; let bytes = 0;
+  for await (const chunk of process.stdin) {
+    bytes += chunk.length;
+    if (bytes > (cmd === 'restore' ? 256 * 1024 * 1024 : 1024 * 1024)) throw new Rejection('body_too_large', 'Engine input exceeds the command limit');
+    chunks.push(chunk);
+  }
+  const input = Buffer.concat(chunks);
+  let result;
+  if (cmd === 'restore') result = await restore(input);
+  else {
+    let request; try { request = JSON.parse(input.length ? input : '{}'); } catch { throw new Rejection('invalid_json', 'Expected a JSON object'); }
+    if (!request || Array.isArray(request) || typeof request !== 'object') throw new Rejection('invalid_json', 'Expected a JSON object');
+    if (cmd === 'selftest') result = await selftest();
+    else if (cmd === 'snapshot') await snapshot();
+    else {
+      const state = await load();
+      if (cmd !== 'init' && !state.project) throw new Rejection('not_initialized', 'Initialize the project first');
+      if (mutating[cmd]) {
+        if (typeof request.opId !== 'string' || !request.opId || request.opId.length > 200) throw new Rejection('invalid_op_id', 'Every mutating command requires opId');
+        const recorded = state.operations[request.opId];
+        if (recorded && recorded.command !== cmd) throw new Rejection('op_id_conflict', 'opId is already recorded for another command');
+        if (recorded) result = recorded.result;
+        else {
+          result = await mutating[cmd](state, request);
+          await save(state, { opId: request.opId, command: cmd, result });
+        }
+      } else if (cmd === 'candidates') result = candidates(state, request.task);
+      else if (cmd === 'diff') result = await diff(state, request);
+      else if (cmd === 'why') {
+        const narrative = state.narratives[request.sha];
+        if (!narrative) throw new Rejection('unknown_commit', 'No narrative for this commit');
+        result = { narrative };
+      }
+    }
+  }
+  if (cmd !== 'snapshot') process.stdout.write(JSON.stringify(result) + '\n');
 } catch (error) {
-  process.stdout.write(JSON.stringify({ error: { code: error.code || 'engine_failure', message: error.message } }) + '\n');
+  if (error.safeMessage) process.stderr.write(error.safeMessage + '\n');
+  for (const frame of error.stack?.split('\n').slice(1) || []) {
+    const location = /engine\/(?:lib\/|test\/)?[a-z-]+\.mjs:\d+:\d+/.exec(frame)?.[0];
+    if (location) process.stderr.write(location + '\n');
+  }
+  process.stdout.write(JSON.stringify({ error: { code: error instanceof Rejection ? error.code : 'engine_failure', message: error instanceof Rejection ? error.message : 'Engine operation failed' } }) + '\n');
   process.exitCode = error instanceof Rejection ? 2 : 1;
 }

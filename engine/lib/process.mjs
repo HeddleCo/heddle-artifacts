@@ -22,7 +22,9 @@ export function run(file, args, { cwd, env = {}, input, timeout = 120000, allowF
       const result = { code, stdout: Buffer.concat(out), stderr: Buffer.concat(err), timedOut, overflow };
       if (!allowFailure && (code !== 0 || timedOut || overflow)) {
         // Never echo argv/env/stderr: Git errors can repeat authentication headers.
-        reject(new Error(`${file.split('/').pop()} failed (exit ${code}${timedOut ? ', timeout' : ''}${overflow ? ', output limit' : ''})`));
+        const error = new Error(`${file.split('/').pop()} failed (exit ${code}${timedOut ? ', timeout' : ''}${overflow ? ', output limit' : ''})`);
+        error.safeMessage = error.message;
+        reject(error);
       } else resolve(result);
     });
     child.stdin.on('error', () => {});
