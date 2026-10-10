@@ -39,12 +39,12 @@ function keys(value: Record<string, unknown>, required: string[], optional: stri
 /** Runtime checks mirror the schema and bind every verdict/pick to the supplied candidates. */
 export function isReview(value: unknown, agents?: string[]): value is Review {
   if (!object(value) || !keys(value, ["summary", "perCandidate", "model"], ["recommendation"]) ||
-      !str(value.summary) || ![REVIEW_MODEL, "fallback"].includes(String(value.model)) ||
+      !str(value.summary) || (typeof value.model !== "string" || ![REVIEW_MODEL, "fallback"].includes(value.model)) ||
       !Array.isArray(value.perCandidate) || value.perCandidate.length > 16) return false;
   const seen = new Set<string>();
   for (const row of value.perCandidate) {
     if (!object(row) || !keys(row, ["agent", "verdict", "notes"]) || !str(row.agent, 128) ||
-        !["approve", "concerns"].includes(String(row.verdict)) || !str(row.notes) || seen.has(row.agent)) return false;
+        (typeof row.verdict !== "string" || !["approve", "concerns"].includes(row.verdict)) || !str(row.notes) || seen.has(row.agent)) return false;
     seen.add(row.agent);
   }
   if (agents && (seen.size !== agents.length || agents.some(a => !seen.has(a)))) return false;
