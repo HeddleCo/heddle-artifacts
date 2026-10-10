@@ -2,7 +2,7 @@
 # Heddle 0.30.0 gates
 
 Pinned CLI: `878fea434d2eed86865c0daf3f3b1ab7da6d2e4f` (`heddle 0.30.0`).
-Run: `TMPDIR=/home/scratch node engine/test/gates.mjs`.
+Run: `HEDDLE_BIN=/home/scratch/heddle-0.30-bin/bin/heddle TMPDIR=/home/scratch node engine/test/gates.mjs`.
 
 G1 passes. Hand-written, mode-0600 `device-identity.toml` files in separate
 `HEDDLE_HOME`s sign ordinary captures and `agent capture`. The engine verifies
@@ -28,9 +28,12 @@ exit 74: no_alternative_source_heads
 The adapter uses `git merge-tree --write-tree --merge-base <task-base>` for
 conflict previews and `heddle thread absorb <chosen> --into <task-thread>`
 for decisions, then releases the other leases as abandoned. Fast-forward
-absorption retains the selected agent's signed State. The human's native,
-signed discussion resolution records the decision and extracts its rationale
-annotation. `resolutionState` names the absorbed State; it is not presented as
+absorption retains the selected agent's signed State. The human's native
+discussion resolution records the decision and extracts its rationale
+annotation. Local discussion envelopes are unsigned in this CLI; the engine
+signs their exact bytes with the author's enrolled key and includes the proof
+in why notes. The decision attestation binds both State IDs and the Git SHA.
+`resolutionState` names the absorbed State; it is not presented as
 an ADR-0053 conflict resolution State.
 
 G3 selects the named **fixed `git commit-tree` fallback**. With the stock

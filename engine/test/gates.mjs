@@ -78,9 +78,9 @@ const rawMessage = await git(export1, ['show', '-s', '--format=%B', 'main']);
 const projection = { parentSha: await git(seed, ['rev-parse', 'main']), treeSha: await git(export1, ['rev-parse', 'main^{tree}']), author: 'luke', email: 'luke@local.invalid', at: land3.created_at,
   message: `Chosen: bob\nHeddle-Task: g3\n\nHeddle-State: ${land3.state_id_full}\nHeddle-Change: ${/Heddle-Change: (\S+)/.exec(rawMessage)[1]}` };
 const sha1 = (await exportProjection({ projection }, export1, g3)).sha;
-const archive = join(root, 'g3.tar.zst'), restored = join(root, 'g3-restored');
+const archive = join(root, 'g3.tar.zst'), restored = join(root, 'g3-restored', 'repo');
 await run('tar', ['--zstd', '-cf', archive, '-C', g3, '.']);
-await mkdir(restored);
+await mkdir(restored, { recursive: true });
 await run('tar', ['--zstd', '-xf', archive, '-C', restored]);
 await relocate(restored, g3, restored);
 const export2 = join(root, 'g3-restored-export.git');

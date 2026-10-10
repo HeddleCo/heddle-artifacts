@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { run, git, Rejection } from './process.mjs';
 import { repoRoot, exportRoot, heddle } from './state.mjs';
 import { fixedIdentity } from './git.mjs';
@@ -11,7 +11,9 @@ export async function exportProjection(state, destination = exportRoot, reposito
   const temp = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'heddle-projection-'));
   try {
     const native = join(temp, 'native.git');
-    const exported = await heddle(['bridge', 'git', 'export', '--destination', native], repository, { id: '_engine' }, { allowFailure: true, raw: true });
+    const home = join(dirname(repository), 'agents', '_engine', 'home');
+    const exported = await heddle(['bridge', 'git', 'export', '--destination', native], repository, { id: '_engine' }, { allowFailure: true, raw: true,
+      env: { HEDDLE_HOME: home, HEDDLE_CONFIG: join(home, 'config.toml') } });
     if (exported.code !== 0) {
       let error; try { error = JSON.parse(exported.stderr); } catch {}
       if (exported.code !== 74 || !/^exported \d+ refs?, \d+ diverged \(concurrent git-side update\):/.test(error?.error || '')) throw new Error('Native Git export failed');

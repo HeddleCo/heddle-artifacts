@@ -25,9 +25,10 @@ export async function restore(input) {
     const staged = join(temp, 'state');
     await mkdir(staged, { mode: 0o700 });
     await run('tar', ['--zstd', '--no-same-owner', '-xf', archive, '-C', staged]);
-    const state = JSON.parse(await readFile(join(staged, 'engine.json'), 'utf8'));
+    let state = JSON.parse(await readFile(join(staged, 'engine.json'), 'utf8'));
     if (state.format !== 1 || !state.project || !Number.isSafeInteger(state.generation)) throw new Rejection('invalid_snapshot', 'Unsupported snapshot manifest');
     await relocate(staged, state.root, stateRoot);
+    state = JSON.parse(await readFile(join(staged, 'engine.json'), 'utf8'));
     state.root = stateRoot;
     await writeFile(join(staged, 'engine.json'), JSON.stringify(state) + '\n', { mode: 0o600 });
     await mkdir(stateRoot, { recursive: true, mode: 0o700 });

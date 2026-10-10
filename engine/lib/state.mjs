@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdir, readFile, writeFile, rename, appendFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, appendFile, readdir, readlink, unlink, symlink, rm } from 'node:fs/promises';
 import { generateKeyPairSync } from 'node:crypto';
 import { join } from 'node:path';
 import { run, Rejection } from './process.mjs';
@@ -61,6 +61,17 @@ export async function relocate(root, from, to) {
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) await relocate(path, from, to);
+    else if (entry.isFile() && entry.name.startsWith('catalog.sqlite3') && root.endsWith('/state/device-rpc') && from !== to) {
+      // This derived local-discovery cache binds Spool IDs to absolute roots.
+      // Stock native setup rebuilds it; copied bindings can target the old repo.
+      await rm(path);
+    }
+    else if (entry.isSymbolicLink()) {
+      const target = await readlink(path);
+      if (target === from || target.startsWith(from + '/')) {
+        await unlink(path); await symlink(to + target.slice(from.length), path);
+      }
+    }
     else if (entry.isFile() && (entry.name.endsWith('.json') || entry.name.endsWith('.toml') || ['objectstore', 'commondir', 'gitdir'].includes(entry.name))) {
       const text = await readFile(path, 'utf8');
       if (text.includes(from)) await writeFile(path, text.split(from).join(to));

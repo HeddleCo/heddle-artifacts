@@ -4,11 +4,12 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run, git, gitAuth, remote, slug, Rejection } from './process.mjs';
 import { stateRoot, repoRoot, exportRoot, identity, heddle } from './state.mjs';
-import { forkRemote, fetchCommit, materialize, conflictPaths, diffstat, fixedIdentity } from './git.mjs';
+import { forkRemote, fetchCommits, materialize, conflictPaths, diffstat, fixedIdentity } from './git.mjs';
 import { verifyCapture } from './signatures.mjs';
 import { testCandidate } from './tests.mjs';
 import { narrative } from './why.mjs';
 import { exportProjection } from './projection.mjs';
+import { attestOperation } from './attestations.mjs';
 
 export function taskFor(state, id) {
   slug(id);
@@ -85,9 +86,25 @@ export async function openLane(state, request) {
   await heddle(['start', thread, '--from', task.baseState, '--path', path, '--workspace', 'solid', '--no-daemon', '--parent-thread', task.thread, '--task', task.intent], task.path, agent);
   const grant = await heddle(['agent', 'reserve', '--thread', thread, '--anchor', task.baseState], path, agent);
   const leaseId = grant.reservation.lease_id;
-  await writeFile(join(path, '.heddle', 'engine-lease.json'), JSON.stringify({ leaseId, token: grant.token }), { mode: 0o600 });
+  await writeFile(join(path, '.heddle', 'engine-lease.json'), JSON.stringify({ leaseId, token: grant.token, expiresAt: grant.reservation.lease_expires_at }), { mode: 0o600 });
   state.lanes[key] = { task: request.task, agent: request.agent, thread, path, leaseId, remote: forkRemote(state.canonical, state.project, request.task, request.agent), status: 'active', seen: {} };
   return { laneThread: thread, leaseId };
+}
+
+async function authenticatedLease(state, lane) {
+  const file = join(lane.path, '.heddle', 'engine-lease.json'), agent = state.agents[lane.agent];
+  let lease = JSON.parse(await readFile(file));
+  if (lease.expiresAt && Date.parse(lease.expiresAt) <= Date.now()) {
+    // The engine remains the trusted lane owner; stock reserve reaps expiration.
+    const grant = await heddle(['agent', 'reserve', '--thread', lane.thread], lane.path, agent);
+    lane.leaseId = grant.reservation.lease_id;
+    lease = { leaseId: lane.leaseId, token: grant.token, expiresAt: grant.reservation.lease_expires_at };
+  }
+  const heartbeat = await heddle(['agent', 'heartbeat', '--lease', lane.leaseId], lane.path, agent, { env: { HEDDLE_RESERVATION_TOKEN: lease.token }, raw: true, allowFailure: true });
+  if (heartbeat.code !== 0) throw new Rejection('lease_invalid', 'Writer lease did not authorize capture');
+  lease.expiresAt = JSON.parse(heartbeat.stdout).reservation.lease_expires_at;
+  await writeFile(file, JSON.stringify(lease), { mode: 0o600 });
+  return lease;
 }
 
 export async function ingest(state, request) {
@@ -100,13 +117,24 @@ export async function ingest(state, request) {
     else if (lane.status !== 'active') results.push({ agent: item.agent, task: item.task, status: 'rejected', reason: 'lane_released' });
     else pending.push({ item, lane });
   }
+  const leases = new Map();
+  for (const { lane } of pending) if (!leases.has(lane)) leases.set(lane, await authenticatedLease(state, lane));
   // Fetch independent forks concurrently. No shared ref or FETCH_HEAD writes.
-  const fetches = await Promise.allSettled(pending.map(({ item }) => fetchCommit(item.fork.remote, item.sha)));
+  const groups = new Map();
+  for (const { item } of pending) {
+    if (!groups.has(item.fork.remote)) groups.set(item.fork.remote, []);
+    groups.get(item.fork.remote).push(item.sha);
+  }
+  const fetches = await Promise.allSettled([...groups].map(([source, shas]) => fetchCommits(source, shas)));
+  for (const fetched of fetches) if (fetched.status === 'rejected') throw fetched.reason;
   for (let i = 0; i < pending.length; i++) {
     const { item, lane } = pending[i], agent = state.agents[item.agent];
-    if (fetches[i].status === 'rejected') throw fetches[i].reason;
+    if (lane.seen[item.sha]) {
+      results.push({ agent: item.agent, task: item.task, status: 'duplicate', candidate: lane.seen[item.sha] });
+      continue;
+    }
     await materialize(item.sha, lane.path);
-    const lease = JSON.parse(await readFile(join(lane.path, '.heddle', 'engine-lease.json')));
+    const lease = leases.get(lane);
     const subject = await git(exportRoot, ['show', '-s', '--format=%s', item.sha]);
     const env = { HEDDLE_RESERVATION_TOKEN: lease.token };
     if (agent.provider && agent.model) await heddle(['agent', 'provenance', 'begin', '--provider', agent.provider, '--model', agent.model], lane.path, agent);
@@ -147,7 +175,7 @@ export async function ingest(state, request) {
 export async function diff(state, request) {
   const task = taskFor(state, request.task), lane = state.lanes[`${request.task}/${request.agent}`];
   if (!lane?.candidate) throw new Rejection('unknown_candidate', 'Candidate is unavailable');
-  const maxBytes = Math.min(512 * 1024, Math.max(0, Number(request.maxBytes) || 512 * 1024));
+  const maxBytes = Math.min(512 * 1024, Math.max(0, request.maxBytes === undefined ? 512 * 1024 : Number(request.maxBytes)));
   const output = (await run('git', ['--git-dir', exportRoot, 'diff', '--no-ext-diff', task.baseSha, lane.candidate.sourceSha, '--'])).stdout;
   return { diff: output.subarray(0, maxBytes).toString() };
 }
@@ -170,7 +198,8 @@ export async function discuss(state, request) {
     result = await heddle(['discuss', 'new', '--path', path, '--thread', task.thread, '--title', `${request.task}: ${author.displayName}`, '--body', request.body], task.path, author);
   }
   const turn = { id: result.turn_id || result.operation_id || result.discussion_id, task: request.task, author: request.author, kind: author.kind, body: request.body,
-    ...(request.replyTo ? { replyTo: request.replyTo } : {}), heddleDiscussion: result.discussion?.id || parent?.heddleDiscussion, signedBy: author.publicKey,
+    ...(request.replyTo ? { replyTo: request.replyTo } : {}), heddleDiscussion: result.discussion?.id || parent?.heddleDiscussion,
+    signedBy: await attestOperation(state, author, result.operation_id, { task: request.task, body: request.body, ...(request.replyTo ? { replyTo: request.replyTo } : {}) }),
     at: new Date(result.discussion.turns.find(t => t.operation_id === result.operation_id).occurred_at_ms).toISOString() };
   state.turns.push(turn);
   return turn;
@@ -184,14 +213,18 @@ export async function decide(state, request) {
   const lane = state.lanes[`${request.task}/${request.pick}`];
   if (!lane?.candidate) throw new Rejection('unknown_candidate', 'Chosen candidate is unavailable');
   if (typeof request.rationale !== 'string' || !request.rationale.trim()) throw new Rejection('invalid_rationale', 'Decision rationale is required');
+  if (task.baseSha !== state.mainSha) {
+    const containsMain = await run('git', ['--git-dir', exportRoot, 'merge-base', '--is-ancestor', state.mainSha, lane.candidate.sourceSha], { allowFailure: true });
+    if (containsMain.code !== 0) throw new Rejection('base_changed', 'Main advanced; merge or rebase upstream main into the chosen fork and push again');
+  }
   const alternatives = current.candidates.map(c => c.agent).filter(id => id !== request.pick);
   // G2 fallback b2: absorb only the selected native lane; other alternatives remain addressable.
   const message = `${request.rationale}\n\nHeddle-Task: ${request.task}\nHeddle-Chosen: ${request.pick}\n${alternatives.map(id => `Heddle-Alternative: ${id}`).join('\n')}\nHeddle-Decided-by: ${request.decider}`;
   await heddle(['thread', 'absorb', lane.thread, '--into', task.thread, '-m', message], task.path, decider);
   const decisionTurn = await discuss(state, { task: request.task, author: request.decider, body: request.rationale });
-  await heddle(['discuss', 'resolve', decisionTurn.heddleDiscussion, '--mode', 'into-annotation', '--kind', 'rationale', '--body', request.rationale], task.path, decider);
+  const resolutionRecord = await heddle(['discuss', 'resolve', decisionTurn.heddleDiscussion, '--mode', 'into-annotation', '--kind', 'rationale', '--body', request.rationale], task.path, decider);
   // b2 can fast-forward: the selected State keeps its original agent signature.
-  // The human's native discussion resolution signs the decision and annotation.
+  // The human's custodial attestation signs the exact native resolution envelope.
   const resolution = await heddle(['show', task.thread], task.path, decider);
   await verifyCapture(join(repoRoot, '.heddle'), resolution, state.agents[request.pick].publicKey);
   await heddle(['land', '--thread', task.thread, '-m', message], task.path, decider);
@@ -206,6 +239,9 @@ export async function decide(state, request) {
   const mainSha = (await exportProjection(state)).sha;
   const decision = { task: request.task, decider: request.decider, pick: request.pick, rationale: request.rationale, alternatives,
     resolutionState: resolution.state_id_full, landState: landed.state_id_full, mainSha, at: landed.created_at };
+  await attestOperation(state, decider, resolutionRecord.operation_id, { decision });
+  state.decisionAttestations ||= {};
+  state.decisionAttestations[request.task] = resolutionRecord.operation_id;
   state.decisions[request.task] = decision;
   state.mainSha = mainSha; state.mainState = decision.landState;
   for (const alternative of current.candidates) {

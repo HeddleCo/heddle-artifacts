@@ -10,11 +10,11 @@ export function forkRemote(canonical, project, task, agent) {
   return canonical.slice(0, index + 1) + name + (canonical.endsWith('.git') ? '.git' : '');
 }
 
-export async function fetchCommit(source, sha) {
+export async function fetchCommits(source, shas) {
   remote(source);
-  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Rejection('invalid_sha', 'Expected a complete SHA-1 commit id');
-  await git(exportRoot, ['fetch', '--no-tags', '--no-write-fetch-head', source, sha], { env: gitAuth(source) });
-  if (await git(exportRoot, ['cat-file', '-t', sha]) !== 'commit') throw new Rejection('invalid_commit', 'Push must refer to a commit');
+  if (shas.some(sha => !/^[0-9a-f]{40}$/.test(sha))) throw new Rejection('invalid_sha', 'Expected a complete SHA-1 commit id');
+  await git(exportRoot, ['fetch', '--no-tags', '--no-write-fetch-head', source, ...new Set(shas)], { env: gitAuth(source) });
+  for (const sha of shas) if (await git(exportRoot, ['cat-file', '-t', sha]) !== 'commit') throw new Rejection('invalid_commit', 'Push must refer to a commit');
 }
 
 export async function materialize(sha, checkout) {

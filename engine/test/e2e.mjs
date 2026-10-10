@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, cp } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, readlink, rename } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { join, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { run, git } from '../lib/process.mjs';
 import { verifyCapture } from '../lib/signatures.mjs';
+import { verifyAttestation } from '../lib/attestations.mjs';
 
 const root = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'track-b-e2e-'));
 const engineFile = process.env.ENGINE_FILE || fileURLToPath(new URL('../engine.mjs', import.meta.url));
@@ -12,14 +14,23 @@ const binary = process.env.HEDDLE_BIN || '/home/scratch/heddle-0.30-bin/bin/hedd
 const state = join(root, 'state');
 const canonical = join(root, 'p.git');
 let counter = 0;
-const call = async (cmd, body = {}, expected = 0, target = state) => {
+const call = async (cmd, body = {}, expected = 0, target = state, raw = false) => {
   const result = await run(process.execPath, [engineFile, cmd], { input: Buffer.isBuffer(body) ? body : JSON.stringify(body), env: { ENGINE_STATE_DIR: target, HEDDLE_BIN: binary, TMPDIR: process.env.TMPDIR || '/tmp' }, allowFailure: true });
   assert.equal(result.code, expected, `${cmd}: ${result.stdout.toString()} ${result.stderr.toString()}`);
-  if (cmd === 'snapshot') return result.stdout;
+  if (cmd === 'snapshot' || raw) return result.stdout;
   assert.equal(result.stdout.toString().trim().split('\n').length, 1, 'one JSON line');
   return JSON.parse(result.stdout);
 };
 const mutate = (cmd, body) => call(cmd, { opId: `e2e-${++counter}`, ...body });
+const digest = async (dir, hash = createHash('sha256')) => {
+  for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a,b) => a.name.localeCompare(b.name))) {
+    const path = join(dir, entry.name); hash.update(entry.name);
+    if (entry.isDirectory()) await digest(path, hash);
+    else if (entry.isSymbolicLink()) hash.update(await readlink(path));
+    else hash.update(await readFile(path));
+  }
+  return hash;
+};
 const seed = join(root, 'seed');
 await mkdir(join(seed, 'src'), { recursive: true });
 await git(seed, ['init', '-b', 'main']);
@@ -59,16 +70,19 @@ assert(ingested.results.every(r => r.status === 'captured'), 'B-T1 every batch i
 const a = await call('candidates', { task: 'parser-escapes' });
 const b = await call('candidates', { task: 'docs-readme' });
 assert.equal(a.candidates.length, 2);
-assert.deepEqual(a.candidates.find(c => c.agent === 'alice').conflicts[0].with, ['bob']);
-assert.deepEqual(a.candidates.find(c => c.agent === 'bob').conflicts[0].with, ['alice']);
+assert.deepEqual(a.candidates.find(c => c.agent === 'alice').conflicts[0]?.with, ['bob'], 'B-T1 alice conflict attributed to bob');
+assert.deepEqual(a.candidates.find(c => c.agent === 'bob').conflicts[0]?.with, ['alice'], 'B-T1 bob conflict attributed to alice');
 assert.equal(b.candidates.length, 1);
 assert.deepEqual(b.candidates[0].conflicts, []);
 console.log('B-T1 PASS: one ingest batch; parser candidates alice↔bob; docs candidate carol clean');
+const guardedVerifier = (await import(pathToFileURL(join(dirname(engineFile), 'lib/signatures.mjs')))).verifyCapture;
 for (const candidate of [...a.candidates, ...b.candidates]) {
   assert.equal(candidate.signedBy, agents[candidate.agent].publicKey, 'B-T2 enrolled signer');
   const shown = JSON.parse((await run(binary, ['--output', 'json', 'show', candidate.state], { cwd: join(state, 'repo'), env: { HEDDLE_HOME: join(state, 'agents', candidate.agent, 'home') } })).stdout);
   assert.equal(await verifyCapture(join(state, 'repo', '.heddle'), shown, agents[candidate.agent].publicKey), candidate.signedBy, 'B-T2 native signature verifies');
   assert.equal(shown.principal.name, candidate.agent, 'Git author cannot select Heddle principal');
+  const wrongKey = agents[candidate.agent === 'alice' ? 'bob' : 'alice'].publicKey;
+  await assert.rejects(() => guardedVerifier(join(state, 'repo', '.heddle'), shown, wrongKey), { code: 'identity_mismatch' }, 'B-T2 wrong enrolled key must be rejected');
 }
 const mismatch = await mutate('ingest', { items: [{ ...pushes[0], agent: 'bob' }], runTests: false });
 assert.equal(mismatch.results[0].reason, 'lane_mismatch');
@@ -77,13 +91,14 @@ const bobLane = metadata.lanes['parser-escapes/bob'];
 const unauthorized = await run(binary, ['--output', 'json', 'agent', 'capture', '--lease', bobLane.leaseId, '-m', 'unauthorized'], { cwd: bobLane.path, env: { HEDDLE_HOME: join(state, 'agents', 'bob', 'home') }, allowFailure: true });
 assert.notEqual(unauthorized.code, 0, 'B-T2 capture must require a token');
 console.log('B-T2 PASS: all native signatures match enrolled keys; alice fork→bob rejected lane_mismatch; capture without token rejected');
-await mutate('discuss', { task: 'parser-escapes', author: 'reviewer', body: 'Bob preserves the public API' });
-await mutate('discuss', { task: 'parser-escapes', author: 'luke', body: 'Agree: API stability matters' });
-const beforeStale = await readFile(join(state, 'engine.json'));
+const reviewTurn = await mutate('discuss', { task: 'parser-escapes', author: 'reviewer', body: 'Bob preserves the public API' });
+await mutate('discuss', { task: 'parser-escapes', author: 'luke', body: 'Agree: API stability matters', replyTo: reviewTurn.id });
+const beforeStale = (await digest(state)).digest('hex');
 const stale = await call('decide', { opId: 'stale', task: 'parser-escapes', decider: 'luke', pick: 'bob', rationale: 'Pick Bob', expectHeads: [] }, 2);
 assert.equal(stale.error.code, 'stale');
-assert.deepEqual(await readFile(join(state, 'engine.json')), beforeStale);
-console.log('B-T4 PASS: stale expectHeads exits 2 with stale; engine state unchanged');
+assert.equal((await digest(state)).digest('hex'), beforeStale, 'B-T4 every repository and metadata file unchanged');
+console.log('B-T4 PASS: stale expectHeads exits 2 with stale; every state file unchanged');
+const decisionOp = `e2e-${counter + 1}`;
 const decision = await mutate('decide', { task: 'parser-escapes', decider: 'luke', pick: 'bob', rationale: 'Keep the API stable', expectHeads: a.heads });
 const published = await mutate('publish', { canonical: { remote: canonical } });
 assert.deepEqual(published.verify, { exportRoundTrip: true, treeMatch: true, fsck: true }, 'B-T3 projection checks');
@@ -102,11 +117,35 @@ console.log('B-T3 PASS: original candidate SHAs; chosen tree; export round trip;
 const snapshot = await call('snapshot');
 const restored = join(root, 'restored');
 await call('restore', snapshot, 0, restored);
-assert.deepEqual(await call('candidates', { task: 'parser-escapes' }, 0, restored), await call('candidates', { task: 'parser-escapes' }));
-const restoredPublish = await call('publish', { opId: 'restored-publish', canonical: { remote: canonical } }, 0, restored);
+assert.deepEqual(await call('candidates', { task: 'parser-escapes' }, 0, restored, true), await call('candidates', { task: 'parser-escapes' }, 0, state, true), 'B-T5 candidates stdout byte-identical');
+const withOriginalOffline = async operation => {
+  const offline = join(root, 'original-offline'); await rename(state, offline);
+  try { return await operation(); } finally { await rename(offline, state); }
+};
+const restoredPublish = await withOriginalOffline(() => call('publish', { opId: 'restored-publish', canonical: { remote: canonical } }, 0, restored));
 assert.equal(restoredPublish.main, published.main, 'B-T3 restored export SHA');
 console.log('B-T5 PASS: fresh-directory restore; candidates byte-identical; restored publish same main SHA');
 const duplicates = await mutate('ingest', { items: pushes, runTests: false });
 assert(duplicates.results.every(r => r.status === 'duplicate'));
 console.log('Idempotency PASS: repeated lane/SHA batch returns duplicates');
+const replay = await call('decide', { opId: decisionOp, task: 'parser-escapes', decider: 'luke', pick: 'bob', rationale: 'Keep the API stable', expectHeads: a.heads });
+assert.deepEqual(replay, decision, 'recorded decision replay');
+assert.match((await call('why', { sha: published.main })).narrative, /Keep the API stable/);
+assert.match((await call('diff', { task: 'parser-escapes', agent: 'bob', maxBytes: 64 })).diff, /diff --git/);
+const signedState = JSON.parse(await readFile(join(state, 'engine.json')));
+for (const turn of signedState.turns) assert.equal(verifyAttestation(signedState.attestations[turn.id], agents[turn.author].publicKey), turn.signedBy);
+const decisionProof = signedState.attestations[signedState.decisionAttestations['parser-escapes']];
+assert.equal(verifyAttestation(decisionProof, agents.luke.publicKey), agents.luke.publicKey);
+assert.deepEqual(JSON.parse(decisionProof.payload).decision, decision);
+assert.throws(() => verifyAttestation({ ...decisionProof, payload: decisionProof.payload + 'tampered' }, agents.luke.publicKey), { code: 'identity_mismatch' });
+console.log('Collaboration PASS: native envelopes signed with enrolled reviewer/human keys; decision binds exact states and SHA; tampering rejected');
+const carolCheckout = join(root, 'carol-git');
+await writeFile(join(carolCheckout, 'README.md'), '<!-- SPDX-License-Identifier: Apache-2.0 -->\n# Parser documentation, updated after restore\n');
+await git(carolCheckout, ['add', '.']); await git(carolCheckout, ['commit', '-m', 'Carol update']); await git(carolCheckout, ['push', 'origin', 'HEAD:main']);
+const update = { ...pushes[2], sha: await git(carolCheckout, ['rev-parse', 'HEAD']) };
+const batch = await withOriginalOffline(() => call('ingest', { opId: 'restored-batch', items: [update, update], runTests: true }, 0, restored));
+assert.deepEqual(batch.results.map(r => r.status), ['captured', 'duplicate']);
+assert.equal(batch.results[0].candidate.state, batch.results[1].candidate.state);
+assert.equal(batch.results[0].candidate.tests.status, 'pass');
+console.log('Lifecycle PASS: restored checkout captures a new push; same-batch duplicate captured once; opId replay, diff and why verified');
 console.log(`Evidence scratch: ${root}`);

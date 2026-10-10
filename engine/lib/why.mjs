@@ -13,10 +13,13 @@ export function narrative(state, task, decision) {
   for (const turn of state.turns.filter(turn => turn.task === task)) {
     const author = state.agents[turn.author];
     lines.push(turn.kind === 'reviewer' ? `Review:    ${turn.author} (${author.provider || 'unknown'}/${author.model || 'unknown'}): ${turn.body}` : `Discussion: ${turn.author}: ${turn.body}`);
+    if (state.attestations?.[turn.id]) lines.push(`Turn proof: ${JSON.stringify(state.attestations[turn.id])}`);
   }
   if (decision) {
     lines.push(`Rationale: ${decision.rationale}`);
     lines.push(`Decided by ${decision.decider} ed25519:${state.agents[decision.decider].publicKey} · resolution ${decision.resolutionState} · land ${decision.landState}`);
+    const proof = state.attestations?.[state.decisionAttestations?.[task]];
+    if (proof) lines.push(`Decision proof: ${JSON.stringify(proof)}`);
   }
   return lines.join('\n');
 }
