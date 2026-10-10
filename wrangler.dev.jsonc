@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "heddle-artifacts-dev",
+  "main": "dev/test-worker.ts",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": { "bindings": [
+    { "name": "PROJECT", "class_name": "ProjectDO" },
+    { "name": "ENGINE", "class_name": "StubEngine" }
+  ] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectDO", "StubEngine"] }],
+  "r2_buckets": [{ "binding": "STATE", "bucket_name": "heddle-artifacts-state" }],
+  "assets": { "directory": "./ui", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": true },
+  "vars": { "DEV": "1", "FAKE_ARTIFACTS_URL": "http://127.0.0.1:8788", "ENGINE_DEV_URL": "http://127.0.0.1:8789", "DEMO_PROJECT": "demo" }
+}

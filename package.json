@@ -1,0 +1,28 @@
+{
+  "//": "SPDX-License-Identifier: Apache-2.0",
+  "name": "heddle-artifacts",
+  "private": true,
+  "type": "module",
+  "workspaces": [],
+  "scripts": {
+    "test": "vitest run && node --test dev/test/*.test.mjs",
+    "test:worker": "vitest run --reporter verbose",
+    "test:dev": "node --test dev/test/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "dev": "wrangler dev --config wrangler.dev.jsonc",
+    "dev:artifacts": "node dev/fake-artifacts/server.mjs",
+    "dev:engine": "node dev/engine-devserver.mjs",
+    "test:negative": "node dev/prove-tests.mjs"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.23.0",
+    "@cloudflare/workers-types": "5.20261010.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "4.149.0",
+    "ajv": "^8.17.1"
+  }
+}

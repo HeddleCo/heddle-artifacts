@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "heddle-artifacts",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "heddle-demo" }],
+  "durable_objects": { "bindings": [
+    { "name": "PROJECT", "class_name": "ProjectDO" },
+    { "name": "ENGINE", "class_name": "HeddleEngine" }
+  ] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectDO", "HeddleEngine"] }],
+  "containers": [{ "class_name": "HeddleEngine", "image": "./engine/Dockerfile", "instance_type": "standard-1", "max_instances": 20 }],
+  "queues": {
+    "producers": [{ "binding": "EVENTS", "queue": "artifacts-events" }],
+    "consumers": [{ "queue": "artifacts-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3 }]
+  },
+  "r2_buckets": [{ "binding": "STATE", "bucket_name": "heddle-artifacts-state" }],
+  "ai": { "binding": "AI" },
+  "assets": { "directory": "./ui", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/login", "/__dev/*"] },
+  "vars": { "ARTIFACTS_NAMESPACE": "heddle-demo", "DEMO_PROJECT": "demo" }
+  // Configure OPERATOR_TOKEN and CF_EVENTS_API_TOKEN via wrangler secret put outside the sandbox.
+  // Set CF_ACCOUNT_ID and EVENTS_QUEUE_ID as deployment variables for per-fork subscriptions.
+}

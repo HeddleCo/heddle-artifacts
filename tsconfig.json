@@ -1,0 +1,26 @@
+{
+  "//": "SPDX-License-Identifier: Apache-2.0",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2023",
+      "ESNext.Disposable"
+    ],
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers/types"
+    ],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowJs": true
+  },
+  "include": [
+    "contracts/**/*.ts",
+    "worker/**/*.ts",
+    "vitest.config.ts"
+  ]
+}
