@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 
 > @heddle/demo-table@0.1.0 test
 > vitest run --maxWorkers=1

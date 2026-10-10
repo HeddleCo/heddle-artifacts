@@ -1,10 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
 Actual Codex agents in three tmux panes; localhost contract mock, fixture engine keys.
 Three agents enrolled in independent forks.
-Live agents launched concurrently. Record with: tmux attach -t heddle-demo-1791656828220
+Live agents launched concurrently. Record with: tmux attach -t heddle-demo-1791656994304
 Conflict candidates ready; independent docs clean. Reviewer: @cf/qwen/qwen2.5-coder-32b-instruct
-commit e07a9ee9a738af339c99b62f7f21f817b9948283
+commit 7091b9444176dc7d3d198dee54dee55759e1ca7a
 Author: Luke <luke@demo.local>
-Date:   Sat Oct 10 20:28:31 2026 +0200
+Date:   Sat Oct 10 20:31:48 2026 +0200
 
     Bob preserves string[] and handles escaped pipes and backslash parity; Alice remains a recorded alternative.
     
@@ -22,12 +23,52 @@ Notes (heddle-why):
     Review: Bob preserves the API and slash parity.
     Discussion: luke: Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.
     Decided by luke fixture-key
-PASS live: full storyline in 83.2s; candidates exact; tree match; fsck/index-pack strict; why retained.
+PASS live: full storyline in 114.9s; candidates exact; tree match; fsck/index-pack strict; why retained.
 Pane 0:
-d
+alice: coding agent started
+alice: coding agent finished; inspect the board
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 0, Sat Oct 10 20:30:45 2026)
 Pane 1:
-bob: coding agent finished
-; inspect the board
+bob: coding agent started
+bob: coding agent finished; inspect the board
 
 
 
@@ -49,11 +90,27 @@ bob: coding agent finished
 
 
 
-Pane is dead (status 0, Sa
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 0, Sat Oct 10 20:31:46 2026)
 Pane 2:
-d
-carol: coding agent finish
-ed; inspect the board
+carol: coding agent started
+carol: coding agent finished; inspect the board
 
 
 
@@ -74,5 +131,61 @@ ed; inspect the board
 
 
 
-Pane is dead (status 0, Sa
-Live harness exit 0. Private clones retained at /home/scratch/heddle-D-real-live-JJ1K1p.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 0, Sat Oct 10 20:30:47 2026)
+Git receive-pack request timeline: [
+  {
+    "repo": "demo--parser-escapes--alice",
+    "startedAt": "2026-10-10T18:30:41.890Z",
+    "finishedAt": "2026-10-10T18:30:41.896Z",
+    "exit": 0
+  },
+  {
+    "repo": "demo--parser-escapes--alice",
+    "startedAt": "2026-10-10T18:30:41.900Z",
+    "finishedAt": "2026-10-10T18:30:41.911Z",
+    "exit": 0
+  },
+  {
+    "repo": "demo--docs-readme--carol",
+    "startedAt": "2026-10-10T18:30:43.127Z",
+    "finishedAt": "2026-10-10T18:30:43.132Z",
+    "exit": 0
+  },
+  {
+    "repo": "demo--docs-readme--carol",
+    "startedAt": "2026-10-10T18:30:43.136Z",
+    "finishedAt": "2026-10-10T18:30:43.147Z",
+    "exit": 0
+  },
+  {
+    "repo": "demo--parser-escapes--bob",
+    "startedAt": "2026-10-10T18:31:28.876Z",
+    "finishedAt": "2026-10-10T18:31:28.884Z",
+    "exit": 0
+  },
+  {
+    "repo": "demo--parser-escapes--bob",
+    "startedAt": "2026-10-10T18:31:28.889Z",
+    "finishedAt": "2026-10-10T18:31:28.907Z",
+    "exit": 0
+  }
+]
+Live harness exit 0. Private clones retained at /home/scratch/heddle-D-real-live-uC5KHj.

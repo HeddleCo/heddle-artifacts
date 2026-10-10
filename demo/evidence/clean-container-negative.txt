@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+$ apt-get update && apt-get install git ca-certificates
+$ git clone <private local source mirror> heddle-artifacts
+$ node --version; git --version
+v22.23.3
+git version 2.39.5
+$ ./demo/run.sh --mode scripted
+Three agents enrolled in independent forks.
+alice pushed 1e5a628f51fa9cbc430ae465986c327b66bd423a
+bob pushed 24dc607ba7ae6aee61b0be229a2ad327bb7c42ea
+carol pushed 318e065764a8cc0e75d173cb0c1c83d1efd9a3a1
+Conflict candidates ready; independent docs clean. Reviewer: @cf/qwen/qwen2.5-coder-32b-instruct
+demo: Git log lost chosen/rejected narrative
+file:///home/heddleco/HeddleCo/workspace/heddle-artifacts-D/demo/test/clean-container.mjs:27
+  if (status !== 0) throw new Error(`clean container failed: exit ${status}`);
+                          ^
+
+Error: clean container failed: exit 1
+    at file:///home/heddleco/HeddleCo/workspace/heddle-artifacts-D/demo/test/clean-container.mjs:27:27
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v26.7.0
