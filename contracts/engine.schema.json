@@ -1,0 +1,1185 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://heddleco.com/contracts/engine.schema.json",
+  "title": "Heddle Artifacts \u00a77.3 engine contracts",
+  "description": "Validation envelope only; exec sends input directly. snapshot/restore are binary exceptions. Outputs in $defs.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "init"
+        },
+        "input": {
+          "$ref": "#/$defs/init.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "task.create"
+        },
+        "input": {
+          "$ref": "#/$defs/task.create.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "agent.enroll"
+        },
+        "input": {
+          "$ref": "#/$defs/agent.enroll.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "lane.open"
+        },
+        "input": {
+          "$ref": "#/$defs/lane.open.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "ingest"
+        },
+        "input": {
+          "$ref": "#/$defs/ingest.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "candidates"
+        },
+        "input": {
+          "$ref": "#/$defs/candidates.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "diff"
+        },
+        "input": {
+          "$ref": "#/$defs/diff.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "discuss"
+        },
+        "input": {
+          "$ref": "#/$defs/discuss.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "decide"
+        },
+        "input": {
+          "$ref": "#/$defs/decide.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "publish"
+        },
+        "input": {
+          "$ref": "#/$defs/publish.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "why"
+        },
+        "input": {
+          "$ref": "#/$defs/why.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "selftest"
+        },
+        "input": {
+          "$ref": "#/$defs/selftest.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "restore"
+        },
+        "input": {
+          "$ref": "#/$defs/restore.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "snapshot"
+        },
+        "input": {
+          "$ref": "#/$defs/snapshot.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "AgentInput": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "human",
+            "reviewer"
+          ]
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "displayName"
+      ],
+      "additionalProperties": false
+    },
+    "Agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "human",
+            "reviewer"
+          ]
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "publicKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "displayName",
+        "publicKey"
+      ],
+      "additionalProperties": false
+    },
+    "Tests": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "error",
+            "skipped"
+          ]
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "status",
+        "passed",
+        "failed",
+        "summary",
+        "durationMs"
+      ],
+      "additionalProperties": false
+    },
+    "Conflict": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "with": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "path",
+        "with"
+      ],
+      "additionalProperties": false
+    },
+    "Candidate": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "sourceSha": {
+          "type": "string"
+        },
+        "treeSha": {
+          "type": "string"
+        },
+        "parentSha": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "diffstat": {
+          "type": "object",
+          "properties": {
+            "files": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "insertions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "deletions": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "files",
+            "insertions",
+            "deletions"
+          ],
+          "additionalProperties": false
+        },
+        "tests": {
+          "$ref": "#/$defs/Tests"
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Conflict"
+          }
+        },
+        "signedBy": {
+          "type": "string"
+        },
+        "capturedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "task",
+        "agent",
+        "state",
+        "sourceSha",
+        "treeSha",
+        "parentSha",
+        "subject",
+        "diffstat",
+        "conflicts",
+        "signedBy",
+        "capturedAt"
+      ],
+      "additionalProperties": false
+    },
+    "Turn": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "human",
+            "reviewer"
+          ]
+        },
+        "body": {
+          "type": "string"
+        },
+        "replyTo": {
+          "type": "string"
+        },
+        "heddleDiscussion": {
+          "type": "string"
+        },
+        "signedBy": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "task",
+        "author",
+        "kind",
+        "body",
+        "heddleDiscussion",
+        "signedBy",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "Decision": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "decider": {
+          "type": "string"
+        },
+        "pick": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resolutionState": {
+          "type": "string"
+        },
+        "landState": {
+          "type": "string"
+        },
+        "mainSha": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "task",
+        "decider",
+        "pick",
+        "rationale",
+        "alternatives",
+        "resolutionState",
+        "landState",
+        "mainSha",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "Review": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "perCandidate": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "approve",
+                  "concerns"
+                ]
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "agent",
+              "verdict",
+              "notes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "recommendation": {
+          "type": "object",
+          "properties": {
+            "pick": {
+              "type": "string"
+            },
+            "why": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pick",
+            "why"
+          ],
+          "additionalProperties": false
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary",
+        "perCandidate",
+        "model"
+      ],
+      "additionalProperties": false
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "init.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "canonical": {
+          "type": "object",
+          "properties": {
+            "remote": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "remote"
+          ],
+          "additionalProperties": false
+        },
+        "seed": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "template": {
+                  "const": "demo"
+                }
+              },
+              "required": [
+                "template"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "importUrl": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "importUrl"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "opId",
+        "project",
+        "canonical",
+        "seed"
+      ],
+      "additionalProperties": false
+    },
+    "init.output": {
+      "type": "object",
+      "properties": {
+        "mainState": {
+          "type": "string"
+        },
+        "mainSha": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mainState",
+        "mainSha"
+      ],
+      "additionalProperties": false
+    },
+    "task.create.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "opId",
+        "task",
+        "intent"
+      ],
+      "additionalProperties": false
+    },
+    "task.create.output": {
+      "type": "object",
+      "properties": {
+        "thread": {
+          "type": "string"
+        },
+        "baseState": {
+          "type": "string"
+        },
+        "baseSha": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "thread",
+        "baseState",
+        "baseSha"
+      ],
+      "additionalProperties": false
+    },
+    "agent.enroll.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "agent": {
+          "$ref": "#/$defs/AgentInput"
+        }
+      },
+      "required": [
+        "opId",
+        "agent"
+      ],
+      "additionalProperties": false
+    },
+    "agent.enroll.output": {
+      "type": "object",
+      "properties": {
+        "publicKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "publicKey"
+      ],
+      "additionalProperties": false
+    },
+    "lane.open.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "opId",
+        "task",
+        "agent"
+      ],
+      "additionalProperties": false
+    },
+    "lane.open.output": {
+      "type": "object",
+      "properties": {
+        "laneThread": {
+          "type": "string"
+        },
+        "leaseId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "laneThread",
+        "leaseId"
+      ],
+      "additionalProperties": false
+    },
+    "ingest.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "fork": {
+                "type": "object",
+                "properties": {
+                  "remote": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "remote"
+                ],
+                "additionalProperties": false
+              },
+              "ref": {
+                "type": "string"
+              },
+              "sha": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "task",
+              "agent",
+              "fork",
+              "ref",
+              "sha"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "runTests": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "opId",
+        "items",
+        "runTests"
+      ],
+      "additionalProperties": false
+    },
+    "ingest.output": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "task": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "captured",
+                  "duplicate",
+                  "rejected"
+                ]
+              },
+              "candidate": {
+                "$ref": "#/$defs/Candidate"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "agent",
+              "task",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "conflicts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Conflict"
+            }
+          }
+        }
+      },
+      "required": [
+        "results",
+        "conflicts"
+      ],
+      "additionalProperties": false
+    },
+    "candidates.input": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "task"
+      ],
+      "additionalProperties": false
+    },
+    "candidates.output": {
+      "type": "object",
+      "properties": {
+        "heads": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Candidate"
+          }
+        }
+      },
+      "required": [
+        "heads",
+        "candidates"
+      ],
+      "additionalProperties": false
+    },
+    "diff.input": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "task",
+        "agent",
+        "maxBytes"
+      ],
+      "additionalProperties": false
+    },
+    "diff.output": {
+      "type": "object",
+      "properties": {
+        "diff": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "diff"
+      ],
+      "additionalProperties": false
+    },
+    "discuss.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "replyTo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "opId",
+        "task",
+        "author",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    "discuss.output": {
+      "$ref": "#/$defs/Turn"
+    },
+    "decide.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "decider": {
+          "type": "string"
+        },
+        "pick": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "expectHeads": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "opId",
+        "task",
+        "decider",
+        "pick",
+        "rationale",
+        "expectHeads"
+      ],
+      "additionalProperties": false
+    },
+    "decide.output": {
+      "$ref": "#/$defs/Decision"
+    },
+    "publish.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "canonical": {
+          "type": "object",
+          "properties": {
+            "remote": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "remote"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "opId",
+        "canonical"
+      ],
+      "additionalProperties": false
+    },
+    "publish.output": {
+      "type": "object",
+      "properties": {
+        "main": {
+          "type": "string"
+        },
+        "pushed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verify": {
+          "type": "object",
+          "properties": {
+            "exportRoundTrip": {
+              "type": "boolean"
+            },
+            "treeMatch": {
+              "type": "boolean"
+            },
+            "fsck": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "exportRoundTrip",
+            "treeMatch",
+            "fsck"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "main",
+        "pushed",
+        "verify"
+      ],
+      "additionalProperties": false
+    },
+    "why.input": {
+      "type": "object",
+      "properties": {
+        "sha": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sha"
+      ],
+      "additionalProperties": false
+    },
+    "why.output": {
+      "type": "object",
+      "properties": {
+        "narrative": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "narrative"
+      ],
+      "additionalProperties": false
+    },
+    "selftest.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "selftest.output": {
+      "type": "object",
+      "properties": {
+        "heddleVersion": {
+          "type": "string"
+        },
+        "gitVersion": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "heddleVersion",
+        "gitVersion",
+        "ok"
+      ],
+      "additionalProperties": false
+    },
+    "restore.input": {
+      "type": "string",
+      "contentMediaType": "application/zstd",
+      "description": "Raw tar.zst bytes on stdin, NOT JSON or base64."
+    },
+    "restore.output": {
+      "type": "object",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "generation"
+      ],
+      "additionalProperties": false
+    },
+    "snapshot.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "snapshot.output": {
+      "type": "string",
+      "contentMediaType": "application/zstd",
+      "description": "Raw tar.zst bytes on stdout, NOT JSON or base64."
+    }
+  }
+}
