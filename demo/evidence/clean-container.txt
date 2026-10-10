@@ -1,0 +1,243 @@
+$ apt-get update && apt-get install git ca-certificates
+$ git clone <private local source mirror> heddle-artifacts
+18:24:16.548792 http.c:725              == Info: Couldn't find host 127.0.0.1 in the (nil) file; using defaults
+18:24:16.548842 http.c:725              == Info:   Trying 127.0.0.1:37511...
+18:24:16.548925 http.c:725              == Info: Connected to 127.0.0.1 (127.0.0.1) port 37511 (#0)
+18:24:16.548950 http.c:672              => Send header, 0000000299 bytes (0x0000012b)
+18:24:16.548953 http.c:684              => Send header: GET /git/source.git/info/refs?service=git-upload-pack HTTP/1.1
+18:24:16.548954 http.c:684              => Send header: Host: 127.0.0.1:37511
+18:24:16.548955 http.c:684              => Send header: User-Agent: git/2.39.5
+18:24:16.548958 http.c:684              => Send header: Accept: */*
+18:24:16.548959 http.c:684              => Send header: Accept-Encoding: deflate, gzip, br, zstd
+18:24:16.548960 http.c:684              => Send header: Authorization: Bearer <redacted>
+18:24:16.548961 http.c:684              => Send header: Pragma: no-cache
+18:24:16.548962 http.c:684              => Send header: Git-Protocol: version=2
+18:24:16.548963 http.c:684              => Send header:
+18:24:16.555149 http.c:672              <= Recv header, 0000000017 bytes (0x00000011)
+18:24:16.555154 http.c:684              <= Recv header: HTTP/1.1 200 OK
+18:24:16.555156 http.c:672              <= Recv header, 0000000040 bytes (0x00000028)
+18:24:16.555157 http.c:684              <= Recv header: Expires: Fri, 01 Jan 1980 00:00:00 GMT
+18:24:16.555159 http.c:672              <= Recv header, 0000000018 bytes (0x00000012)
+18:24:16.555160 http.c:684              <= Recv header: Pragma: no-cache
+18:24:16.555161 http.c:672              <= Recv header, 0000000053 bytes (0x00000035)
+18:24:16.555162 http.c:684              <= Recv header: Cache-Control: no-cache, max-age=0, must-revalidate
+18:24:16.555164 http.c:672              <= Recv header, 0000000059 bytes (0x0000003b)
+18:24:16.555164 http.c:684              <= Recv header: Content-Type: application/x-git-upload-pack-advertisement
+18:24:16.555166 http.c:672              <= Recv header, 0000000037 bytes (0x00000025)
+18:24:16.555167 http.c:684              <= Recv header: Date: Sat, 10 Oct 2026 18:24:16 GMT
+18:24:16.555168 http.c:672              <= Recv header, 0000000024 bytes (0x00000018)
+18:24:16.555169 http.c:684              <= Recv header: Connection: keep-alive
+18:24:16.555170 http.c:672              <= Recv header, 0000000023 bytes (0x00000017)
+18:24:16.555171 http.c:684              <= Recv header: Keep-Alive: timeout=5
+18:24:16.555172 http.c:672              <= Recv header, 0000000028 bytes (0x0000001c)
+18:24:16.555173 http.c:684              <= Recv header: Transfer-Encoding: chunked
+18:24:16.555175 http.c:672              <= Recv header, 0000000002 bytes (0x00000002)
+18:24:16.555176 http.c:684              <= Recv header:
+18:24:16.555859 http.c:725              == Info: Connection #0 to host 127.0.0.1 left intact
+18:24:16.555951 http.c:725              == Info: Couldn't find host 127.0.0.1 in the (nil) file; using defaults
+18:24:16.555955 http.c:725              == Info: Found bundle for host: 0x5f122c4b1820 [serially]
+18:24:16.555956 http.c:725              == Info: Can not multiplex, even if we wanted to
+18:24:16.555959 http.c:725              == Info: Re-using existing connection #0 with host 127.0.0.1
+18:24:16.555981 http.c:672              => Send header, 0000000371 bytes (0x00000173)
+18:24:16.555983 http.c:684              => Send header: POST /git/source.git/git-upload-pack HTTP/1.1
+18:24:16.555984 http.c:684              => Send header: Host: 127.0.0.1:37511
+18:24:16.555985 http.c:684              => Send header: User-Agent: git/2.39.5
+18:24:16.555986 http.c:684              => Send header: Accept-Encoding: deflate, gzip, br, zstd
+18:24:16.555987 http.c:684              => Send header: Authorization: Bearer <redacted>
+18:24:16.555988 http.c:684              => Send header: Content-Type: application/x-git-upload-pack-request
+18:24:16.555989 http.c:684              => Send header: Accept: application/x-git-upload-pack-result
+18:24:16.555990 http.c:684              => Send header: Git-Protocol: version=2
+18:24:16.555991 http.c:684              => Send header: Content-Length: 175
+18:24:16.555993 http.c:684              => Send header:
+18:24:16.559422 http.c:672              <= Recv header, 0000000017 bytes (0x00000011)
+18:24:16.559427 http.c:684              <= Recv header: HTTP/1.1 200 OK
+18:24:16.559429 http.c:672              <= Recv header, 0000000040 bytes (0x00000028)
+18:24:16.559431 http.c:684              <= Recv header: Expires: Fri, 01 Jan 1980 00:00:00 GMT
+18:24:16.559433 http.c:672              <= Recv header, 0000000018 bytes (0x00000012)
+18:24:16.559434 http.c:684              <= Recv header: Pragma: no-cache
+18:24:16.559436 http.c:672              <= Recv header, 0000000053 bytes (0x00000035)
+18:24:16.559437 http.c:684              <= Recv header: Cache-Control: no-cache, max-age=0, must-revalidate
+18:24:16.559439 http.c:672              <= Recv header, 0000000052 bytes (0x00000034)
+18:24:16.559440 http.c:684              <= Recv header: Content-Type: application/x-git-upload-pack-result
+18:24:16.559441 http.c:672              <= Recv header, 0000000037 bytes (0x00000025)
+18:24:16.559442 http.c:684              <= Recv header: Date: Sat, 10 Oct 2026 18:24:16 GMT
+18:24:16.559444 http.c:672              <= Recv header, 0000000024 bytes (0x00000018)
+18:24:16.559446 http.c:684              <= Recv header: Connection: keep-alive
+18:24:16.559447 http.c:672              <= Recv header, 0000000023 bytes (0x00000017)
+18:24:16.559448 http.c:684              <= Recv header: Keep-Alive: timeout=5
+18:24:16.559450 http.c:672              <= Recv header, 0000000028 bytes (0x0000001c)
+18:24:16.559451 http.c:684              <= Recv header: Transfer-Encoding: chunked
+18:24:16.559453 http.c:672              <= Recv header, 0000000002 bytes (0x00000002)
+18:24:16.559454 http.c:684              <= Recv header:
+18:24:16.560999 http.c:725              == Info: Connection #0 to host 127.0.0.1 left intact
+18:24:16.561760 http.c:725              == Info: Couldn't find host 127.0.0.1 in the (nil) file; using defaults
+18:24:16.561765 http.c:725              == Info: Found bundle for host: 0x5f122c4b1820 [serially]
+18:24:16.561767 http.c:725              == Info: Can not multiplex, even if we wanted to
+18:24:16.561771 http.c:725              == Info: Re-using existing connection #0 with host 127.0.0.1
+18:24:16.561796 http.c:672              => Send header, 0000000371 bytes (0x00000173)
+18:24:16.561798 http.c:684              => Send header: POST /git/source.git/git-upload-pack HTTP/1.1
+18:24:16.561800 http.c:684              => Send header: Host: 127.0.0.1:37511
+18:24:16.561801 http.c:684              => Send header: User-Agent: git/2.39.5
+18:24:16.561802 http.c:684              => Send header: Accept-Encoding: deflate, gzip, br, zstd
+18:24:16.561803 http.c:684              => Send header: Authorization: Bearer <redacted>
+18:24:16.561804 http.c:684              => Send header: Content-Type: application/x-git-upload-pack-request
+18:24:16.561805 http.c:684              => Send header: Accept: application/x-git-upload-pack-result
+18:24:16.561807 http.c:684              => Send header: Git-Protocol: version=2
+18:24:16.561808 http.c:684              => Send header: Content-Length: 417
+18:24:16.561809 http.c:684              => Send header:
+18:24:16.565001 http.c:672              <= Recv header, 0000000017 bytes (0x00000011)
+18:24:16.565004 http.c:684              <= Recv header: HTTP/1.1 200 OK
+18:24:16.565006 http.c:672              <= Recv header, 0000000040 bytes (0x00000028)
+18:24:16.565008 http.c:684              <= Recv header: Expires: Fri, 01 Jan 1980 00:00:00 GMT
+18:24:16.565011 http.c:672              <= Recv header, 0000000018 bytes (0x00000012)
+18:24:16.565012 http.c:684              <= Recv header: Pragma: no-cache
+18:24:16.565015 http.c:672              <= Recv header, 0000000053 bytes (0x00000035)
+18:24:16.565016 http.c:684              <= Recv header: Cache-Control: no-cache, max-age=0, must-revalidate
+18:24:16.565019 http.c:672              <= Recv header, 0000000052 bytes (0x00000034)
+18:24:16.565020 http.c:684              <= Recv header: Content-Type: application/x-git-upload-pack-result
+18:24:16.565023 http.c:672              <= Recv header, 0000000037 bytes (0x00000025)
+18:24:16.565024 http.c:684              <= Recv header: Date: Sat, 10 Oct 2026 18:24:16 GMT
+18:24:16.565034 http.c:672              <= Recv header, 0000000024 bytes (0x00000018)
+18:24:16.565036 http.c:684              <= Recv header: Connection: keep-alive
+18:24:16.565039 http.c:672              <= Recv header, 0000000023 bytes (0x00000017)
+18:24:16.565041 http.c:684              <= Recv header: Keep-Alive: timeout=5
+18:24:16.565044 http.c:672              <= Recv header, 0000000028 bytes (0x0000001c)
+18:24:16.565045 http.c:684              <= Recv header: Transfer-Encoding: chunked
+18:24:16.565048 http.c:672              <= Recv header, 0000000002 bytes (0x00000002)
+18:24:16.565049 http.c:684              <= Recv header:
+18:24:16.583892 http.c:725              == Info: Connection #0 to host 127.0.0.1 left intact
+$ node --version; git --version
+v22.23.3
+git version 2.39.5
+$ ./demo/run.sh --mode scripted
+Three agents enrolled in independent forks.
+alice pushed e6006b32efd3b1d5626524dcb38c7ad3bb40b043
+bob pushed 74e5d0305876bf22a8428a695359f8666ba62764
+carol pushed d5508ffdd4d38b5220243caa86a727ace9db61fa
+Conflict candidates ready; independent docs clean. Reviewer: @cf/qwen/qwen2.5-coder-32b-instruct
+commit 7c184d181fb2d39bdb24dbca76aa3a99acceab62
+Author: Luke <luke@demo.local>
+Date:   Sat Oct 10 20:24:26 2026 +0200
+
+    Bob preserves string[] and handles escaped pipes and backslash parity; Alice remains a recorded alternative.
+    
+    Heddle-State: fixture-land
+    Heddle-Change: fixture-change
+
+Notes (heddle):
+    fixture Heddle machine note
+
+Notes (heddle-why):
+    Heddle decision · task parser-escapes
+    Intent: Support escaped pipes (\|) inside table cells while preserving the string[] API and backslash parity.
+    Chosen: bob
+    Rejected: alice
+    Review: Bob preserves the API and slash parity.
+    Discussion: luke: Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.
+    Decided by luke fixture-key
+PASS scripted: full storyline in 9.9s; candidates exact; tree match; fsck/index-pack strict; why retained.
+$ node cli/ha.mjs join "$DEMO_URL/p/$DEMO_PROJECT" --task docs-readme --as guest --dir /tmp/heddle-guest
+Joined clean-demo/docs-readme as guest. Clone: /tmp/heddle-guest
+$ ha status
+$ git fetch upstream main +refs/notes/*:refs/notes/*
+18:24:26.721304 http.c:725              == Info: Couldn't find host 127.0.0.1 in the (nil) file; using defaults
+18:24:26.721347 http.c:725              == Info:   Trying 127.0.0.1:37511...
+18:24:26.721434 http.c:725              == Info: Connected to 127.0.0.1 (127.0.0.1) port 37511 (#0)
+18:24:26.721461 http.c:672              => Send header, 0000000303 bytes (0x0000012f)
+18:24:26.721465 http.c:684              => Send header: GET /git/clean-demo.git/info/refs?service=git-upload-pack HTTP/1.1
+18:24:26.721466 http.c:684              => Send header: Host: 127.0.0.1:37511
+18:24:26.721468 http.c:684              => Send header: User-Agent: git/2.39.5
+18:24:26.721469 http.c:684              => Send header: Accept: */*
+18:24:26.721470 http.c:684              => Send header: Accept-Encoding: deflate, gzip, br, zstd
+18:24:26.721471 http.c:684              => Send header: Authorization: Bearer <redacted>
+18:24:26.721472 http.c:684              => Send header: Pragma: no-cache
+18:24:26.721474 http.c:684              => Send header: Git-Protocol: version=1
+18:24:26.721475 http.c:684              => Send header:
+18:24:26.725349 http.c:672              <= Recv header, 0000000017 bytes (0x00000011)
+18:24:26.725354 http.c:684              <= Recv header: HTTP/1.1 200 OK
+18:24:26.725356 http.c:672              <= Recv header, 0000000040 bytes (0x00000028)
+18:24:26.725357 http.c:684              <= Recv header: Expires: Fri, 01 Jan 1980 00:00:00 GMT
+18:24:26.725359 http.c:672              <= Recv header, 0000000018 bytes (0x00000012)
+18:24:26.725360 http.c:684              <= Recv header: Pragma: no-cache
+18:24:26.725362 http.c:672              <= Recv header, 0000000053 bytes (0x00000035)
+18:24:26.725363 http.c:684              <= Recv header: Cache-Control: no-cache, max-age=0, must-revalidate
+18:24:26.725365 http.c:672              <= Recv header, 0000000059 bytes (0x0000003b)
+18:24:26.725366 http.c:684              <= Recv header: Content-Type: application/x-git-upload-pack-advertisement
+18:24:26.725370 http.c:672              <= Recv header, 0000000037 bytes (0x00000025)
+18:24:26.725372 http.c:684              <= Recv header: Date: Sat, 10 Oct 2026 18:24:26 GMT
+18:24:26.725373 http.c:672              <= Recv header, 0000000024 bytes (0x00000018)
+18:24:26.725374 http.c:684              <= Recv header: Connection: keep-alive
+18:24:26.725376 http.c:672              <= Recv header, 0000000023 bytes (0x00000017)
+18:24:26.725377 http.c:684              <= Recv header: Keep-Alive: timeout=5
+18:24:26.725379 http.c:672              <= Recv header, 0000000028 bytes (0x0000001c)
+18:24:26.725380 http.c:684              <= Recv header: Transfer-Encoding: chunked
+18:24:26.725382 http.c:672              <= Recv header, 0000000002 bytes (0x00000002)
+18:24:26.725383 http.c:684              <= Recv header:
+18:24:26.727010 http.c:725              == Info: Connection #0 to host 127.0.0.1 left intact
+18:24:26.728827 http.c:725              == Info: Couldn't find host 127.0.0.1 in the (nil) file; using defaults
+18:24:26.728834 http.c:725              == Info: Found bundle for host: 0x63f8e7931270 [serially]
+18:24:26.728836 http.c:725              == Info: Can not multiplex, even if we wanted to
+18:24:26.728841 http.c:725              == Info: Re-using existing connection #0 with host 127.0.0.1
+18:24:26.728871 http.c:672              => Send header, 0000000375 bytes (0x00000177)
+18:24:26.728875 http.c:684              => Send header: POST /git/clean-demo.git/git-upload-pack HTTP/1.1
+18:24:26.728876 http.c:684              => Send header: Host: 127.0.0.1:37511
+18:24:26.728877 http.c:684              => Send header: User-Agent: git/2.39.5
+18:24:26.728878 http.c:684              => Send header: Accept-Encoding: deflate, gzip, br, zstd
+18:24:26.728880 http.c:684              => Send header: Authorization: Bearer <redacted>
+18:24:26.728881 http.c:684              => Send header: Content-Type: application/x-git-upload-pack-request
+18:24:26.728882 http.c:684              => Send header: Accept: application/x-git-upload-pack-result
+18:24:26.728883 http.c:684              => Send header: Git-Protocol: version=1
+18:24:26.728884 http.c:684              => Send header: Content-Length: 439
+18:24:26.728885 http.c:684              => Send header:
+18:24:26.732264 http.c:672              <= Recv header, 0000000017 bytes (0x00000011)
+18:24:26.732267 http.c:684              <= Recv header: HTTP/1.1 200 OK
+18:24:26.732268 http.c:672              <= Recv header, 0000000040 bytes (0x00000028)
+18:24:26.732269 http.c:684              <= Recv header: Expires: Fri, 01 Jan 1980 00:00:00 GMT
+18:24:26.732271 http.c:672              <= Recv header, 0000000018 bytes (0x00000012)
+18:24:26.732272 http.c:684              <= Recv header: Pragma: no-cache
+18:24:26.732273 http.c:672              <= Recv header, 0000000053 bytes (0x00000035)
+18:24:26.732274 http.c:684              <= Recv header: Cache-Control: no-cache, max-age=0, must-revalidate
+18:24:26.732276 http.c:672              <= Recv header, 0000000052 bytes (0x00000034)
+18:24:26.732276 http.c:684              <= Recv header: Content-Type: application/x-git-upload-pack-result
+18:24:26.732278 http.c:672              <= Recv header, 0000000037 bytes (0x00000025)
+18:24:26.732279 http.c:684              <= Recv header: Date: Sat, 10 Oct 2026 18:24:26 GMT
+18:24:26.732280 http.c:672              <= Recv header, 0000000024 bytes (0x00000018)
+18:24:26.732282 http.c:684              <= Recv header: Connection: keep-alive
+18:24:26.732284 http.c:672              <= Recv header, 0000000023 bytes (0x00000017)
+18:24:26.732285 http.c:684              <= Recv header: Keep-Alive: timeout=5
+18:24:26.732287 http.c:672              <= Recv header, 0000000028 bytes (0x0000001c)
+18:24:26.732288 http.c:684              <= Recv header: Transfer-Encoding: chunked
+18:24:26.732290 http.c:672              <= Recv header, 0000000002 bytes (0x00000002)
+18:24:26.732291 http.c:684              <= Recv header:
+18:24:26.736201 http.c:725              == Info: Connection #0 to host 127.0.0.1 left intact
+$ git log --notes=heddle* -1 upstream/main
+commit 7c184d181fb2d39bdb24dbca76aa3a99acceab62
+Author: Luke <luke@demo.local>
+Date:   Sat Oct 10 20:24:26 2026 +0200
+
+    Bob preserves string[] and handles escaped pipes and backslash parity; Alice remains a recorded alternative.
+    
+    Heddle-State: fixture-land
+    Heddle-Change: fixture-change
+
+Notes (heddle):
+    fixture Heddle machine note
+
+Notes (heddle-why):
+    Heddle decision · task parser-escapes
+    Intent: Support escaped pipes (\|) inside table cells while preserving the string[] API and backslash parity.
+    Chosen: bob
+    Rejected: alice
+    Review: Bob preserves the API and slash parity.
+    Discussion: luke: Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.
+    Decided by luke fixture-key
+$ ha why $(git rev-parse upstream/main)
+Heddle decision · task parser-escapes
+Intent: Support escaped pipes (\|) inside table cells while preserving the string[] API and backslash parity.
+Chosen: bob
+Rejected: alice
+Review: Bob preserves the API and slash parity.
+Discussion: luke: Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.
+Decided by luke fixture-key
+
+PASS D-T3 clean container, local contract mock: 25s to Git notes; no Heddle install.

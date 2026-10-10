@@ -64,7 +64,7 @@ export function command(program, args, { cwd, env = {}, input, timeout = 60000 }
   });
 }
 export function gitAuth(remotes) {
-  const env = { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: String(remotes.length), GIT_TRACE: '0', GIT_CURL_VERBOSE: '0' };
+  const env = { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: String(remotes.length), GIT_TRACE: '0', GIT_CURL_VERBOSE: '', GIT_TRACE_CURL: '0' };
   remotes.forEach(([url, token], i) => {
     if (typeof token !== 'string' || /[\r\n]/.test(token)) throw new Error('Invalid Git credential');
     env[`GIT_CONFIG_KEY_${i}`] = `http.${url}.extraHeader`;
@@ -93,10 +93,10 @@ export async function enrollment(input, options = {}) {
 }
 /** Execute the trusted enrollment script in an empty directory; accept a single clone subdirectory. */
 export async function joinProject(input, options = {}) {
-  const joined = await enrollment(input, options);
-  const target = resolve(options.directory ?? joined.agent);
+  const target = resolve(options.directory ?? identifier(options.as));
   await mkdir(target, { recursive: true, mode: 0o700 });
   if ((await readdir(target)).length) throw new Error('Join needs an empty destination directory');
+  const joined = await enrollment(input, options);
   const env = { ...gitAuth([[joined.fork.remote, joined.fork.token], [joined.upstream.remote, joined.upstream.readToken]]),
     OPERATOR_TOKEN: '', HA_AGENT_KEY: joined.agentKey };
   await command('sh', ['-eu'], { cwd: target, env, input: joined.setup, timeout: 90000 });

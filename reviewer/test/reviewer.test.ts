@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import Ajv from "ajv";
-import { createReviewer, REVIEW_MODEL, REVIEW_SCHEMA, type ReviewInput } from "../reviewer";
+import { createReviewer, REVIEW_MODEL, REVIEW_SCHEMA, REVIEW_TIMEOUT_MS, type ReviewInput } from "../reviewer";
 const validates = new Ajv().compile(REVIEW_SCHEMA);
 for (const count of [1, 2, 3]) {
   it(`D-T2 validates ${count} candidates`, async () => {
@@ -77,4 +77,13 @@ it("bounds diff/log context and keeps evidence inside a user message", async () 
     expect(messages[0].content).toContain("untrusted evidence");
     return { response: good };
   } } })({ ...conflictInput, candidates: [{ ...conflictInput.candidates[0], diff: "x".repeat(1000000) }, conflictInput.candidates[1]] });
+});
+
+it("hung AI returns fallback after its deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    const pending = createReviewer({ AI: { run: () => new Promise(() => {}) } })(conflictInput);
+    await vi.advanceTimersByTimeAsync(REVIEW_TIMEOUT_MS);
+    expect((await pending).model).toBe("fallback");
+  } finally { vi.useRealTimers(); }
 });

@@ -14,7 +14,7 @@ const result = await review({ intent, base, candidates, turns });
 `review(input, env)` is also exported for direct callers. Calling `review(input)`
 without AI gives the labeled fallback. Missing AI, transport errors, or three
 invalid responses return schema-valid `model:"fallback"` with concerns and no
-recommendation. JSON/schema failures get at most two retries. Candidate ids must
+recommendation. Each AI attempt has a 30-second deadline. JSON/schema failures get at most two retries. Candidate ids must
 be distinct; verdicts must cover the exact input set; picks must name a supplied
 candidate with passing tests. No raw model output, error messages or tokens are logged.
 

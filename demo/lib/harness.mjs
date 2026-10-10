@@ -20,7 +20,7 @@ export function options(args) {
   }
   identifier(opts.project);
   const parsed = new URL(opts.url);
-  if (parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('--url must be a server origin');
+  if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('--url must be a server origin');
   opts.projectUrl = `${parsed.origin}/p/${opts.project}`;
   opts.api = projectURL(opts.projectUrl).api;
   opts.directory = resolve(opts.directory);
@@ -94,7 +94,10 @@ async function launchLive(opts, state) {
   const provider = process.env.DEMO_LIVE_PROVIDER ?? 'codex';
   if (!['codex', 'claude'].includes(provider)) throw new Error('DEMO_LIVE_PROVIDER must be codex or claude');
   await command(provider, ['--version']);
+  const executable = await command('sh', ['-c', `command -v ${provider}`]);
   const session = `heddle-${opts.project}-${state.generation}`;
+  await command('tmux', ['new-session', '-d', '-s', session, '-c', state.clones.alice]);
+  await command('tmux', ['set-option', '-t', session, 'remain-on-exit', 'on']);
   for (const [index, agent] of ['alice', 'bob', 'carol'].entries()) {
     const brief = join(demoRoot, 'briefs', `${agent}.md`);
     const marker = join(opts.directory, `${state.generation}-${agent}.exit`);
@@ -102,10 +105,10 @@ async function launchLive(opts, state) {
     // The operator bearer is cleared. Git auth is only in this clone's scoped headers.
     // Raw agent output stays off the recording terminal. No token-bearing config dumps.
     const modelFlag = process.env.DEMO_LIVE_MODEL ? ` --model ${quote(process.env.DEMO_LIVE_MODEL)}` : '';
-    const invocation = provider === 'codex' ? `codex exec --sandbox workspace-write --ephemeral -c sandbox_workspace_write.network_access=true${modelFlag} - < ${quote(brief)}` :
-      `claude --print --permission-mode acceptEdits --allowedTools ${quote('Read,Edit,Write,Bash(git:*),Bash(npm:*)')}${modelFlag} < ${quote(brief)}`;
+    const invocation = provider === 'codex' ? `${quote(executable)} exec --sandbox workspace-write --ephemeral -c sandbox_workspace_write.network_access=true${modelFlag} - < ${quote(brief)}` :
+      `${quote(executable)} --print --permission-mode acceptEdits --allowedTools ${quote('Read,Edit,Write,Bash(git:*),Bash(npm:*)')}${modelFlag} < ${quote(brief)}`;
     await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\ncd ${quote(state.clones[agent])}\nunset OPERATOR_TOKEN\nprintf '%s\\n' ${quote(`${agent}: coding agent started`)}\n${invocation} >/dev/null 2>&1\nresult=$?\nprintf '%s' "$result" > ${quote(marker)}\nprintf '%s\\n' ${quote(`${agent}: coding agent finished; inspect the board`)}\nexit "$result"\n`, { mode: 0o700 });
-    if (index === 0) await command('tmux', ['new-session', '-d', '-s', session, '-c', state.clones[agent], 'bash', launcher]);
+    if (index === 0) await command('tmux', ['respawn-pane', '-k', '-t', `${session}:0.0`, '-c', state.clones[agent], 'bash', launcher]);
     else await command('tmux', ['split-window', '-t', session, '-c', state.clones[agent], 'bash', launcher]);
     await command('tmux', ['select-layout', '-t', session, 'even-horizontal']);
   }
@@ -134,6 +137,12 @@ async function run(opts) {
     for (const output of results) console.log(output);
   } else live = await launchLive(opts, state);
   let [parser, docs] = await waitFor(opts, async () => {
+    if (live) for (const agent of ['alice', 'bob', 'carol']) {
+      try {
+        const code = await readFile(join(opts.directory, `${state.generation}-${agent}.exit`), 'utf8');
+        if (code.trim() !== '0') throw new Error(`${agent}: live coding agent failed (exit ${code.trim()}); use the R7 scripted fallback`);
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
     const data = await views(opts);
     return data[0].candidates.some(c => c.agent === 'alice') && data[0].candidates.some(c => c.agent === 'bob') &&
       data[1].candidates.some(c => c.agent === 'carol') &&

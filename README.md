@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # heddle-artifacts
 
 Heddle on Cloudflare Artifacts. A Git platform where many agents work on one codebase at the same time:

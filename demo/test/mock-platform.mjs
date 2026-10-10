@@ -19,7 +19,7 @@ function raw(program, args, options = {}) {
     child.on('error', reject); child.on('close', code => resolvePromise({ code, stdout, stderr }));
   });
 }
-export async function startMock({ root, port = 0, operatorToken = randomBytes(32).toString('hex'), mutation } = {}) {
+export async function startMock({ root, port = 0, operatorToken = randomBytes(32).toString('hex'), mutation, setupMode } = {}) {
   root ??= await mkdtemp(join(tmpdir(), 'heddle-D-platform-'));
   await mkdir(root, { recursive: true });
   const projects = new Map(), tokens = new Map();
@@ -164,7 +164,7 @@ export async function startMock({ root, port = 0, operatorToken = randomBytes(32
         return json(res, 200, { agentKey, fork: { remote: remote(forkRepo), token: token(forkRepo, 'write'), expiresAt: new Date(Date.now() + 43200000).toISOString() },
           upstream: { remote: project.canonicalRemote, readToken: project.readToken },
           // Script is deliberately token-free; ha provides scoped env auth and verifies remotes.
-          setup: `git clone --quiet '${remote(forkRepo)}' .\ngit remote add upstream '${project.canonicalRemote}'\n` });
+          setup: setupMode === 'none' ? '# auth-only setup\n' : `git clone --quiet '${remote(forkRepo)}' ${setupMode === 'child' ? 'checkout' : '.'}\n` + (setupMode === 'child' ? 'cd checkout\n' : '') + `git remote add upstream '${project.canonicalRemote}'\n` });
       }
       if (action === '' && req.method === 'GET') { await refresh(project, task); return json(res, 200, { task: { slug: task.slug, intent: task.intent }, candidates: task.candidates, turns: task.turns, review: task.review, decision: task.decision, heads: task.heads }); }
       if (action === '/turns') {
