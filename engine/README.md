@@ -94,5 +94,7 @@ is required.
 Integration still needs Track A's real-account notes/ref smoke and Track D's
 actual `demo/seed-project`. If notes are rejected, activate §9 R1's branch
 fallback before deployment. Long truncated fork names must use Track A's
-agreed hash algorithm. The temporary `types.ts` is the exact §7.1 copy, marked
-`TODO: switch to contracts/`; remove it after the contracts PR reaches main.
+agreed hash algorithm. Candidate, Turn and Decision annotations consume
+`contracts/types.ts`; contract validation consumes `contracts/engine.schema.json`.
+Track A's contracts have been merged from main and the temporary types copy
+has been removed.

@@ -11,6 +11,10 @@ import { narrative } from './why.mjs';
 import { exportProjection } from './projection.mjs';
 import { attestOperation } from './attestations.mjs';
 
+/** @typedef {import('../../contracts/types.ts').Candidate} Candidate */
+/** @typedef {import('../../contracts/types.ts').Turn} Turn */
+/** @typedef {import('../../contracts/types.ts').Decision} Decision */
+
 export function taskFor(state, id) {
   slug(id);
   const task = state.tasks[id];
@@ -145,6 +149,7 @@ export async function ingest(state, request) {
     const shown = await heddle(['show'], lane.path, agent);
     const signedBy = await verifyCapture(join(repoRoot, '.heddle'), shown, agent.publicKey);
     if (agent.provider && agent.model) await heddle(['agent', 'provenance', 'end'], lane.path, agent);
+    /** @type {Candidate} */
     const candidate = { task: item.task, agent: item.agent, state: shown.state_id_full, sourceSha: item.sha,
       treeSha: await git(exportRoot, ['rev-parse', `${item.sha}^{tree}`]), parentSha: state.tasks[item.task].baseSha,
       subject, diffstat: await diffstat(state.tasks[item.task].baseSha, item.sha),
@@ -200,6 +205,7 @@ export async function discuss(state, request) {
     if (!path) throw new Rejection('missing_anchor', 'Discussion needs a file in the task base');
     result = await heddle(['discuss', 'new', '--path', path, '--thread', task.thread, '--title', `${request.task}: ${author.displayName}`, '--body', request.body], task.path, author);
   }
+  /** @type {Turn} */
   const turn = { id: result.turn_id || result.operation_id || result.discussion_id, task: request.task, author: request.author, kind: author.kind, body: request.body,
     ...(request.replyTo ? { replyTo: request.replyTo } : {}), heddleDiscussion: result.discussion?.id || parent?.heddleDiscussion,
     signedBy: await attestOperation(state, author, result.operation_id, { task: request.task, body: request.body, ...(request.replyTo ? { replyTo: request.replyTo } : {}) }),
@@ -240,6 +246,7 @@ export async function decide(state, request) {
     email: `${decider.id}@heddle-artifacts.local`, at: landed.created_at,
     message: `${message}\n\nHeddle-State: ${landed.state_id_full}\nHeddle-Change: ${change}` };
   const mainSha = (await exportProjection(state)).sha;
+  /** @type {Decision} */
   const decision = { task: request.task, decider: request.decider, pick: request.pick, rationale: request.rationale, alternatives,
     resolutionState: resolution.state_id_full, landState: landed.state_id_full, mainSha, at: landed.created_at };
   await attestOperation(state, decider, resolutionRecord.operation_id, { decision });

@@ -89,13 +89,13 @@ Vitest negative PASS: deliberate assertion regression reports fail / 1 failed
 
 ## Shared JSON schema
 
-Track A's contracts PR was still open when checked. Its draft schema was fetched
-read-only into scratch; the local §7.1 types copy remains until that PR reaches
-main. A scratch installation of ajv 8.17.1 and ajv-formats 3.0.1 validates the
-actual e2e command transcript. Command (exit 0):
+Track A's contracts PR landed during the final checks. Main has been merged,
+the temporary types copy removed, and the same real e2e transcript validated
+against the landed schema. A scratch installation of ajv 8.17.1 and
+ajv-formats 3.0.1 performs validation. Command (exit 0):
 
 ```sh
-node engine/test/contracts.mjs /home/scratch/track-b-contract-schema.json /home/scratch/track-b-e2e-UuBheL/contract.jsonl /home/scratch/track-b-schema-validator/node_modules
+node engine/test/contracts.mjs contracts/engine.schema.json /home/scratch/track-b-e2e-UuBheL/contract.jsonl /home/scratch/track-b-schema-validator/node_modules
 ```
 
 ```text

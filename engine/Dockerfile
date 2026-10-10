@@ -19,6 +19,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 COPY --from=build /usr/local/cargo/bin/heddle /usr/local/cargo/bin/heddle.sha256 /usr/local/bin/
 RUN cd /usr/local/bin && sha256sum -c heddle.sha256
 COPY engine/ /opt/engine/
+COPY contracts/ /opt/contracts/
 COPY demo/ /opt/demo/
 RUN printf '#!/bin/sh\n# SPDX-License-Identifier: Apache-2.0\nexec node /opt/engine/engine.mjs "$@"\n' > /usr/local/bin/engine && chmod 755 /usr/local/bin/engine
 # Keep the Debian trixie root filesystem, flattening away build/package caches.
