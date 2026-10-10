@@ -75,7 +75,10 @@ Until Track A's fake-artifacts plus wrangler and Track B's engine are available:
 
 ```sh
 npm ci --prefix demo/seed-project
-node --test demo/test/storyline.test.mjs
+node --test cli/ha.test.mjs demo/test/storyline.test.mjs
+node demo/test/reviewer-mutations.mjs
+node demo/test/cli-mutations.mjs
+node demo/test/parser-variants.mjs
 ```
 
 `demo/test/mock-platform.mjs` uses real Git smart HTTP, fork-scoped Bearer checks,

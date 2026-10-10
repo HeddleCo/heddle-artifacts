@@ -1,0 +1,78 @@
+Actual Codex agents in three tmux panes; localhost contract mock, fixture engine keys.
+Three agents enrolled in independent forks.
+Live agents launched concurrently. Record with: tmux attach -t heddle-demo-1791656828220
+Conflict candidates ready; independent docs clean. Reviewer: @cf/qwen/qwen2.5-coder-32b-instruct
+commit e07a9ee9a738af339c99b62f7f21f817b9948283
+Author: Luke <luke@demo.local>
+Date:   Sat Oct 10 20:28:31 2026 +0200
+
+    Bob preserves string[] and handles escaped pipes and backslash parity; Alice remains a recorded alternative.
+    
+    Heddle-State: fixture-land
+    Heddle-Change: fixture-change
+
+Notes (heddle):
+    fixture Heddle machine note
+
+Notes (heddle-why):
+    Heddle decision · task parser-escapes
+    Intent: Support escaped pipes (\|) inside table cells while preserving the string[] API and backslash parity.
+    Chosen: bob
+    Rejected: alice
+    Review: Bob preserves the API and slash parity.
+    Discussion: luke: Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.
+    Decided by luke fixture-key
+PASS live: full storyline in 83.2s; candidates exact; tree match; fsck/index-pack strict; why retained.
+Pane 0:
+d
+Pane 1:
+bob: coding agent finished
+; inspect the board
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 0, Sa
+Pane 2:
+d
+carol: coding agent finish
+ed; inspect the board
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 0, Sa
+Live harness exit 0. Private clones retained at /home/scratch/heddle-D-real-live-JJ1K1p.

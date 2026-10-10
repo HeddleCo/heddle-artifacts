@@ -1,0 +1,13 @@
+✔ CLI URL guards reject credentials, nonlocal HTTP and invalid identifiers (1.248001ms)
+✔ join refuses a populated destination and never alters the parent repository (58.325136ms)
+✔ API authorization errors are typed and do not expose server credentials (3.526166ms)
+✔ setup none creates an independent clone inside a parent Git checkout (156.88053ms)
+✔ setup child creates an independent clone inside a parent Git checkout (143.672328ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 444.139253

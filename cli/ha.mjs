@@ -64,7 +64,7 @@ export function command(program, args, { cwd, env = {}, input, timeout = 60000 }
   });
 }
 export function gitAuth(remotes) {
-  const env = { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: String(remotes.length), GIT_TRACE: '0', GIT_CURL_VERBOSE: '', GIT_TRACE_CURL: '0' };
+  const env = { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: String(remotes.length), GIT_TRACE: '0', GIT_CURL_VERBOSE: undefined, GIT_TRACE_CURL: '0' };
   remotes.forEach(([url, token], i) => {
     if (typeof token !== 'string' || /[\r\n]/.test(token)) throw new Error('Invalid Git credential');
     env[`GIT_CONFIG_KEY_${i}`] = `http.${url}.extraHeader`;
@@ -99,7 +99,9 @@ export async function joinProject(input, options = {}) {
   const joined = await enrollment(input, options);
   const env = { ...gitAuth([[joined.fork.remote, joined.fork.token], [joined.upstream.remote, joined.upstream.readToken]]),
     OPERATOR_TOKEN: '', HA_AGENT_KEY: joined.agentKey };
-  await command('sh', ['-eu'], { cwd: target, env, input: joined.setup, timeout: 90000 });
+  await command('sh', ['-eu'], { cwd: target, env: { OPERATOR_TOKEN: '', HA_AGENT_KEY: joined.agentKey,
+    GIT_CONFIG_COUNT: '0', GIT_TRACE: '0', GIT_CURL_VERBOSE: undefined, GIT_TRACE_CURL: '0' },
+    input: joined.setup, timeout: 90000 });
   let cwd = target;
   try {
     if (await command('git', ['rev-parse', '--show-toplevel'], { cwd }) !== cwd) throw new Error('parent checkout');
@@ -125,6 +127,11 @@ export async function joinProject(input, options = {}) {
       await command('git', ['remote', 'set-url', name, url], { cwd });
     } catch { await command('git', ['remote', 'add', name, url], { cwd }); }
   }
+  for (const url of [joined.fork.remote, joined.upstream.remote]) {
+    let configured = false;
+    try { await command('git', ['config', '--local', '--get-all', `http.${url}.extraHeader`], { cwd }); configured = true; } catch { /* no local header */ }
+    if (configured) await command('git', ['config', '--local', '--unset-all', `http.${url}.extraHeader`], { cwd });
+  }
   const gitdir = await gitDirectory(cwd);
   const authPath = pathJoin(gitdir, 'ha-auth');
   await writeFile(authPath, [[joined.fork.remote, joined.fork.token], [joined.upstream.remote, joined.upstream.readToken]]
@@ -132,6 +139,8 @@ export async function joinProject(input, options = {}) {
   await chmod(authPath, 0o600);
   await command('git', ['config', '--local', '--add', 'include.path', authPath], { cwd });
   await command('git', ['config', '--local', 'protocol.version', '1'], { cwd });
+  await command('git', ['config', '--local', 'user.name', joined.agent], { cwd });
+  await command('git', ['config', '--local', 'user.email', `${joined.agent}@demo.heddle.local`], { cwd });
   await command('git', ['config', '--local', 'notes.displayRef', 'refs/notes/heddle*'], { cwd });
   const state = { api: joined.api, project: joined.project, task: joined.task, agent: joined.agent, agentKey: joined.agentKey };
   await writeFile(pathJoin(gitdir, 'ha.json'), JSON.stringify(state) + '\n', { mode: 0o600 });

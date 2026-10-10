@@ -5,7 +5,9 @@ Track A binds `env.AI` once and calls the §7.4 function after its five-second d
 
 ```ts
 import { createReviewer } from '../reviewer/reviewer';
-const review = createReviewer(env);
+// In Track A's ProjectDO constructor (before scheduling review work):
+env.REVIEW ??= { review: createReviewer(env) };
+const review = env.REVIEW.review;
 const result = await review({ intent, base, candidates, turns });
 // Enroll reviewer with its own key, then engine discuss with result.summary/perCandidate.
 // The model never signs, mutates the repository, or makes the human decision.

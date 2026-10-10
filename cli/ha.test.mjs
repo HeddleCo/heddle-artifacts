@@ -28,7 +28,7 @@ test('API authorization errors are typed and do not expose server credentials', 
   await assert.rejects(request(`${mock.url}/api/projects`, 'wrong', { id: 'cli', seed: { template: 'demo' } }), e => e.status === 403 && e.message === 'HTTP 403: API request rejected');
 });
 
-for (const setupMode of ['none', 'child']) {
+for (const setupMode of ['none', 'child', 'track-A']) {
   test(`setup ${setupMode} creates an independent clone inside a parent Git checkout`, async t => {
     const mock = await startMock({ setupMode }); t.after(mock.close);
     const parent = await mkdtemp(join(tmpdir(), 'heddle-D-parent-')); t.after(() => rm(parent, { recursive: true, force: true }));
@@ -40,6 +40,9 @@ for (const setupMode of ['none', 'child']) {
     const result = await joinProject(`${mock.url}/p/cli`, { task: 'docs', as: 'alice', token: mock.operatorToken, directory: join(parent, 'clone') });
     assert.equal(await command('git', ['rev-parse', '--show-toplevel'], { cwd: result.cwd }), result.cwd);
     assert.ok(result.cwd.startsWith(parent));
+    const headers = await command('git', ['config', '--get-all', `http.${mock.url}/git/cli--docs--alice.git.extraHeader`], { cwd: result.cwd });
+    assert.equal(headers.split('\n').length, 1);
+    await command('git', ['fetch', '--quiet', 'upstream'], { cwd: result.cwd });
     assert.deepEqual(await readdir(join(parent, '.git')), parentEntries);
     assert.equal(await readFile(join(parent, '.git/config'), 'utf8'), parentConfig);
   });

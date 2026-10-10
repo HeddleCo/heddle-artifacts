@@ -1,0 +1,20 @@
+Local rehearsal 1: PASS scripted: full storyline in 5.1s; candidates exact; tree match; fsck/index-pack strict; why retained.
+Local rehearsal 2: PASS scripted: full storyline in 4.7s; candidates exact; tree match; fsck/index-pack strict; why retained.
+✔ D-T1 local contract rehearsal twice after reset; CLI status/why and scoped Git auth (11552.420383ms)
+Mutation conflict: exit 1; demo: Parser candidates must conflict on src/table.ts:parseRow
+✔ load-bearing storyline guard rejects conflict mutation (4774.852289ms)
+Mutation notes: exit 1; demo: Git log lost chosen/rejected narrative
+✔ load-bearing storyline guard rejects notes mutation (2635.131014ms)
+Mutation stale: exit 1; demo: HTTP 409: candidates changed, review again
+✔ load-bearing storyline guard rejects stale mutation (1972.060677ms)
+Mutation tests: exit 1; demo: Bob tests must pass before the scripted decision
+✔ load-bearing storyline guard rejects tests mutation (2348.635313ms)
+✔ reset refuses to guess a production deletion endpoint (41.365708ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23542.693766

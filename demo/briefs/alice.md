@@ -13,5 +13,6 @@ Work only in your own clone and lane. Use plain Git to push `HEAD:main` to `orig
 edit other agents' work. Do not edit heddle, weft, api, or infrastructure. No weft
 imports, URLs or biscuits. Every source file carries Apache-2.0 SPDX. Never print,
 commit or paste tokens. Credentials stay in local Git headers; do not show config
-on camera. Run tests and report exact output; demonstrate the new test fails on
+on camera. Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+Run tests and report exact output; demonstrate the new test fails on
 the base. If blocked, report the exact cause; use only a named fallback.

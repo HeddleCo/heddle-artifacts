@@ -10,7 +10,7 @@ mkdir /work
 cd /work
 printf '%s\n' '$ git clone <private local source mirror> heddle-artifacts'
 git clone --quiet "$SOURCE_URL" heddle-artifacts
-unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CURL_VERBOSE GIT_TRACE_CURL
 cd heddle-artifacts
 printf '%s\n' '$ node --version; git --version'
 node --version

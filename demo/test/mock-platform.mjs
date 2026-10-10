@@ -22,7 +22,7 @@ function raw(program, args, options = {}) {
 export async function startMock({ root, port = 0, operatorToken = randomBytes(32).toString('hex'), mutation, setupMode } = {}) {
   root ??= await mkdtemp(join(tmpdir(), 'heddle-D-platform-'));
   await mkdir(root, { recursive: true });
-  const projects = new Map(), tokens = new Map();
+  const projects = new Map(), tokens = new Map(), pushes = [];
   let url;
   const git = (repo, args, extra = {}) => command('git', ['--git-dir', repo, ...args], extra);
   const remote = name => `${url}/git/${name}.git`;
@@ -88,6 +88,8 @@ export async function startMock({ root, port = 0, operatorToken = randomBytes(32
       const auth = tokens.get(req.headers.authorization?.replace(/^Bearer /, ''));
       const push = parsed.searchParams.get('service') === 'git-receive-pack' || parsed.pathname.endsWith('/git-receive-pack');
       if (!match || !auth || auth.name !== match[1] || (push && auth.scope !== 'write')) return json(res, 403, { error: 'Git auth scope' });
+      const pushEvent = push ? { repo: match[1], startedAt: new Date().toISOString() } : undefined;
+      if (pushEvent) pushes.push(pushEvent);
       const child = spawn('git', ['http-backend'], { env: { ...process.env, GIT_PROJECT_ROOT: root, GIT_HTTP_EXPORT_ALL: '1',
         PATH_INFO: `/${match[1]}.git${match[2] ?? ''}`, QUERY_STRING: parsed.searchParams.toString(),
         REQUEST_METHOD: req.method, CONTENT_TYPE: req.headers['content-type'] ?? '', REMOTE_USER: 'fixture',
@@ -106,7 +108,7 @@ export async function startMock({ root, port = 0, operatorToken = randomBytes(32
         res.writeHead(status, headers); sent = true; res.write(header.subarray(end + 4)); header = Buffer.alloc(0);
       });
       child.on('error', () => { if (!res.headersSent) json(res, 500, { error: 'fixture Git unavailable' }); else res.end(); });
-      child.on('close', () => res.end()); child.stdin.on('error', () => {}); req.pipe(child.stdin); return;
+      child.on('close', code => { if (pushEvent) { pushEvent.finishedAt = new Date().toISOString(); pushEvent.exit = code; } res.end(); }); child.stdin.on('error', () => {}); req.pipe(child.stdin); return;
     }
     serialized = serialized.then(async () => {
       let body = ''; for await (const chunk of req) body += chunk;
@@ -161,10 +163,16 @@ export async function startMock({ root, port = 0, operatorToken = randomBytes(32
         const agentKey = randomBytes(32).toString('hex');
         project.agents.push({ ...body, agentKey, publicKey: hash(`fixture-key-${body.id}`) });
         task.lanes.push({ project: project.id, task: task.slug, agent: body.id, forkRepo, forkRemote: remote(forkRepo), laneThread: `task/${task.slug}/${body.id}`, status: 'active' });
-        return json(res, 200, { agentKey, fork: { remote: remote(forkRepo), token: token(forkRepo, 'write'), expiresAt: new Date(Date.now() + 43200000).toISOString() },
+        const forkToken = token(forkRepo, 'write');
+        return json(res, 200, { agentKey, fork: { remote: remote(forkRepo), token: forkToken, expiresAt: new Date(Date.now() + 43200000).toISOString() },
           upstream: { remote: project.canonicalRemote, readToken: project.readToken },
-          // Script is deliberately token-free; ha provides scoped env auth and verifies remotes.
-          setup: setupMode === 'none' ? '# auth-only setup\n' : `git clone --quiet '${remote(forkRepo)}' ${setupMode === 'child' ? 'checkout' : '.'}\n` + (setupMode === 'child' ? 'cd checkout\n' : '') + `git remote add upstream '${project.canonicalRemote}'\n` });
+          // Mirror Track A's self-authenticating script, including its persisted headers.
+          setup: setupMode === 'none' ? '# auth-only setup\n' :
+            `git -c 'http.${remote(forkRepo)}.extraHeader=Authorization: Bearer ${forkToken}' clone --quiet '${remote(forkRepo)}' ${setupMode === 'child' ? 'checkout' : '.'}\n` +
+            (setupMode === 'child' ? 'cd checkout\n' : '') + `git remote add upstream '${project.canonicalRemote}'\n` +
+            `git config 'http.${remote(forkRepo)}.extraHeader' 'Authorization: Bearer ${forkToken}'\n` +
+            `git config 'http.${project.canonicalRemote}.extraHeader' 'Authorization: Bearer ${project.readToken}'\n`
+ });
       }
       if (action === '' && req.method === 'GET') { await refresh(project, task); return json(res, 200, { task: { slug: task.slug, intent: task.intent }, candidates: task.candidates, turns: task.turns, review: task.review, decision: task.decision, heads: task.heads }); }
       if (action === '/turns') {
@@ -195,7 +203,7 @@ export async function startMock({ root, port = 0, operatorToken = randomBytes(32
   });
   await new Promise(r => server.listen(port, '127.0.0.1', r));
   url = `http://127.0.0.1:${server.address().port}`;
-  return { url, root, operatorToken, projects, tokens,
+  return { url, root, operatorToken, projects, tokens, pushes,
     close: async () => { await new Promise(r => server.close(r)); await rm(root, { recursive: true, force: true }); } };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

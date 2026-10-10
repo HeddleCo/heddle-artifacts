@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { startMock } from './mock-platform.mjs';
 import { command, gitAuth } from '../../cli/ha.mjs';
-const mock = await startMock();
+const mock = await startMock({ mutation: process.env.MOCK_MUTATION });
 const temp = await mkdtemp(join(tmpdir(), 'heddle-D-clean-'));
 try {
   const key = randomBytes(32).toString('hex');
@@ -15,7 +15,7 @@ try {
   const source = `${mock.url}/git/source.git`;
   const env = { ...gitAuth([[source, key]]), SOURCE_URL: source, OPERATOR_TOKEN: mock.operatorToken,
     DEMO_URL: mock.url, DEMO_PROJECT: 'clean-demo', DEMO_DIR: '/tmp/heddle-try-it' };
-  await writeFile(join(temp, 'env'), Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n') + '\n', { mode: 0o600 });
+  await writeFile(join(temp, 'env'), Object.entries(env).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${v}`).join('\n') + '\n', { mode: 0o600 });
   const args = ['run', '--rm', '--network', 'host', '--env-file', join(temp, 'env'),
     '-v', `${resolve('demo/test/clean-container.sh')}:/input/clean-container.sh:ro`,
     'node:22-bookworm-slim', 'bash', '/input/clean-container.sh'];

@@ -1,0 +1,20 @@
+
+> test
+> vitest run --maxWorkers=1
+
+
+ RUN  v4.1.11 /home/heddleco/HeddleCo/workspace/heddle-artifacts-D/reviewer
+
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  20:27:28
+   Duration  198ms (transform 57ms, setup 0ms, import 109ms, tests 10ms, environment 0ms)
+
+
+> check
+> tsc --noEmit
+
+bypass schema/candidate validation: exit 1; Tests  5 failed | 11 passed (16)
+remove labeled fallback: exit 1; Tests  10 failed | 6 passed (16)
+remove two retries: exit 1; Tests  8 failed | 8 passed (16)
