@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: Apache-2.0
+import type { Agent, Lane, Candidate, Turn, Review, Decision } from './contracts';
+// These are §7.2 response envelopes; §7.1 defines their nested domain types.
+export interface Task { slug: string; intent: string; status: string; lanes: Lane[]; candidates: Candidate[]; decision?: Decision }
+export interface ProjectView { project: { id: string; canonicalRemote?: string } | string; agents: Agent[]; tasks: Task[] }
+export interface TaskView { task: Pick<Task, 'slug' | 'intent' | 'status'>; candidates: Candidate[]; turns: Turn[]; review?: Review; decision?: Decision; heads: string[] }
+export interface WhyView { sha: string; narrative: string; decision?: Decision; candidate?: Candidate }
+export class ApiError extends Error { constructor(public status: number) { super(status === 403 || status === 401 ? 'Access denied. Sign in with an operator session.' : `Request failed (${status}). Try again.`); } }
+export const projectPath = (p: string) => `/api/projects/${encodeURIComponent(p)}`;
+export const taskPath = (p: string, t: string) => `${projectPath(p)}/tasks/${encodeURIComponent(t)}`;
+export async function request<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { credentials: 'same-origin', signal,
+    ...(body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+  if (!response.ok) throw new ApiError(response.status);
+  return await response.json() as T;
+}
+export async function diff(p: string, t: string, a: string, signal?: AbortSignal) {
+  const response = await fetch(`${taskPath(p, t)}/candidates/${encodeURIComponent(a)}/diff`, { credentials: 'same-origin', signal });
+  if (!response.ok) throw new ApiError(response.status);
+  return (await response.text()).slice(0, 512 * 1024);
+}

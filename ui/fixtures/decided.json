@@ -1,0 +1,247 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "project": {
+    "id": "demo",
+    "canonicalRemote": "https://example.artifacts.cloudflare.net/git/heddle-demo/demo.git"
+  },
+  "agents": [
+    {
+      "id": "alice",
+      "kind": "agent",
+      "displayName": "Alice",
+      "publicKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "provider": "openai",
+      "model": "gpt-6"
+    },
+    {
+      "id": "bob",
+      "kind": "agent",
+      "displayName": "Bob",
+      "publicKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "provider": "anthropic",
+      "model": "sonnet"
+    },
+    {
+      "id": "carol",
+      "kind": "agent",
+      "displayName": "Carol",
+      "publicKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "provider": "openai",
+      "model": "gpt-6"
+    },
+    {
+      "id": "reviewer",
+      "kind": "reviewer",
+      "displayName": "Reviewer",
+      "publicKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "provider": "workers-ai",
+      "model": "qwen-coder"
+    },
+    {
+      "id": "luke",
+      "kind": "human",
+      "displayName": "Luke",
+      "publicKey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "parser-escapes",
+      "intent": "Support escaped pipes (\\|) inside table cells",
+      "status": "landed",
+      "lanes": [
+        {
+          "project": "demo",
+          "task": "parser-escapes",
+          "agent": "alice",
+          "forkRepo": "demo--parser-escapes--alice",
+          "forkRemote": "https://example.artifacts.cloudflare.net/git/heddle-demo/demo--parser-escapes--alice.git",
+          "laneThread": "task/parser-escapes/alice",
+          "status": "abandoned",
+          "lastSeenSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "project": "demo",
+          "task": "parser-escapes",
+          "agent": "bob",
+          "forkRepo": "demo--parser-escapes--bob",
+          "forkRemote": "https://example.artifacts.cloudflare.net/git/heddle-demo/demo--parser-escapes--bob.git",
+          "laneThread": "task/parser-escapes/bob",
+          "status": "released",
+          "lastSeenSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "candidates": [
+        {
+          "task": "parser-escapes",
+          "agent": "alice",
+          "state": "state-alice-1",
+          "sourceSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "treeSha": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "parentSha": "0000000000000000000000000000000000000000",
+          "subject": "Support escaped pipes",
+          "diffstat": {
+            "files": 1,
+            "insertions": 14,
+            "deletions": 3
+          },
+          "tests": {
+            "status": "fail",
+            "passed": 12,
+            "failed": 2,
+            "summary": "Public API regression",
+            "durationMs": 320
+          },
+          "conflicts": [
+            {
+              "path": "src/table.ts",
+              "region": "parseRow",
+              "with": [
+                "bob"
+              ]
+            }
+          ],
+          "signedBy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "capturedAt": "2026-10-10T18:15:12Z"
+        },
+        {
+          "task": "parser-escapes",
+          "agent": "bob",
+          "state": "state-bob-1",
+          "sourceSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "treeSha": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          "parentSha": "0000000000000000000000000000000000000000",
+          "subject": "Support escaped pipes",
+          "diffstat": {
+            "files": 1,
+            "insertions": 14,
+            "deletions": 3
+          },
+          "tests": {
+            "status": "pass",
+            "passed": 14,
+            "failed": 0,
+            "summary": "All parser cases pass",
+            "durationMs": 320
+          },
+          "conflicts": [
+            {
+              "path": "src/table.ts",
+              "region": "parseRow",
+              "with": [
+                "alice"
+              ]
+            }
+          ],
+          "signedBy": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "capturedAt": "2026-10-10T18:15:12Z"
+        }
+      ],
+      "decision": {
+        "task": "parser-escapes",
+        "decider": "luke",
+        "pick": "bob",
+        "rationale": "API stability matters more than the shorter regex.",
+        "alternatives": [
+          "alice"
+        ],
+        "resolutionState": "state-resolution",
+        "landState": "state-land",
+        "mainSha": "ffffffffffffffffffffffffffffffffffffffff",
+        "at": "2026-10-10T18:16:00Z"
+      }
+    },
+    {
+      "slug": "docs-readme",
+      "intent": "Document escaped pipes with a working example",
+      "status": "active",
+      "lanes": [
+        {
+          "project": "demo",
+          "task": "docs-readme",
+          "agent": "carol",
+          "forkRepo": "demo--docs-readme--carol",
+          "forkRemote": "https://example.artifacts.cloudflare.net/git/heddle-demo/demo--docs-readme--carol.git",
+          "laneThread": "task/docs-readme/carol",
+          "status": "active",
+          "lastSeenSha": "cccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "candidates": [
+        {
+          "task": "docs-readme",
+          "agent": "carol",
+          "state": "state-carol-1",
+          "sourceSha": "cccccccccccccccccccccccccccccccccccccccc",
+          "treeSha": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+          "parentSha": "0000000000000000000000000000000000000000",
+          "subject": "Document table escapes",
+          "diffstat": {
+            "files": 1,
+            "insertions": 14,
+            "deletions": 3
+          },
+          "tests": {
+            "status": "pass",
+            "passed": 14,
+            "failed": 0,
+            "summary": "All parser cases pass",
+            "durationMs": 320
+          },
+          "conflicts": [],
+          "signedBy": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "capturedAt": "2026-10-10T18:15:12Z"
+        }
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn-review",
+      "task": "parser-escapes",
+      "author": "reviewer",
+      "kind": "reviewer",
+      "body": "Bob preserves the public API and handles escaped pipes. Alice changes the API.",
+      "heddleDiscussion": "discussion-parser",
+      "signedBy": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "at": "2026-10-10T18:15:15Z"
+    }
+  ],
+  "review": {
+    "summary": "Preserve API stability while supporting escaped pipes.",
+    "perCandidate": [
+      {
+        "agent": "alice",
+        "verdict": "concerns",
+        "notes": "Changes the public API; two regression tests fail."
+      },
+      {
+        "agent": "bob",
+        "verdict": "approve",
+        "notes": "Keeps the public API; all fourteen tests pass."
+      }
+    ],
+    "recommendation": {
+      "pick": "bob",
+      "why": "Handles escapes without changing callers."
+    },
+    "model": "workers-ai/qwen-coder"
+  },
+  "why": {
+    "sha": "ffffffffffffffffffffffffffffffffffffffff",
+    "narrative": "Heddle decision \u00b7 task parser-escapes\nIntent:    Support escaped pipes (\\|) inside table cells\nChosen:    bob   bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  tests 14/14  signed ed25519:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb (anthropic / sonnet)\nRejected:  alice aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  tests 12/14  conflicts: src/table.ts:parseRow\nReview:    reviewer (workers-ai/qwen-coder): bob keeps the public API.\nDiscussion: luke: agree \u2014 API stability matters more than the shorter regex.\nDecided by luke ed25519:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee \u00b7 resolution state-resolution \u00b7 land state-land",
+    "decision": {
+      "task": "parser-escapes",
+      "decider": "luke",
+      "pick": "bob",
+      "rationale": "API stability matters more than the shorter regex.",
+      "alternatives": [
+        "alice"
+      ],
+      "resolutionState": "state-resolution",
+      "landState": "state-land",
+      "mainSha": "ffffffffffffffffffffffffffffffffffffffff",
+      "at": "2026-10-10T18:16:00Z"
+    }
+  }
+}
