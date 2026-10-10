@@ -48,7 +48,11 @@ export class EngineClient {
         leases.push({ repo: lane.forkRepo, token: token.id }); reads[lane.forkRemote] = token.plaintext;
       }
       let write = '';
-      if (project) { using repo = await namespace.get(project.id); const token = await repo.createToken('write', 600); leases.push({ repo: project.id, token: token.id }); write = token.plaintext; }
+      if (project) {
+        using repo = await namespace.get(project.id);
+        const read = await repo.createToken('read', 600); leases.push({ repo: project.id, token: read.id }); reads[project.canonicalRemote] = read.plaintext;
+        const token = await repo.createToken('write', 600); leases.push({ repo: project.id, token: token.id }); write = token.plaintext;
+      }
       return await fn({ ARTIFACTS_READ_TOKENS: JSON.stringify(reads), ARTIFACTS_WRITE_TOKEN: write });
     } finally {
       for (const lease of leases) { try { using repo = await namespace.get(lease.repo); await repo.revokeToken(lease.token); } catch {} }

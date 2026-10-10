@@ -58,7 +58,10 @@ export class ProjectDO extends DurableObject<Env> {
       if (context.review) { this.store.put('meta', `review:${input.task}`, context.review); events.push({ type: 'review.posted', turn: result, review: context.review }); }
       else events.push({ type: 'discussion.posted', turn: result });
     }
-    if (command === 'decide') this.store.put('decisions', input.task, { ...result, mainSha: '' });
+    if (command === 'decide') {
+      this.store.put('decisions', input.task, { ...result, mainSha: '' });
+      for (const lane of this.store.all<Lane>('lanes').filter(l => l.task === input.task)) this.store.put('lanes', `${lane.task}/${lane.agent}`, { ...lane, status: lane.agent === input.pick ? 'released' : 'abandoned' });
+    }
     if (command === 'publish') {
       this.store.put('meta', 'mainSha', result.main); this.store.put('meta', 'verify', result.verify);
       for (const decision of this.store.all<Decision>('decisions').filter(d => !d.mainSha)) {
@@ -76,8 +79,12 @@ export class ProjectDO extends DurableObject<Env> {
   private async recover() {
     await this.engine.replay();
     await this.syncCandidates();
-    for (const decision of this.store.all<Decision>('decisions').filter(d => !d.mainSha)) await this.engine.mutate('publish', { opId: `publish:${decision.landState}`, canonical: { remote: this.store.get('meta', 'project').canonicalRemote } });
     await this.revokeReleased();
+    for (const decision of this.store.all<Decision>('decisions').filter(d => !d.mainSha)) {
+      const opId = `publish:${decision.landState}`, previous = this.store.rows<{ status: string }>('SELECT status FROM ops WHERE id=?', opId)[0];
+      if (previous && ['failed', 'rejected'].includes(previous.status)) continue;
+      await this.engine.mutate('publish', { opId, canonical: { remote: this.store.get('meta', 'project').canonicalRemote } });
+    }
   }
   private async revokeReleased() {
     for (const lane of this.store.all<Lane>('lanes').filter(l => l.status !== 'active')) {
@@ -225,7 +232,7 @@ export class ProjectDO extends DurableObject<Env> {
         const taskId = slug(parts[4]), task = this.task(taskId);
         if (parts.length === 5 && request.method === 'GET') return Response.json({ task, candidates: this.candidates(taskId), turns: this.store.all<Turn>('turns').filter(t => t.task === taskId), review: this.store.get('meta', `review:${taskId}`), decision: this.store.get('decisions', taskId), heads: this.heads(taskId) });
         if (parts[5] === 'agents' && request.method === 'POST') {
-          if (task.status === 'decided') throw new HttpError(409, 'task_decided');
+          if (task.status === 'decided' || this.store.get('decisions', taskId)) throw new HttpError(409, 'task_decided');
           const body = await jsonBody(request), id = slug(body.id), kind = body.kind;
           if (!['agent', 'human', 'reviewer'].includes(kind)) throw new HttpError(400, 'invalid_kind');
           const agent = { id, kind, displayName: text(body.displayName, 200), ...(body.provider ? { provider: text(body.provider, 200) } : {}), ...(body.model ? { model: text(body.model, 200) } : {}) };
@@ -265,8 +272,11 @@ export class ProjectDO extends DurableObject<Env> {
           if (task.status === 'decided') throw new HttpError(409, 'task_decided');
           const decider = slug(body.decider); if (this.store.get<Agent>('agents', decider)?.kind !== 'human') throw new HttpError(403, 'human_decider_required');
           const pick = slug(body.pick); if (!this.candidates(taskId).some(c => c.agent === pick)) throw new HttpError(400, 'candidate_not_found');
-          const decision: Decision = await this.engine.mutate('decide', { opId: crypto.randomUUID(), task: taskId, decider, pick, rationale: text(body.rationale), expectHeads: body.expectHeads });
-          await this.engine.mutate('publish', { opId: `publish:${decision.landState}`, canonical: { remote: this.store.get('meta', 'project').canonicalRemote } });
+          const existing = this.store.get<Decision>('decisions', taskId);
+          if (existing && (existing.pick !== pick || existing.decider !== decider || existing.rationale !== body.rationale)) throw new HttpError(409, 'decision_in_progress');
+          const decision: Decision = existing ?? await this.engine.mutate('decide', { opId: crypto.randomUUID(), task: taskId, decider, pick, rationale: text(body.rationale), expectHeads: body.expectHeads });
+          await this.revokeReleased();
+          await this.engine.mutate('publish', { opId: existing ? `publish:${decision.landState}:retry:${crypto.randomUUID()}` : `publish:${decision.landState}`, canonical: { remote: this.store.get('meta', 'project').canonicalRemote } });
           await this.revokeReleased(); await this.nextAlarm(); return Response.json(this.store.get('decisions', taskId));
         }
         throw new HttpError(404, 'not_found');

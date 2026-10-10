@@ -11,7 +11,7 @@ export class ProjectDO extends Coordinator {
 }
 export class StubEngine extends DurableObject {
   state = emptyState();
-  calls: Array<{ command: string; input: any }> = [];
+  calls: Array<{ command: string; input: any; hasCanonicalRead?: boolean }> = [];
   delay: { command: string; ms: number } | undefined;
   async delayNext(command: string, ms: number) { this.delay = { command, ms }; }
   failures: { command: string; count: number; after: boolean } | undefined;
@@ -22,7 +22,10 @@ export class StubEngine extends DurableObject {
     const command = new URL(request.url).pathname.slice(1);
     if (command === 'restore') { this.state = JSON.parse(await request.text()); this.calls.push({ command, input: {} }); return Response.json({ generation: this.state.generation }); }
     if (command === 'snapshot') return new Response(JSON.stringify(this.state));
-    const input = await request.json(); this.calls.push({ command, input });
+    const input = await request.json();
+    const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}');
+    const reads = JSON.parse(env.ARTIFACTS_READ_TOKENS ?? '{}');
+    this.calls.push({ command, input, hasCanonicalRead: command === 'publish' ? typeof reads[input.canonical.remote] === 'string' : undefined });
     if (this.delay?.command === command) { const ms = this.delay.ms; this.delay = undefined; await new Promise(r => setTimeout(r, ms)); }
     if (this.failures?.command === command && this.failures.count > 0) {
       this.failures.count--; if (this.failures.after) executeFixture(this.state, command, input);

@@ -21,12 +21,16 @@ export function checkOrigin(request: Request): void {
   const origin = request.headers.get('origin');
   if (origin && origin !== new URL(request.url).origin) throw new HttpError(403, 'origin');
 }
-export async function jsonBody(request: Request): Promise<Record<string, any>> {
+export async function bodyText(request: Request, maxBytes = 65536): Promise<string> {
   if (!request.body) throw new HttpError(400, 'body_required');
   const reader = request.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
-  while (true) { const { done, value } = await reader.read(); if (done) break; size += value.byteLength; if (size > 65536) { await reader.cancel(); throw new HttpError(413, 'body_limit'); } chunks.push(value); }
+  while (true) { const { done, value } = await reader.read(); if (done) break; size += value.byteLength; if (size > maxBytes) { await reader.cancel(); throw new HttpError(413, 'body_limit'); } chunks.push(value); }
   const bytes = new Uint8Array(size); let off = 0; for (const chunk of chunks) { bytes.set(chunk, off); off += chunk.byteLength; }
-  try { const body = JSON.parse(new TextDecoder().decode(bytes)); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error(); return body; } catch { throw new HttpError(400, 'invalid_json'); }
+  return new TextDecoder().decode(bytes);
+}
+export async function jsonBody(request: Request): Promise<Record<string, any>> {
+  const raw = await bodyText(request);
+  try { const body = JSON.parse(raw); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error(); return body; } catch { throw new HttpError(400, 'invalid_json'); }
 }
 export function slug(value: unknown): string {
   if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(value) || value.includes('--')) throw new HttpError(400, 'invalid_slug');

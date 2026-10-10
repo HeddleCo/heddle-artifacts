@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Env } from './env';
-import { checkOrigin, credential, HttpError, jsonBody, operator, responseError, slug } from './auth';
+import { bodyText, checkOrigin, credential, HttpError, jsonBody, operator, responseError, slug } from './auth';
 import { routeEvent } from './events';
 export async function fetchApi(request: Request, env: Env): Promise<Response> {
   try {
@@ -14,7 +14,7 @@ export async function fetchApi(request: Request, env: Env): Promise<Response> {
       if (request.method === 'GET') return new Response('<!doctype html><meta name="viewport" content="width=device-width"><title>Heddle login</title><form method="post"><label>Operator token <input name="token" type="password" required autocomplete="current-password"></label><button>Sign in</button></form>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
       if (request.method !== 'POST') return new Response(null, { status: 405 });
       checkOrigin(request); if (Number(request.headers.get('content-length') ?? 0) > 4096) throw new HttpError(413, 'body_limit');
-      const body = await request.text(); if (body.length > 4096) throw new HttpError(413, 'body_limit'); const token = new URLSearchParams(body).get('token') ?? '';
+      const body = await bodyText(request, 4096); const token = new URLSearchParams(body).get('token') ?? '';
       if (!await operator(new Request(request.url, { headers: { authorization: `Bearer ${token}` } }), env.OPERATOR_TOKEN)) throw new HttpError(403, 'forbidden');
       return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': `heddle_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${url.protocol === 'https:' ? '; Secure' : ''}`, 'cache-control': 'no-store' } });
     }

@@ -86,6 +86,20 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     expect((await api(`${base}/agents/agent-0/token`, {}, joins[0].agentKey)).status).toBe(409);
     console.log('A-T4 PASS: missing token 403, agent token 403, stale heads 409, current heads land and revoke lane token');
   });
+  it('failed publication retains readable metadata, revokes forks and an operator retry resumes the existing decision', async () => {
+    const { p, base, project, engine } = await setup();
+    await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(250), 'event'); const task = await waitCandidates(base, 1);
+    await ok(`${base}/humans`, { id: 'luke', displayName: 'Luke' });
+    const body = { pick: 'agent-0', decider: 'luke', rationale: 'resume safely', expectHeads: task.heads };
+    await engine.failNext('publish', 3, false);
+    expect((await api(`${base}/tasks/parser-escapes/decision`, body)).status).toBe(503);
+    const board = await ok(base); expect(board.tasks[0].decision.mainSha).toBe(''); expect(board.tasks[0].lanes[0].status).toBe('released');
+    expect((await engine.stats()).calls.filter((c: any) => c.command === 'publish')).toHaveLength(3);
+    expect((await api(`${base}/tasks/parser-escapes/decision`, { ...body, rationale: 'different decision' })).status).toBe(409);
+    const landed = await ok(`${base}/tasks/parser-escapes/decision`, body); expect(landed.mainSha).toMatch(/^[a-f0-9]{40}$/);
+    const calls = (await engine.stats()).calls; expect(calls.filter((c: any) => c.command === 'decide')).toHaveLength(1);
+    expect(calls.filter((c: any) => c.command === 'publish').every((c: any) => c.hasCanonicalRead)).toBe(true);
+  });
   it('A-T5 crash mid-ingest restores R2 and replays the same journaled op after DO eviction', async () => {
     const { p, base, project, engine } = await setup();
     const before = await runInDurableObject(project, instance => instance.store.get<number>('meta', 'stateGeneration'));
@@ -117,6 +131,9 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     let acked = 0, retried = 0;
     await queue({ messages: [{ body: event, ack() { acked++; }, retry() { retried++; } }] } as unknown as MessageBatch<unknown>, env);
     expect(acked).toBe(1); expect(retried).toBe(0);
+    const unavailable = { ...env, PROJECT: { getByName() { return { async lookupFork() { throw new Error('fixture unavailable'); } }; } } } as unknown as Env;
+    await queue({ messages: [{ body: event, ack() { acked++; }, retry() { retried++; } }] } as unknown as MessageBatch<unknown>, unavailable);
+    expect(acked).toBe(1); expect(retried).toBe(1);
     await project.notePush(`${p}--parser-escapes--agent-1`, 'refs/heads/main', sha(601), 'event');
     await waitCandidates(base, 2);
     await runInDurableObject(project, async instance => { instance.store.put('meta', 'reviewDue:parser-escapes', 1); await instance.alarm(); });
@@ -140,6 +157,10 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     const cross = await SELF.fetch(`https://heddle.test${base}/humans`, { method: 'POST', headers: { authorization: `Bearer ${op}`, origin: 'https://other.test' }, body: JSON.stringify({ id: 'other', displayName: 'Other' }) }); expect(cross.status).toBe(403);
     const login = await SELF.fetch('https://heddle.test/login', { method: 'POST', redirect: 'manual', body: new URLSearchParams({ token: op }).toString(), headers: { 'content-type': 'application/x-www-form-urlencoded' } }); expect(login.status).toBe(303); expect(login.headers.get('set-cookie')).toContain('HttpOnly'); expect(login.headers.get('set-cookie')).toContain('Secure');
     const cookie = login.headers.get('set-cookie')!.split(';')[0]; expect((await SELF.fetch(`https://heddle.test${base}`, { headers: { cookie } })).status).toBe(200);
+  });
+  it('HTTP JSON and login bodies are bounded before parsing', async () => {
+    const response = await api('/api/projects', { id: 'bounded', seed: { template: 'demo' }, extra: 'x'.repeat(65536) }); expect(response.status).toBe(413);
+    const login = await SELF.fetch('https://heddle.test/login', { method: 'POST', body: 'token=' + 'x'.repeat(4096) }); expect(login.status).toBe(413);
   });
   it('three crashes emit engine.error and domain rejections do not retry', async () => {
     const { p, base, project, engine } = await setup(); await engine.failNext('ingest', 3, false);

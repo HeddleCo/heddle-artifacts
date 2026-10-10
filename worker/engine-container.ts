@@ -9,6 +9,7 @@ export class HeddleEngine extends Container {
     if (!['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'].includes(command)) return new Response(null, { status: 404 });
     if (!this.ctx.container) throw new Error('container_unavailable');
     if (!this.ctx.container.running) await this.start();
+    await this.ctx.container.setInactivityTimeout(2 * 60 * 60 * 1000);
     const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}') as Record<string, string>;
     const process = await this.ctx.container.exec(['engine', command], { stdin: request.body ?? undefined, env, stderr: 'ignore', signal: AbortSignal.timeout(180000) });
     // Preserve streaming for snapshots; the stream fails if the process exits nonzero.

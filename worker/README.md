@@ -40,7 +40,8 @@ push hook posts to `/__dev/events`; the 3-second alarm also polls active forks.
 That route returns 404 in production. Tokens appear only in authenticated
 responses and agent Git header configuration. The coordinator persists only
 agent-key SHA-256 hashes and Artifacts token IDs, and transient engine tokens
-last 10 minutes and are revoked after execution. Re-enrollment is idempotent
+last 10 minutes and are revoked after execution. Both canonical and fork read
+tokens are included so publishing can inspect remote notes safely. Re-enrollment is idempotent
 for identity, fork and lane; it rotates the agent key and fork token, so callers
 must use the returned credentials. A refresh requires one active lane for the
 agent, because §7's refresh path has no task selector.
@@ -70,7 +71,9 @@ journaled before exec, restores the committed R2 generation on retry, streams
 its snapshot through bounded multipart uploads, and commits its result,
 metadata and generation together. Failed engine commands have three attempts;
 domain rejections are not retried. A pending journal entry replays after DO
-and engine disk loss. Decisions resume publication after a crash, and losing
+and engine disk loss. Decisions resume publication after a crash. After three failed publication
+attempts, reads remain available and repeating the same operator decision
+resumes publication without a second native decision. Losing
 fork tokens are revoked. Heddle lease release belongs to engine `decide`, since
 §7 defines no separate release command.
 
@@ -83,6 +86,10 @@ and record the result in `docs/SMOKE.md`; the script uses a temporary HTTP-pull
 Queue so its event latency is observable without racing the deployed consumer.
 Subscription errors select R3 poll-only mode automatically and are stored on
 the lane. Notes rejection selects the architecture's R1 engine fallback.
+
+Long fork names use `full.slice(0, 46) + "-" + SHA256(full).slice(0, 16)`,
+where `full` is `project--task--agent`. Track B must use the same name when
+validating a lane remote; the current integration flow uses short names.
 
 Source API shapes were checked against Cloudflare's
 [Artifacts binding](https://developers.cloudflare.com/artifacts/api/workers-binding/),
