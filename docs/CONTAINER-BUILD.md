@@ -1,16 +1,27 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Current production-container build proposal
 
-Status, 2026-10-10: **local preparation only; no CI run or image build yet.**
+Status, 2026-10-10: **PR #6 published; first Actions attempt failed workflow
+validation before any runner job. A narrow context repair is prepared locally.**
+[Run 38090841378](https://github.com/HeddleCo/heddle-artifacts/actions/runs/38090841378)
+for head `6a0578e64b52e0b9d8a0df89343f79f6002d51d4` returned `jobs: []` and
+`billable: {}`. No checkout, build or container tests ran. This is a workflow
+validation failure, not a failed image build or evidence of a successful image.
 The hardened runtime differs from the historical PR #4 image. Its earlier
 338,926,309-byte result does not establish the current image's size or behavior.
 This executor has no Docker, Podman or BuildKit, so YAML/shell/static checks here
 are not a substitute for the proposed container run.
 
-## Proposed approval boundary
+## Original approval boundary and repair scope
 
-After reviewing the final source snapshot, ask the owner to approve these
-specific external actions together:
+The initial approval covered publication of the reviewed source, draft PR #6 and
+one actual build job as described below. The rejected workflow never allocated
+that job. The proposed repair changes only workflow initialization and this
+status document; the remaining source and build scope stay the same. Publish
+or run it only through the approved release procedure. No credential-source
+changes are included in this repair.
+
+The original actions were:
 
 1. Publish the reviewed integration source to the existing private
    `HeddleCo/heddle-artifacts` repository on `integration/demo-hardening` and open
@@ -171,16 +182,36 @@ Those checks passed without a Docker daemon. A synthetic shell harness also
 executed all five shell blocks with mocked Docker/Git commands and proved that
 oversize, root-user, failed selftest and unexpected manually selected source SHA
 are rejected. Those mocks validate workflow glue only: they are not image or
-native test evidence. GitHub's workflow service and `actionlint` have not
-validated this YAML.
+native test evidence. Those earlier checks missed GitHub's expression-context
+restrictions: `${{ runner.temp }}` is invalid in `jobs.<job_id>.env`, so the
+published first attempt failed before executing any step.
+
+The local repair removes that job-level expression. The first shell step derives
+and exports `DOCKER_CONFIG` from `$RUNNER_TEMP`, creates a private empty config,
+and appends that exact path to `$GITHUB_ENV` for subsequent steps. Absolute-path
+and CR/LF checks prevent a malformed path from adding another environment entry.
+No untrusted value is interpolated into the shell program.
+
+A dedicated regression now checks every expression location used here against
+[GitHub's context-availability table](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability):
+workflow concurrency uses `github`; job `if` uses `github`; job `env` uses
+`github`/`inputs`; checkout `with.ref` uses `github`. These are permitted in their
+respective locations. All other values are literals or runner-side shell
+variables. The regression rejects the original `runner`-in-job-env form and
+checks the environment-file handoff, including spaces and shell metacharacters
+as literal path bytes and rejection of CR/LF injection. YAML, all five Bash
+blocks and these focused positive/negative checks pass locally. `actionlint`
+and GitHub's service have not validated the repaired version; the next actual
+run remains the service-level verification.
 
 Still pending until separately approved and actually observed:
 
-- Final source publication and draft PR URL/head SHA
-- Repository-owner billing/allowance check and approval of the first run
+- Publication of the narrow workflow repair and its resulting PR #6 head SHA
+- Observation of the first actual runner job under the approved build scope;
+  the account's remaining included allowance is still unverified
 - Anonymous Git fetch and current image build on the runner
 - Current image ID, measured bytes, selftest and in-image native/dependency tests
-- Actions run URL and terminal result for the exact approved commit
+- New Actions run URL and terminal result for the exact repaired commit
 
 If the run fails, keep the failed stage explicit. Inspect logs before proposing
 a change or retry, preserve the trusted-tree/context boundaries, and seek new

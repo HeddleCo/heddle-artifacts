@@ -37,7 +37,6 @@ jobs:
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       EXPECTED_SHA: ${{ inputs.expected_sha }}
-      DOCKER_CONFIG: ${{ runner.temp }}/heddle-docker-config
       DOCKER_BUILDKIT: '1'
       IMAGE: heddle-artifacts-engine:ci
       CI: '1'
@@ -63,8 +62,13 @@ jobs:
             [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
             test "$EXPECTED_SHA" = "$SOURCE_SHA"
           fi
+          # Runner variables are available now; runner context is invalid in job env.
+          # Reject line breaks before writing the single-line GITHUB_ENV command.
+          [[ "$RUNNER_TEMP" == /* && "$RUNNER_TEMP" != *$'\n'* && "$RUNNER_TEMP" != *$'\r'* ]]
+          export DOCKER_CONFIG="$RUNNER_TEMP/heddle-docker-config"
           mkdir -m 700 "$DOCKER_CONFIG"
           printf '{}\n' > "$DOCKER_CONFIG/config.json"
+          printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
           probe=$(mktemp -d "$RUNNER_TEMP/heddle-upstream-XXXXXX")
           mkdir -m 700 "$probe/home"
           # No repository token, credential helper, Git config, SSH agent or
