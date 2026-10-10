@@ -26,11 +26,19 @@ export async function startEngineDevserver({ port = Number(process.env.ENGINE_DE
       const env = { ...process.env, ENGINE_STATE_DIR: stateDir, HEDDLE_STATE_DIR: stateDir, STATE_DIR: stateDir };
       for (const key of ['ARTIFACTS_READ_TOKENS', 'ARTIFACTS_WRITE_TOKEN']) if (typeof incoming[key] === 'string') env[key] = incoming[key];
       const child = spawn(process.execPath, [engine, command], { env, cwd: resolve('.') });
-      const stdout = []; child.stderr.resume();
+      const stdout = []; let diagnostics = '';
+      child.stderr.on('data', chunk => { if (process.env.ENGINE_DEV_DIAGNOSTICS === '1' && diagnostics.length < 4096) diagnostics += chunk.toString().slice(0, 4096 - diagnostics.length); });
       if (command === 'snapshot') { res.writeHead(200, { 'content-type': 'application/zstd' }); child.stdout.pipe(res, { end: false }); }
       else child.stdout.on('data', b => stdout.push(b));
       child.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end('{"error":{"code":"crash","message":"Engine process failed"}}'); });
       child.on('close', code => {
+        if (process.env.ENGINE_DEV_DIAGNOSTICS === '1' && code !== 0) {
+          let failure = 'no-json-error';
+          try { const parsed = JSON.parse(Buffer.concat(stdout).toString()); if (/^[a-z_]{1,40}$/.test(parsed.error?.code)) failure = parsed.error.code;
+            if (/^(git|heddle|tar|npm) failed \(exit [-0-9]+(, [a-z ]+)?\)$/.test(parsed.error?.message)) failure += ` (${parsed.error.message})`; } catch {}
+          const frames = diagnostics.split('\n').filter(line => /^engine\/(?:lib\/|test\/)?[a-z-]+\.mjs:\d+:\d+$/.test(line)).slice(0, 4);
+          console.error(`Engine command ${command} exit ${code}, code ${failure}${frames.length ? ` at ${frames.join(', ')}` : ''}`);
+        }
         if (command === 'snapshot') { if (code === 0) res.end(); else res.destroy(); }
         else { res.writeHead(code === 0 ? 200 : code === 2 ? 422 : 502, { 'content-type': 'application/json' }); res.end(Buffer.concat(stdout)); }
       });

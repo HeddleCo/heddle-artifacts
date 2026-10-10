@@ -4,6 +4,7 @@
   "name": "heddle-artifacts",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-10",
+  "alias": { "heddle-reviewer": "./reviewer/reviewer.ts" },
   "compatibility_flags": ["nodejs_compat"],
   "artifacts": [{ "binding": "ARTIFACTS", "namespace": "heddle-demo" }],
   "durable_objects": { "bindings": [

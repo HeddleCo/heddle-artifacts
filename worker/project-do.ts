@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { createReviewer } from 'heddle-reviewer';
 import { DurableObject } from 'cloudflare:workers';
 import type { Agent, Candidate, Decision, FeedEvent, Lane, Review, Turn } from '../contracts/types';
 import type { Env } from './env';
@@ -13,7 +14,7 @@ export class ProjectDO extends DurableObject<Env> {
   engine: EngineClient;
   private draining: Promise<void> | undefined;
   constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env); this.store = new Store(ctx.storage);
+    super(ctx, { ...env, REVIEW: env.REVIEW ?? { review: createReviewer(env) } }); this.store = new Store(ctx.storage);
     this.engine = new EngineClient(env, this.store, () => this.store.get('meta', 'project')?.id ?? '', this.apply.bind(this), this.emit.bind(this));
   }
   // Internal RPC registry: event routing never trusts task/agent fields in event input.
@@ -22,7 +23,8 @@ export class ProjectDO extends DurableObject<Env> {
   private emit(event: FeedEvent) {
     for (const socket of this.ctx.getWebSockets()) { try { socket.send(JSON.stringify(event)); } catch { socket.close(1011, 'feed unavailable'); } }
   }
-  private apply(command: string, input: any, result: any, context: any) {
+  private apply(command: string, input: any, result: any, context: any): FeedEvent[] {
+    const events: FeedEvent[] = [];
     if (command === 'init') this.store.put('meta', 'mainSha', result.mainSha);
     if (command === 'task.create') this.store.put('tasks', input.task, { slug: input.task, intent: input.intent, ...result, status: 'open' });
     if (command === 'agent.enroll') this.store.put('agents', input.agent.id, { ...input.agent, publicKey: result.publicKey });
@@ -31,36 +33,30 @@ export class ProjectDO extends DurableObject<Env> {
       this.store.put('lanes', `${input.task}/${input.agent}`, { ...lane, laneThread: result.laneThread, status: 'active' });
     }
     if (command === 'ingest') {
+      if (!Array.isArray(result.results) || result.results.length !== input.items.length) throw new Error('incomplete_ingest_result');
+      const consumed = new Set();
       for (const item of result.results) {
         const laneId = `${item.task}/${item.agent}`, lane = this.store.get<Lane>('lanes', laneId);
-        const original = input.items.find((i: any) => i.task === item.task && i.agent === item.agent && (!item.candidate || i.sha === item.candidate.sourceSha));
-        if (!original || !lane) throw new Error('engine_result_mismatch');
+        const original = input.items.find((i: any) => !consumed.has(i) && i.task === item.task && i.agent === item.agent && (!item.candidate || i.sha === item.candidate.sourceSha));
+        if (!original || !lane || !['captured', 'duplicate', 'rejected'].includes(item.status) || (item.status === 'captured' && !item.candidate)) throw new Error('engine_result_mismatch');
+        consumed.add(original);
         this.store.storage.sql.exec('UPDATE pushes SET status=? WHERE lane=? AND sha=?', item.status === 'rejected' ? 'rejected' : 'done', laneId, original.sha);
         if (item.candidate) {
           const candidate: Candidate = item.candidate;
           if (candidate.task !== item.task || candidate.agent !== item.agent || candidate.sourceSha !== original.sha || candidate.signedBy !== this.store.get<Agent>('agents', item.agent)?.publicKey) throw new Error('candidate_identity_mismatch');
           this.store.put('candidates', laneId, candidate);
           this.store.put('lanes', laneId, { ...lane, lastSeenSha: original.sha });
-          this.emit({ type: 'candidate.ready', candidate });
-          if (candidate.tests) this.emit({ type: 'tests.done', task: item.task, agent: item.agent, tests: candidate.tests });
+          events.push({ type: 'candidate.ready', candidate });
+          if (candidate.tests) events.push({ type: 'tests.done', task: item.task, agent: item.agent, tests: candidate.tests });
           this.store.put('meta', `reviewDue:${item.task}`, Date.now() + 5000);
         }
       }
-      // Existing candidates also acquire cross-referenced conflict previews.
-      for (const [task, conflicts] of Object.entries(result.conflicts ?? {})) {
-        for (const candidate of this.candidates(task)) {
-          const own = (conflicts as Candidate['conflicts']).filter(c => c.with.includes(candidate.agent));
-          if (own.length && !candidate.conflicts.length) {
-            candidate.conflicts = own.map(c => ({ ...c, with: this.candidates(task).map(x => x.agent).filter(a => a !== candidate.agent) }));
-            this.store.put('candidates', `${task}/${candidate.agent}`, candidate);
-          }
-        }
-      }
+      for (const item of result.results) this.store.put('meta', `candidateSync:${item.task}`, true);
     }
     if (command === 'discuss') {
       this.store.put('turns', result.id, result);
-      if (context.review) { this.store.put('meta', `review:${input.task}`, context.review); this.emit({ type: 'review.posted', turn: result, review: context.review }); }
-      else this.emit({ type: 'discussion.posted', turn: result });
+      if (context.review) { this.store.put('meta', `review:${input.task}`, context.review); events.push({ type: 'review.posted', turn: result, review: context.review }); }
+      else events.push({ type: 'discussion.posted', turn: result });
     }
     if (command === 'decide') this.store.put('decisions', input.task, { ...result, mainSha: '' });
     if (command === 'publish') {
@@ -69,16 +65,19 @@ export class ProjectDO extends DurableObject<Env> {
         decision.mainSha = result.main; this.store.put('decisions', decision.task, decision);
         const task = this.store.get<Task>('tasks', decision.task)!; this.store.put('tasks', task.slug, { ...task, status: 'decided' });
         for (const lane of this.store.all<Lane>('lanes').filter(l => l.task === decision.task)) this.store.put('lanes', `${lane.task}/${lane.agent}`, { ...lane, status: lane.agent === decision.pick ? 'released' : 'abandoned' });
-        this.emit({ type: 'decision.landed', decision });
+        events.push({ type: 'decision.landed', decision });
       }
     }
+    return events;
   }
   private candidates(task: string): Candidate[] { return this.store.all<Candidate>('candidates').filter(c => c.task === task); }
   private heads(task: string): string[] { return this.candidates(task).map(c => c.state).sort(); }
   private task(task: string): Task { const value = this.store.get<Task>('tasks', task); if (!value) throw new HttpError(404, 'task_not_found'); return value; }
   private async recover() {
     await this.engine.replay();
+    await this.syncCandidates();
     for (const decision of this.store.all<Decision>('decisions').filter(d => !d.mainSha)) await this.engine.mutate('publish', { opId: `publish:${decision.landState}`, canonical: { remote: this.store.get('meta', 'project').canonicalRemote } });
+    await this.revokeReleased();
   }
   private async revokeReleased() {
     for (const lane of this.store.all<Lane>('lanes').filter(l => l.status !== 'active')) {
@@ -109,14 +108,37 @@ export class ProjectDO extends DurableObject<Env> {
     this.draining = new Promise<void>(resolve => setTimeout(resolve, 25)).then(() => this.engine.serial(async () => { await this.recover(); await this.drain(); })).catch(() => {}).finally(() => { this.draining = undefined; });
     this.ctx.waitUntil(this.draining);
   }
+  private async syncCandidates() {
+    for (const task of this.store.all<Task>('tasks')) {
+      if (!this.store.get('meta', `candidateSync:${task.slug}`)) continue;
+      const result = await this.engine.read('candidates', { task: task.slug });
+      this.store.storage.transactionSync(() => {
+        for (const candidate of result.candidates as Candidate[]) {
+          if (candidate.task !== task.slug || candidate.signedBy !== this.store.get<Agent>('agents', candidate.agent)?.publicKey) throw new Error('candidate_identity_mismatch');
+          this.store.put('candidates', `${task.slug}/${candidate.agent}`, candidate);
+        }
+        this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `candidateSync:${task.slug}`);
+      });
+      for (const candidate of result.candidates as Candidate[]) this.emit({ type: 'candidate.ready', candidate });
+    }
+  }
   private async drain() {
+    for (let batch = 0; batch < 10; batch++) {
     const rows = this.store.rows<{ id: string; data: string }>("SELECT id,data FROM pushes WHERE status='pending' ORDER BY rowid LIMIT 100");
     if (!rows.length) return;
     const opId = `ingest:${await digest(rows.map(r => r.id).join('\n'))}`;
-    await this.engine.mutate('ingest', { opId, items: rows.map(r => JSON.parse(r.data)), runTests: true });
+    try { await this.engine.mutate('ingest', { opId, items: rows.map(r => JSON.parse(r.data)), runTests: true }); }
+    catch (error) {
+      const terminal = this.store.rows<{ status: string }>('SELECT status FROM ops WHERE id=?', opId)[0];
+      if (terminal && ['failed', 'rejected'].includes(terminal.status)) for (const row of rows) this.store.storage.sql.exec("UPDATE pushes SET status='failed' WHERE id=?", row.id);
+      throw error;
+    }
+    await this.syncCandidates();
     // An incomplete engine response must not leave acknowledged pushes permanently pending.
     const remaining = this.store.rows<{ id: string }>("SELECT id FROM pushes WHERE status='pending' LIMIT 1");
-    if (remaining.length) await this.ctx.storage.setAlarm(Date.now() + 3000);
+    if (!remaining.length) return;
+    }
+    await this.ctx.storage.setAlarm(Date.now() + 3000);
   }
   async poll() {
     for (const lane of this.store.all<Lane>('lanes').filter(l => l.status === 'active')) {
@@ -131,7 +153,9 @@ export class ProjectDO extends DurableObject<Env> {
       const reviewer = this.store.all<Agent>('agents').find(a => a.kind === 'reviewer');
       if (!reviewer || !this.env.REVIEW) { this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`); continue; }
       try {
-        const input = { intent: task.intent, base: task.baseSha, candidates: await Promise.all(candidates.map(async c => ({ agent: c.agent, tests: c.tests, diff: (await this.engine.read('diff', { task: task.slug, agent: c.agent, maxBytes: 524288 })).diff }))), turns: this.store.all<Turn>('turns').filter(t => t.task === task.slug) };
+        const diffs = [];
+        for (const c of candidates) diffs.push({ agent: c.agent, tests: c.tests, diff: (await this.engine.read('diff', { task: task.slug, agent: c.agent, maxBytes: 524288 })).diff });
+        const input = { intent: task.intent, base: task.baseSha, candidates: diffs, turns: this.store.all<Turn>('turns').filter(t => t.task === task.slug) };
         const review: Review = await this.env.REVIEW.review(input);
         await this.engine.mutate('discuss', { opId: `review:${await digest(this.heads(task.slug).join(':'))}`, task: task.slug, author: reviewer.id, body: JSON.stringify(review) }, { review });
         this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`);
@@ -178,6 +202,7 @@ export class ProjectDO extends DurableObject<Env> {
         if (parts.length === 3 && request.method === 'GET') return Response.json({ project: this.store.get('meta', 'project'), agents: this.store.all('agents'), tasks: this.store.all<Task>('tasks').map(task => ({ ...task, lanes: this.store.all<Lane>('lanes').filter(l => l.task === task.slug), candidates: this.candidates(task.slug), decision: this.store.get('decisions', task.slug) })) });
         if (parts[3] === 'humans' && request.method === 'POST') {
           const body = await jsonBody(request), id = slug(body.id), displayName = text(body.displayName, 200);
+          const prior = this.store.get<Agent>('agents', id); if (prior && prior.kind !== 'human') throw new HttpError(409, 'identity_exists');
           await this.engine.mutate('agent.enroll', { opId: `enroll:${id}`, agent: { id, kind: 'human', displayName } });
           const agent = this.store.get<Agent>('agents', id)!; return Response.json({ id, publicKey: agent.publicKey });
         }
@@ -252,7 +277,7 @@ export class ProjectDO extends DurableObject<Env> {
     using repo = await artifacts(this.env).get(lane.forkRepo); const id = `${lane.task}/${lane.agent}`;
     const old = this.store.rows<{ tokenId: string | null }>('SELECT tokenId FROM lanes WHERE id=?', id)[0]?.tokenId;
     const token = await repo.createToken('write', 43200);
-    this.store.storage.sql.exec('UPDATE lanes SET tokenId=? WHERE id=?', token.id ?? token.plaintext.split('?')[0], id);
+    this.store.storage.sql.exec('UPDATE lanes SET tokenId=? WHERE id=?', token.id, id);
     if (old) await repo.revokeToken(old);
     return { token: token.plaintext, expiresAt: token.expiresAt };
   }

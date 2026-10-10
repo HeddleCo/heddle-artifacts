@@ -12,7 +12,9 @@
     "dev": "wrangler dev --config wrangler.dev.jsonc",
     "dev:artifacts": "node dev/fake-artifacts/server.mjs",
     "dev:engine": "node dev/engine-devserver.mjs",
-    "test:negative": "node dev/prove-tests.mjs"
+    "test:negative": "node dev/prove-tests.mjs",
+    "test:local-flow": "node dev/local-flow.mjs --stub",
+    "test:real-flow": "node dev/local-flow.mjs"
   },
   "dependencies": {
     "@cloudflare/containers": "0.3.7"
@@ -23,6 +25,7 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.0",
     "wrangler": "4.149.0",
-    "ajv": "^8.17.1"
+    "ajv": "^8.17.1",
+    "@types/node": "26.6.5"
   }
 }

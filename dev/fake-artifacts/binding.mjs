@@ -45,7 +45,7 @@ export class FakeArtifacts {
   async list() { const { readdir } = await import('node:fs/promises'); const dirs = await readdir(this.root); return { repos: await Promise.all(dirs.filter(x => x.endsWith('.git')).map(async x => this.infoOf(await this.load(x.slice(0, -4))))) }; }
   async delete(name) { await rm(this.path(name), { recursive: true }); return true; }
   async mint(name, scope, ttl = 3600) {
-    if (!['read', 'write'].includes(scope) || !Number.isInteger(ttl) || ttl <= 0) throw new Error('INVALID_INPUT');
+    if (!['read', 'write'].includes(scope) || !Number.isInteger(ttl) || ttl < 60 || ttl > 31536000) throw new Error('INVALID_INPUT');
     const data = await this.load(name), id = randomBytes(16).toString('hex');
     const expiresAt = new Date(this.now() + ttl * 1000).toISOString();
     const plaintext = `art_v1_${randomBytes(32).toString('hex')}?expires=${Math.floor(this.now() / 1000) + ttl}`;

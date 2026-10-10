@@ -24,7 +24,7 @@ async function setup(count = 1) {
   await ok(`${base}/tasks`, { slug: 'parser-escapes', intent: 'support escaped pipes' });
   const joins = [];
   for (let i = 0; i < count; i++) joins.push(await ok(`${base}/tasks/parser-escapes/agents`, { id: `agent-${i}`, kind: 'agent', displayName: `Agent ${i}` }));
-  return { p, base, joins, project: env.PROJECT.getByName(p), engine: env.ENGINE.getByName(p) as unknown as { stats(): Promise<any>; failNext(command: string, count?: number, after?: boolean): Promise<void>; loseDisk(): Promise<void> } };
+  return { p, base, joins, project: env.PROJECT.getByName(p), engine: env.ENGINE.getByName(p) as unknown as { stats(): Promise<any>; failNext(command: string, count?: number, after?: boolean): Promise<void>; loseDisk(): Promise<void>; delayNext(command: string, ms: number): Promise<void> } };
 }
 async function waitCandidates(base: string, count: number) {
   let result: any;
@@ -65,6 +65,14 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     const calls = (await engine.stats()).calls.filter((c: any) => c.command === 'ingest'); expect(calls.length).toBeGreaterThanOrEqual(1); expect(calls.length).toBeLessThanOrEqual(2); expect(calls.flatMap((c: any) => c.input.items)).toHaveLength(5);
     console.log(`A-T3 PASS: five pushes accepted, five captured, ${calls.length} ingest exec(s), no 429`);
   });
+  it('A-T3 pushes received during an in-flight ingest become a second coalesced batch', async () => {
+    const { p, base, project, engine } = await setup(5); await engine.delayNext('ingest', 250);
+    await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(150), 'event');
+    for (let i = 0; i < 50; i++) { if ((await engine.stats()).calls.some((c: any) => c.command === 'ingest')) break; await new Promise(r => setTimeout(r, 10)); }
+    await Promise.all(Array.from({ length: 4 }, (_, i) => project.notePush(`${p}--parser-escapes--agent-${i + 1}`, 'refs/heads/main', sha(151 + i), 'event')));
+    const task = await waitCandidates(base, 5); expect(task.candidates).toHaveLength(5);
+    const calls = (await engine.stats()).calls.filter((c: any) => c.command === 'ingest'); expect(calls).toHaveLength(2); expect(calls.map((c: any) => c.input.items.length)).toEqual([1, 4]);
+  });
   it('A-T4 decision rejects missing/agent operator auth and stale exact heads', async () => {
     const { p, base, joins, project } = await setup();
     await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(200), 'event'); const task = await waitCandidates(base, 1);
@@ -90,7 +98,31 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     await engine.loseDisk(); await evictDurableObject(project);
     const diff = await api(`${base}/tasks/parser-escapes/candidates/agent-0/diff`); expect(diff.status).toBe(200); expect(await diff.text()).toContain('agent-0');
     expect((await engine.stats()).state.candidates).toEqual(state.candidates);
-    console.log('A-T5 PASS: partial mutation + lost engine disk => R2 restore, same opId replay, one generation/candidate; survives coordinator eviction');
+    // Simulate process death after exec but before generation commit: the DO
+    // journal remains pending, while both coordinator memory and engine disk vanish.
+    const input = { opId: 'cold-replay', items: [{ task: 'parser-escapes', agent: 'agent-0', fork: { remote: memoryArtifacts.repos.get(`${p}--parser-escapes--agent-0`)!.info.remote }, ref: 'refs/heads/main', sha: sha(301) }], runTests: true };
+    await runInDurableObject(project, instance => {
+      instance.store.storage.sql.exec("INSERT INTO pushes (id,lane,sha,data,status) VALUES (?,?,?,?,'pending')", `parser-escapes/agent-0:${sha(301)}`, 'parser-escapes/agent-0', sha(301), JSON.stringify(input.items[0]));
+      instance.store.storage.sql.exec("INSERT INTO ops (id,command,input,context,status) VALUES (?,?,?,?,'pending')", input.opId, 'ingest', JSON.stringify(input), '{}');
+    });
+    await engine.loseDisk(); await evictDurableObject(project);
+    const cold = await ok(`${base}/tasks/parser-escapes`); expect(cold.candidates[0].sourceSha).toBe(sha(301));
+    await runInDurableObject(project, instance => { expect(instance.store.get<number>('meta', 'stateGeneration')).toBe(before! + 2); expect(instance.store.rows<any>("SELECT status FROM ops WHERE id='cold-replay'")).toEqual([{ status: 'done' }]); });
+    console.log('A-T5 PASS: partial mutation + lost engine disk => R2 restore, same opId replay, one generation/candidate; pending journal replays after coordinator eviction');
+  });
+  it('queue acknowledges durable receipt, retries routing failures, and reviewer posts with its enrolled key', async () => {
+    const { p, base, project } = await setup(2);
+    await ok(`${base}/tasks/parser-escapes/agents`, { id: 'reviewer', kind: 'reviewer', displayName: 'Reviewer' });
+    const event = { type: 'cf.artifacts.repo.pushed', source: { namespace: 'heddle-demo', repoName: `${p}--parser-escapes--agent-0` }, payload: { ref: 'refs/heads/main', after: sha(600) } };
+    let acked = 0, retried = 0;
+    await queue({ messages: [{ body: event, ack() { acked++; }, retry() { retried++; } }] } as unknown as MessageBatch<unknown>, env);
+    expect(acked).toBe(1); expect(retried).toBe(0);
+    await project.notePush(`${p}--parser-escapes--agent-1`, 'refs/heads/main', sha(601), 'event');
+    await waitCandidates(base, 2);
+    await runInDurableObject(project, async instance => { instance.store.put('meta', 'reviewDue:parser-escapes', 1); await instance.alarm(); });
+    const task = await ok(`${base}/tasks/parser-escapes`), board = await ok(base);
+    expect(task.review.model).toBe('stub'); expect(task.turns).toHaveLength(1); expect(task.turns[0].author).toBe('reviewer');
+    expect(task.turns[0].signedBy).toBe(board.agents.find((a: any) => a.id === 'reviewer').publicKey);
   });
   it('routes only main on a registered fork; dev hook is 404 outside DEV=1', async () => {
     const { p, project, engine } = await setup();

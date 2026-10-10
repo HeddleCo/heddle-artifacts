@@ -3,7 +3,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "heddle-artifacts-dev",
   "main": "dev/test-worker.ts",
-  "compatibility_date": "2026-10-10",
+  "compatibility_date": "2026-08-15",
+  "alias": { "heddle-reviewer": "./dev/stub-reviewer.ts" },
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": { "bindings": [
     { "name": "PROJECT", "class_name": "ProjectDO" },

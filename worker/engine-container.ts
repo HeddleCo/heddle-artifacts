@@ -2,13 +2,15 @@
 import { Container } from '@cloudflare/containers';
 export class HeddleEngine extends Container {
   sleepAfter = '2h';
+  // The Docker CLI entrypoint exits after one command. exec needs a live instance.
+  entrypoint = ['sleep', 'infinity'];
   async fetch(request: Request): Promise<Response> {
     const command = new URL(request.url).pathname.slice(1);
     if (!['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'].includes(command)) return new Response(null, { status: 404 });
     if (!this.ctx.container) throw new Error('container_unavailable');
     if (!this.ctx.container.running) await this.start();
     const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}') as Record<string, string>;
-    const process = await this.ctx.container.exec(['engine', command], { stdin: request.body ?? undefined, env, stderr: 'ignore' });
+    const process = await this.ctx.container.exec(['engine', command], { stdin: request.body ?? undefined, env, stderr: 'ignore', signal: AbortSignal.timeout(180000) });
     // Preserve streaming for snapshots; the stream fails if the process exits nonzero.
     const stdout = process.stdout;
     if (command === 'snapshot' && stdout) {

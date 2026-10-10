@@ -2,13 +2,14 @@
 import type { Env } from './env';
 import { artifacts } from './artifacts';
 import { HttpError } from './auth';
+import { streamSnapshot } from './snapshot';
 import { Store } from './store';
 import type { FeedEvent, Lane } from '../contracts/types';
 
 type Journal = { id: string; command: string; input: string; context: string; status: string; result: string | null; attempts: number };
 export class EngineClient {
   private tail: Promise<unknown> = Promise.resolve();
-  constructor(private env: Env, private store: Store, private project: () => string, private apply: (cmd: string, input: any, result: any, context: any) => void, private emit: (e: FeedEvent) => void) {}
+  constructor(private env: Env, private store: Store, private project: () => string, private apply: (cmd: string, input: any, result: any, context: any) => FeedEvent[], private emit: (e: FeedEvent) => void) {}
   serial<T>(fn: () => Promise<T>): Promise<T> {
     const result = this.tail.then(fn); this.tail = result.catch(() => {}); return result;
   }
@@ -44,10 +45,10 @@ export class EngineClient {
       const reads: Record<string, string> = {};
       for (const lane of this.store.all<Lane>('lanes')) {
         using repo = await namespace.get(lane.forkRepo); const token = await repo.createToken('read', 600);
-        leases.push({ repo: lane.forkRepo, token: token.id ?? token.plaintext }); reads[lane.forkRemote] = token.plaintext;
+        leases.push({ repo: lane.forkRepo, token: token.id }); reads[lane.forkRemote] = token.plaintext;
       }
       let write = '';
-      if (project) { using repo = await namespace.get(project.id); const token = await repo.createToken('write', 600); leases.push({ repo: project.id, token: token.id ?? token.plaintext }); write = token.plaintext; }
+      if (project) { using repo = await namespace.get(project.id); const token = await repo.createToken('write', 600); leases.push({ repo: project.id, token: token.id }); write = token.plaintext; }
       return await fn({ ARTIFACTS_READ_TOKENS: JSON.stringify(reads), ARTIFACTS_WRITE_TOKEN: write });
     } finally {
       for (const lease of leases) { try { using repo = await namespace.get(lease.repo); await repo.revokeToken(lease.token); } catch {} }
@@ -75,13 +76,15 @@ export class EngineClient {
         const generation = this.store.get<number>('meta', 'stateGeneration') ?? 0;
         const response = await this.transport('snapshot', '{}');
         if (!response.ok || !response.body) throw new Error('snapshot_failed');
-        await this.env.STATE.put(`projects/${this.project()}/gen-${generation + 1}.tar.zst`, response.body);
+        await streamSnapshot(this.env.STATE, `projects/${this.project()}/gen-${generation + 1}.tar.zst`, response.body);
+        let events: FeedEvent[] = [];
         this.store.storage.transactionSync(() => {
           if ((this.store.get<number>('meta', 'stateGeneration') ?? 0) !== generation) throw new Error('generation_conflict');
           this.store.put('meta', 'stateGeneration', generation + 1);
-          this.apply(op.command, input, result, context);
+          events = this.apply(op.command, input, result, context);
           this.store.storage.sql.exec("UPDATE ops SET status='done',result=? WHERE id=?", JSON.stringify(result), op.id);
         });
+        for (const event of events) this.emit(event);
         return result;
       } catch (error) {
         if (error instanceof HttpError && error.status < 500) {

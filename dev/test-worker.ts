@@ -12,6 +12,8 @@ export class ProjectDO extends Coordinator {
 export class StubEngine extends DurableObject {
   state = emptyState();
   calls: Array<{ command: string; input: any }> = [];
+  delay: { command: string; ms: number } | undefined;
+  async delayNext(command: string, ms: number) { this.delay = { command, ms }; }
   failures: { command: string; count: number; after: boolean } | undefined;
   async failNext(command: string, count = 1, after = true) { this.failures = { command, count, after }; }
   stats() { return { calls: this.calls, state: this.state }; }
@@ -21,6 +23,7 @@ export class StubEngine extends DurableObject {
     if (command === 'restore') { this.state = JSON.parse(await request.text()); this.calls.push({ command, input: {} }); return Response.json({ generation: this.state.generation }); }
     if (command === 'snapshot') return new Response(JSON.stringify(this.state));
     const input = await request.json(); this.calls.push({ command, input });
+    if (this.delay?.command === command) { const ms = this.delay.ms; this.delay = undefined; await new Promise(r => setTimeout(r, ms)); }
     if (this.failures?.command === command && this.failures.count > 0) {
       this.failures.count--; if (this.failures.after) executeFixture(this.state, command, input);
       this.state = emptyState(); return new Response('crash fixture', { status: 502 });

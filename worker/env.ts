@@ -2,7 +2,7 @@
 import type { ProjectDO } from './project-do';
 import type { Review, Turn, Candidate } from '../contracts/types';
 export interface RepoInfo { name: string; remote: string; defaultBranch: string; }
-export interface RepoToken { id?: string; plaintext: string; expiresAt: string; }
+export interface RepoToken { id: string; plaintext: string; expiresAt: string; }
 export interface ArtifactsRepo extends Disposable {
   info(): Promise<RepoInfo>;
   fork(name: string, options: { defaultBranchOnly: boolean }): Promise<RepoInfo & { token?: string }>;
