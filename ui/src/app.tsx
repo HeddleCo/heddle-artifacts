@@ -52,11 +52,16 @@ function PageTitle({ eyebrow, title, children }: { eyebrow: string; title: strin
 }
 function Board({ p }: { p: string }) {
   const [view, setView] = useState<ProjectView>(), [error, setError] = useState(''), [pulse, setPulse] = useState<Record<string, number>>({});
-  const version = useRef(0);
-  const load = async () => { const n = ++version.current; try { const data = await request<ProjectView>(projectPath(p)); if (n === version.current) { setView(data); setError(''); } } catch(e) { if (n === version.current) setError(message(e)); } };
+  const version = useRef(0), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
+  const load = async () => {
+    const n = ++version.current; loading.current = true; pending.current = [];
+    try { const data = await request<ProjectView>(projectPath(p)); if (n === version.current) { setView(pending.current.reduce(updateBoard, data)); setError(''); } }
+    catch(e) { if (n === version.current) setError(message(e)); }
+    finally { if (n === version.current) { loading.current = false; pending.current = []; } }
+  };
   useEffect(() => { void load(); return () => { version.current++; }; }, [p]);
   const live = useFeed(p, event => {
-    version.current++; // A snapshot begun before this event must not overwrite it.
+    if (loading.current) pending.current.push(event); // Replay events that arrived after the snapshot request began.
     setView(v => v && updateBoard(v, event));
     if (event.type === 'push.received') setPulse(v => ({ ...v, [`${event.task}/${event.agent}`]: Date.now() }));
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Refresh to check progress.`);
@@ -111,15 +116,16 @@ function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; tur
 function Compare({ p, t }: { p: string; t: string }) {
   const [view, setView] = useState<TaskView>(), [agents, setAgents] = useState<Agent[]>([]), [error, setError] = useState('');
   const [pick, setPick] = useState(''), [rationale, setRationale] = useState(''), [decider, setDecider] = useState(''), [busy, setBusy] = useState(false), [changed, setChanged] = useState(false), [reviewing, setReviewing] = useState(false);
-  const version = useRef(0), hydrated = useRef(false);
-  const load = async (reviewAgain = false) => { const n = ++version.current; setReviewing(true);
+  const version = useRef(0), hydrated = useRef(false), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
+  const load = async (reviewAgain = false) => { const n = ++version.current; setReviewing(true); loading.current = true; pending.current = [];
     try { const [task, project] = await Promise.all([request<TaskView>(taskPath(p, t)), request<ProjectView>(projectPath(p))]);
-      if (n === version.current) { setView(task); setAgents(project.agents); setError(''); if (reviewAgain) { setChanged(false); setPick(''); } hydrated.current = true; }
-    } catch(e) { if (n === version.current) setError(message(e)); } finally { if (n === version.current) setReviewing(false); }
+      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setError(''); if (reviewAgain) { setChanged(pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t)); setPick(''); } hydrated.current = true; }
+    } catch(e) { if (n === version.current) setError(message(e)); } finally { if (n === version.current) { setReviewing(false); loading.current = false; pending.current = []; } }
   };
   useEffect(() => { void load(); return () => { version.current++; }; }, [p, t]);
   const live = useFeed(p, event => {
-    if (event.type === 'candidate.ready' && event.candidate.task === t) { version.current++; setReviewing(false); setChanged(true); }
+    if (loading.current) pending.current.push(event);
+    if (event.type === 'candidate.ready' && event.candidate.task === t) setChanged(true);
     setView(v => v && updateTask(v, event));
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Review current candidates before retrying.`);
   }, reconnected => { if (reconnected && hydrated.current) setChanged(true); else void load(); });

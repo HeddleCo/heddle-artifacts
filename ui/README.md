@@ -62,3 +62,6 @@ captures for the compare and Why pages. Browser evidence covers the local mock, 
 Assets use a restrictive same-origin CSP and do not load remote scripts or fonts. Diff and narrative
 content are rendered as text. The directory-match badge compares public keys; it is not a cryptographic
 signature verification claim. Reconnection marks compare data stale; refresh explicitly before landing.
+
+Cloudflare routing references: [Workers SPA assets](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/)
+and [Wrangler local development](https://developers.cloudflare.com/workers/wrangler/commands/#dev).

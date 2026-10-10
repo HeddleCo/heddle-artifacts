@@ -1,0 +1,43 @@
+SPDX-License-Identifier: Apache-2.0
+Mutation: setView(pending.current.reduce(updateBoard, data)); → setView(data);
+$ npm test -- --grep 'C-T2 early feed survives delayed initial board snapshot'
+Exit: 1
+
+> test
+> playwright test --grep C-T2 early feed survives delayed initial board snapshot
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/acceptance.spec.ts:114:1 › C-T2 early feed survives delayed initial board snapshot (8.4s)
+
+
+  1) test/acceptance.spec.ts:114:1 › C-T2 early feed survives delayed initial board snapshot ───────
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('lane-alice')
+    Expected substring: "fail · 12/14"
+    Received string:    "AAliceopenai / gpt-6○ Tests pendingactiveLast push Waiting for a push"
+    Timeout: 6000ms
+
+    Call log:
+      - Expect "toContainText" getByTestId('lane-alice') with timeout 6000ms
+      - waiting for getByTestId('lane-alice')
+        16 × locator resolved to <article class="lane-card" data-push="received" data-testid="lane-alice">…</article>
+           - unexpected value "AAliceopenai / gpt-6○ Tests pendingactiveLast push Waiting for a push"
+
+
+      126 |   await request.post('/__mock/replay');
+      127 |   release();
+    > 128 |   await expect(page.getByTestId('lane-alice')).toContainText('fail · 12/14');
+          |                                                ^
+      129 |   await expect(page.getByRole('link', { name: /Why ffffffffff landed/ })).toBeVisible();
+      130 | });
+      131 |
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:128:48
+
+    Error Context: test-results/acceptance-C-T2-early-feed-8fb1b-ayed-initial-board-snapshot/error-context.md
+
+  1 failed
+    test/acceptance.spec.ts:114:1 › C-T2 early feed survives delayed initial board snapshot ────────

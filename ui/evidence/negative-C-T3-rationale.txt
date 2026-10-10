@@ -9,7 +9,7 @@ Exit: 1
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion (6.3s)
+  ✘  1 test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion (9.5s)
 
 
   1) test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ────────────
@@ -28,18 +28,16 @@ Running 1 test using 1 worker
            - unexpected value "enabled"
 
 
-      70 |   await reset(request); await page.goto('/p/demo/t/parser-escapes');
-      71 |   await page.getByRole('radio', { name: /bob/ }).check();
-    > 72 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
-         |                                                                        ^
+      72 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
       73 |   await page.getByLabel('Why this candidate?').fill('   ');
-      74 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+    > 74 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+         |                                                                        ^
       75 |   await page.getByRole('button', { name: 'Reply to reviewer' }).click();
-        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:72:72
+      76 |   await page.getByLabel('Your reply').fill('Keep the API stable.');
+      77 |   await page.getByRole('button', { name: 'Post signed reply' }).click();
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-C/ui/test/acceptance.spec.ts:74:72
 
     Error Context: test-results/acceptance-C-T3-required-r-5dd21-and-signed-human-discussion/error-context.md
 
   1 failed
     test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ─────────────
-(node:1608) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-(Use `node --trace-warnings ...` to show where the warning was created)

@@ -110,3 +110,39 @@ test('C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screen
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   expect(horizontalOverflow).toBe(false);
 });
+
+test('C-T2 early feed survives delayed initial board snapshot', async ({ page, request }) => {
+  await reset(request, 'pushing');
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let snapshots = 0;
+  await page.route('**/api/projects/demo', async route => {
+    const response = await route.fetch(); snapshots++;
+    await held; await route.fulfill({ response });
+  });
+  await page.goto('/p/demo');
+  await expect(page.locator('.live')).toHaveText('Live');
+  await expect.poll(() => snapshots).toBeGreaterThan(0);
+  await request.post('/__mock/replay');
+  release();
+  await expect(page.getByTestId('lane-alice')).toContainText('fail · 12/14');
+  await expect(page.getByRole('link', { name: /Why ffffffffff landed/ })).toBeVisible();
+});
+
+test('C-T2 initial compare snapshot retains early discussion and landing', async ({ page, request }) => {
+  await reset(request, 'pushing');
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let snapshots = 0;
+  await page.route('**/api/projects/demo/tasks/parser-escapes', async route => {
+    const response = await route.fetch(); snapshots++;
+    await held; await route.fulfill({ response });
+  });
+  await page.goto('/p/demo/t/parser-escapes');
+  await expect(page.locator('.live')).toHaveText('Live');
+  await expect.poll(() => snapshots).toBeGreaterThan(0);
+  await request.post('/__mock/replay');
+  release();
+  await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+  await expect(page.locator('.discussion')).toContainText('Agree — API stability matters more than the shorter regex.');
+});

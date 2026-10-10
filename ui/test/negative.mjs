@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const cwd = fileURLToPath(new URL('../', import.meta.url));
 const env = { ...process.env, UI_TEST_URL: 'http://127.0.0.1:8790', UI_SCREENSHOT_DIR: '.local/negative-shots',
   XDG_CONFIG_HOME: '/tmp/heddle-c-negative-config', WRANGLER_SEND_METRICS: 'false', FORCE_COLOR: '0' };
+delete env.NO_COLOR;
 const originals = new Map();
 for (const file of ['src/app.tsx', 'src/api.ts']) originals.set(file, await readFile(new URL(`../${file}`, import.meta.url), 'utf8'));
 await mkdir(new URL('../evidence/', import.meta.url), { recursive: true });
@@ -23,7 +24,9 @@ const scenarios = [
   { id: 'C-T1-board', file: 'src/app.tsx', before: 'view.tasks.map(task =>', after: 'view.tasks.slice(0, 0).map(task =>', grep: 'C-T1', marker: 'Expected: 3' },
   { id: 'C-T1-conflict', file: 'src/app.tsx', before: '!!regions.size &&', after: 'false && !!regions.size &&', grep: 'C-T1', marker: 'src/table.ts:parseRow' },
   { id: 'C-T1-why', file: 'src/app.tsx', before: "view?.narrative || 'Loading narrative…'", after: "'Narrative removed'", grep: 'C-T1', marker: 'Chosen:    bob' },
-  { id: 'C-T2-replay', file: 'src/app.tsx', before: 'callbacks.current.onEvent(event);', after: '; /* Live event reducer removed. */', grep: 'C-T2', marker: 'data-push' },
+  { id: 'C-T2-replay', file: 'src/app.tsx', before: 'callbacks.current.onEvent(event);', after: '; /* Live event reducer removed. */', grep: 'C-T2 WebSocket replay updates board without reload', marker: 'data-push' },
+  { id: 'C-T2-board-buffer', file: 'src/app.tsx', before: 'setView(pending.current.reduce(updateBoard, data));', after: 'setView(data);', grep: 'C-T2 early feed survives delayed initial board snapshot', marker: 'fail · 12/14' },
+  { id: 'C-T2-compare-buffer', file: 'src/app.tsx', before: 'setView(pending.current.reduce(updateTask, task));', after: 'setView(task);', grep: 'C-T2 initial compare snapshot retains early discussion and landing', marker: '✓ Landed bob on main' },
   { id: 'C-T3-heads', file: 'src/app.tsx', before: 'expectHeads: [...view.heads]', after: 'expectHeads: []', grep: 'C-T3 decision exact body and 200', marker: 'state-alice-1' },
   { id: 'C-T3-forbidden', file: 'src/api.ts', before: "'Access denied. Sign in with an operator session.'", after: "'Forbidden handling removed.'", grep: 'C-T3 decision exact body and 403', marker: 'Access denied' },
   { id: 'C-T3-stale', file: 'src/app.tsx', before: "setChanged(true); setError('Candidates changed, review again');", after: "setError('Candidates changed, review again');", grep: 'C-T3 decision exact body and 409', marker: 'toBeDisabled' },
@@ -42,7 +45,7 @@ try {
   const baseline = run(['test']);
   await writeFile(new URL('../evidence/baseline.txt', import.meta.url), `SPDX-License-Identifier: Apache-2.0\n$ npm test\n${baseline.stdout}${baseline.stderr}`);
   if (baseline.status !== 0) throw new Error('Baseline failed; no mutation evidence is valid.\n' + baseline.stdout + baseline.stderr);
-  console.log('Baseline: 7 browser checks passed against local wrangler dev.');
+  console.log(`Baseline: ${baseline.stdout.match(/(\d+) passed/)?.[1]} browser checks passed against local wrangler dev.`);
   for (const s of scenarios) {
     const original = originals.get(s.file);
     if (original.split(s.before).length !== 2) throw new Error(`Mutation ${s.id} must match exactly one site.`);
@@ -63,5 +66,5 @@ try {
   await writeFile(new URL('../evidence/restored.txt', import.meta.url), `SPDX-License-Identifier: Apache-2.0\n$ npm test\n${restored.stdout}${restored.stderr}`);
   try { process.kill(-server.pid, 'SIGTERM'); } catch { /* Server already exited. */ }
   if (restored.status !== 0) throw new Error('Restored implementation failed.\n' + restored.stdout + restored.stderr);
-  console.log('Restored: 7 browser checks passed. All source mutations reverted.');
+  console.log(`Restored: ${restored.stdout.match(/(\d+) passed/)?.[1]} browser checks passed. All source mutations reverted.`);
 }

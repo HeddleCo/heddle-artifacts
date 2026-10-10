@@ -9,7 +9,7 @@ Exit: 1
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response (6.3s)
+  ✘  1 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response (6.5s)
 
 
   1) test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response ─────────────────────
@@ -41,5 +41,3 @@ Running 1 test using 1 worker
 
   1 failed
     test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response ──────────────────────
-(node:1436) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-(Use `node --trace-warnings ...` to show where the warning was created)

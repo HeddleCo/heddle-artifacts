@@ -9,7 +9,7 @@ Exit: 1
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (6.8s)
+  ✘  1 test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (7.1s)
 
 
   1) test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots 
@@ -39,5 +39,3 @@ Running 1 test using 1 worker
 
   1 failed
     test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots 
-(node:1941) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-(Use `node --trace-warnings ...` to show where the warning was created)

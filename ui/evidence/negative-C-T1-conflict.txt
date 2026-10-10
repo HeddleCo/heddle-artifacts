@@ -9,7 +9,7 @@ Exit: 1
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (6.3s)
+  ✘  1 test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (6.2s)
 
 
   1) test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
@@ -39,5 +39,3 @@ Running 1 test using 1 worker
 
   1 failed
     test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
-(node:584) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-(Use `node --trace-warnings ...` to show where the warning was created)
