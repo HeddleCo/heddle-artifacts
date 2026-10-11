@@ -8,12 +8,16 @@ export interface ArtifactsRepo extends Disposable {
   fork(name: string, options: { defaultBranchOnly: boolean }): Promise<RepoInfo & { token?: string }>;
   createToken(scope: 'read' | 'write', ttl: number): Promise<RepoToken>;
   revokeToken(token: string): Promise<boolean>;
-  log(options: { ref: string; limit: number }): Promise<Array<{ id: string }>>;
+  log(options: { ref: string; limit: number }): Promise<ArtifactsCommitMetadata[]>;
 }
 export interface ArtifactsBinding {
   create(name: string, options?: { setDefaultBranch: string }): Promise<RepoInfo & { token?: string }>;
   get(name: string): Promise<ArtifactsRepo>;
 }
+// Compile against the installed provider contract so fixtures cannot silently
+// redefine binding fields (Queue event commits deliberately use a different shape).
+type AssertBinding<T extends ArtifactsBinding> = T;
+type ProviderBindingContract = AssertBinding<Artifacts>;
 export interface ReviewInput {
   intent: string; base: string; candidates: Array<{ agent: string; diff: string; tests: Candidate['tests'] }>; turns: Turn[];
 }

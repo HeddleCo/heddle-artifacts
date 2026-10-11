@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Publication, one new job and private one-day image artifacts require fresh owner approval.
+# Owner approved this exact follow-up, one job and success-only private one-day image artifacts.
 name: Container build and native fixture tests
 
 'on':
@@ -40,7 +40,7 @@ jobs:
       DOCKER_BUILDKIT: '1'
       IMAGE: heddle-artifacts-engine:ci
       CI: '1'
-      REVIEWED_BASE_SHA: 6c08b3654425831008feedd458f760c6301ba6ce
+      REVIEWED_BASE_SHA: 1fdd24eaf9fb34173ba966653a15a9ae14b867e2
 
     steps:
       - name: Check out exact reviewed source
@@ -149,9 +149,9 @@ jobs:
             --entrypoint bash "$IMAGE" /opt/engine/test/e2e.sh
           printf '\nNative acceptance, trust guard, mutations, hardening and ordered-publication tests passed.\n' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Run reviewed dependency fixture with isolated npm configuration
+      - name: Run reviewed dependency and genuine replay fixtures with isolated npm configuration
         id: dependency_tests
-        timeout-minutes: 4
+        timeout-minutes: 6
         run: |
           set -euo pipefail
           # This separate synthetic fixture needs public npm registry access.
@@ -165,7 +165,19 @@ jobs:
             --mount "type=bind,source=$GITHUB_WORKSPACE/engine/test,target=/opt/engine/test,readonly" \
             -e HEDDLE_BIN=/usr/local/bin/heddle -e HOME=/home/engine -e CI=1 \
             --entrypoint node "$IMAGE" /opt/engine/test/vitest.mjs
-          printf '\nReviewed dependency positive/negative tests and unknown-tree rejection passed.\n' >> "$GITHUB_STEP_SUMMARY"
+          # Re-execute only the two exact historical reviewed candidate trees.
+          # Mount the test and public fixtures, never image-owned engine/manifest.
+          docker run --rm --read-only \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 256 --memory 2g --cpus 2 \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1073741824,mode=1777 \
+            --tmpfs /state:rw,nosuid,nodev,size=16777216,mode=0700,uid=65532,gid=65532 \
+            --tmpfs /home/engine:rw,nosuid,nodev,size=16777216,mode=0700,uid=65532,gid=65532 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/engine/test/genuine-reviewed.mjs,target=/opt/engine/test/genuine-reviewed.mjs,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/demo/evidence/genuine-native-v1/candidates,target=/fixtures/candidates,readonly" \
+            -e HEDDLE_BIN=/usr/local/bin/heddle -e HOME=/home/engine -e CI=1 \
+            --entrypoint node "$IMAGE" /opt/engine/test/genuine-reviewed.mjs --fixture-root /fixtures/candidates
+          printf '\nReviewed dependency positive/negative tests and unknown-tree rejection; exact genuine replays (56/56 and 70/70) and four withheld mutations passed.\n' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Prepare bounded image handoff after all tests pass
         id: image_export
@@ -199,7 +211,7 @@ jobs:
           const current = JSON.parse(readFileSync(`${root}/image-inspect.json`, 'utf8'))[0];
           assert.match(env.SOURCE_SHA, /^[0-9a-f]{40}$/);
           assert.match(env.SOURCE_TREE, /^[0-9a-f]{40}$/);
-          assert.equal(env.REVIEWED_BASE_SHA, '6c08b3654425831008feedd458f760c6301ba6ce');
+          assert.equal(env.REVIEWED_BASE_SHA, '1fdd24eaf9fb34173ba966653a15a9ae14b867e2');
           assert.equal(env.GITHUB_REPOSITORY, 'HeddleCo/heddle-artifacts');
           assert.match(env.GITHUB_RUN_ID, /^[1-9][0-9]*$/);
           assert.equal(env.GITHUB_RUN_ATTEMPT, '1');

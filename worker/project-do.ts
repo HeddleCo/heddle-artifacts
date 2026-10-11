@@ -3,7 +3,7 @@ import { createReviewer } from 'heddle-reviewer';
 import { DurableObject } from 'cloudflare:workers';
 import type { Agent, Candidate, Decision, FeedEvent, Lane, Review, Turn } from '../contracts/types';
 import type { Env } from './env';
-import { artifacts, forkName, setupScript, subscribeFork } from './artifacts';
+import { artifacts, existingRepository, forkName, setupScript, subscribeFork } from './artifacts';
 import { bodyText, checkOrigin, credential, digest, HttpError, jsonBody, operator, randomKey, responseError, slug, text } from './auth';
 import { Store } from './store';
 import { EngineClient } from './engine-client';
@@ -190,7 +190,7 @@ export class ProjectDO extends DurableObject<Env> {
   async poll() {
     if (!this.expireAccess()) return;
     for (const lane of this.store.all<Lane>('lanes').filter(l => l.status === 'active')) {
-      try { using repo = await artifacts(this.env).get(lane.forkRepo); const [tip] = await repo.log({ ref: 'main', limit: 1 }); if (tip && tip.id !== lane.lastSeenSha) await this.notePush(lane.forkRepo, 'refs/heads/main', tip.id, 'poll'); } catch {}
+      try { using repo = await artifacts(this.env).get(lane.forkRepo); const [tip] = await repo.log({ ref: 'main', limit: 1 }); if (tip && tip.hash !== lane.lastSeenSha) await this.notePush(lane.forkRepo, 'refs/heads/main', tip.hash, 'poll'); } catch {}
     }
   }
   private async reviews() {
@@ -285,8 +285,9 @@ export class ProjectDO extends DurableObject<Env> {
           this.credentials.initialize(); await this.nextAlarm();
           let project = this.store.get('meta', 'project');
           if (!project) {
-            let created;
-            try { using existing = await artifacts(this.env).get(projectId); created = await existing.info(); this.credentials.noteExistingRepository(projectId); } catch { created = await this.credentials.bootstrap(projectId, () => artifacts(this.env).create(projectId, { setDefaultBranch: 'main' })); }
+            let created = await existingRepository(this.env, projectId);
+            if (created) this.credentials.noteExistingRepository(projectId);
+            else created = await this.credentials.bootstrap(projectId, () => artifacts(this.env).create(projectId, { setDefaultBranch: 'main' }));
             project = { id: projectId, canonicalRemote: created.remote }; this.store.put('meta', 'project', project);
           }
           await this.engine.mutate('init', { opId: `init:${projectId}`, project: projectId, canonical: { remote: project.canonicalRemote }, seed });
@@ -326,11 +327,16 @@ export class ProjectDO extends DurableObject<Env> {
           if (!['agent', 'human', 'reviewer'].includes(kind)) throw new HttpError(400, 'invalid_kind');
           const agent = { id, kind, displayName: text(body.displayName, 200), ...(body.provider ? { provider: text(body.provider, 200) } : {}), ...(body.model ? { model: text(body.model, 200) } : {}) };
           const prior = this.store.get<Agent>('agents', id); if (prior && prior.kind !== kind) throw new HttpError(409, 'identity_exists');
-          await this.engine.mutate('agent.enroll', { opId: `enroll:${id}`, agent });
           const laneId = `${taskId}/${id}`; let lane = this.store.get<Lane>('lanes', laneId);
+          const name = await forkName(projectId, taskId, id);
+          // Probe before native enrollment, which itself issues provider leases.
+          // An uncertain read must leave enrollment and credential state alone.
+          const existing = lane ? undefined : await existingRepository(this.env, name);
+          await this.engine.mutate('agent.enroll', { opId: `enroll:${id}`, agent });
           if (!lane) {
-            using canonical = await artifacts(this.env).get(projectId); const name = await forkName(projectId, taskId, id);
-            let fork; try { using existing = await artifacts(this.env).get(name); fork = await existing.info(); this.credentials.noteExistingRepository(name); } catch { fork = await this.credentials.bootstrap(name, () => canonical.fork(name, { defaultBranchOnly: true })); }
+            using canonical = await artifacts(this.env).get(projectId);
+            const fork = existing ?? await this.credentials.bootstrap(name, () => canonical.fork(name, { defaultBranchOnly: true }));
+            if (existing) this.credentials.noteExistingRepository(name);
             lane = { project: projectId, task: taskId, agent: id, forkRepo: name, forkRemote: fork.remote, laneThread: `task/${taskId}/${id}`, status: 'active', lastSeenSha: task.baseSha };
             this.store.storage.sql.exec('INSERT INTO lanes (id,forkRepo,data) VALUES (?,?,?)', laneId, name, JSON.stringify(lane));
           }

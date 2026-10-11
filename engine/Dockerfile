@@ -24,6 +24,8 @@ COPY demo/ /opt/demo/
 RUN printf '#!/bin/sh\n# SPDX-License-Identifier: Apache-2.0\nexec node /opt/engine/engine.mjs "$@"\n' > /usr/local/bin/engine && chmod 755 /usr/local/bin/engine
 # Keep the Debian trixie root filesystem, flattening away build/package caches.
 # Core Git transport, notes, merge-tree, tar/zstd and npm need no Perl helpers.
+# The locked GNU npm addons also need glibc's librt compatibility library,
+# which is not a startup dependency of Node or the other copied executables.
 RUN mkdir -p /rootfs/usr/bin /rootfs/usr/lib/git-core /rootfs/usr/local/bin /rootfs/usr/local/lib /rootfs/etc /rootfs/opt /rootfs/tmp /rootfs/state /rootfs/home/engine \
     && cp -a /usr/local/bin/* /rootfs/usr/local/bin/ && cp -a /usr/local/lib/node_modules /rootfs/usr/local/lib/ \
     && cp -a /opt/* /rootfs/opt/ && cp -a /etc/passwd /etc/group /etc/nsswitch.conf /etc/os-release /etc/ssl /rootfs/etc/ \
@@ -34,6 +36,7 @@ RUN mkdir -p /rootfs/usr/bin /rootfs/usr/lib/git-core /rootfs/usr/local/bin /roo
     && ldd /rootfs/usr/bin/* /rootfs/usr/local/bin/node /rootfs/usr/local/bin/heddle /rootfs/usr/lib/git-core/git-remote-http \
        | awk '/=>|ld-linux/ { for (i=1;i<=NF;i++) if ($i ~ /^\//) print $i }' | sort -u \
        | xargs -I '{}' cp -L --parents '{}' /rootfs/ \
+    && cp -L --parents /lib/*-linux-gnu/librt.so.1 /rootfs/ \
     && ln -s usr/bin /rootfs/bin && ln -s /usr/bin/dash /rootfs/usr/bin/sh \
     && chmod 1777 /rootfs/tmp && chown -R 65532:65532 /rootfs/state /rootfs/home/engine
 FROM scratch

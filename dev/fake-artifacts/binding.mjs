@@ -24,13 +24,17 @@ export class FakeArtifacts {
   }
   path(name) { if (!namePattern.test(name)) throw new Error('INVALID_INPUT'); return join(this.root, `${name}.git`); }
   remote(name) { this.path(name); return `${this.origin}/git/${this.namespace}/${name}.git`; }
-  async load(name) { return JSON.parse(await readFile(join(this.path(name), 'fake.json'), 'utf8')); }
+  async load(name) {
+    try { return JSON.parse(await readFile(join(this.path(name), 'fake.json'), 'utf8')); }
+    catch (error) { if (error.code === 'ENOENT') throw Object.assign(new Error('Repository not found'), { name: 'ArtifactsError', code: 'NOT_FOUND', numericCode: 10200 }); throw error; }
+  }
   async save(name, data) { await writeFile(join(this.path(name), 'fake.json'), JSON.stringify(data)); }
   async serial(fn) { const p = this.writeTail.then(fn); this.writeTail = p.catch(() => {}); return p; }
   async create(name, opts = {}) {
     return this.serial(async () => {
       await mkdir(this.root, { recursive: true });
-      await mkdir(this.path(name));
+      try { await mkdir(this.path(name)); }
+      catch (error) { if (error.code === 'EEXIST') throw Object.assign(new Error('Repository already exists'), { name: 'ArtifactsError', code: 'ALREADY_EXISTS', numericCode: 10201 }); throw error; }
       await git(['init', '--bare', '--initial-branch', opts.setDefaultBranch ?? 'main', this.path(name)]);
       await git(['config', 'http.receivepack', 'true'], this.path(name));
       await git(['config', 'receive.advertiseAtomic', String(this.advertiseAtomic)], this.path(name));
@@ -87,7 +91,7 @@ class FakeRepo {
   }
   async readCommit(sha) {
     if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('INVALID_INPUT');
-    const parts = (await git(['show', '-s', '--format=%H%x00%P%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%B', sha], this.binding.path(this.name))).split('\0');
-    return { id: parts[0], parents: parts[1].split(' ').filter(Boolean), author: { name: parts[2], email: parts[3] }, committer: { name: parts[4], email: parts[5] }, timestamp: parts[6], message: parts[7].trimEnd() };
+    const parts = (await git(['show', '-s', '--format=format:%H%x00%T%x00%P%x00%an%x00%ae%x00%cn%x00%ce%x00%at%x00%ct%x00%B', sha], this.binding.path(this.name))).split('\0');
+    return { hash: parts[0], treeHash: parts[1], parents: parts[2].split(' ').filter(Boolean), author: { name: parts[3], email: parts[4] }, committer: { name: parts[5], email: parts[6] }, authoredAt: Number(parts[7]), committedAt: Number(parts[8]), message: parts[9].replace(/\n$/, '') };
   }
 }

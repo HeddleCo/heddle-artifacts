@@ -36,7 +36,12 @@ export async function startFakeArtifacts({ root = process.env.FAKE_ARTIFACTS_ROO
       });
       child.stderr.resume(); child.on('error', () => { if (!res.headersSent) res.writeHead(500); res.end(); });
       child.on('close', () => res.end()); req.pipe(child.stdin);
-    } catch { if (!res.headersSent) res.writeHead(400); res.end('Fake Artifacts request failed'); }
+    } catch (error) {
+      if (!res.headersSent && error?.name === 'ArtifactsError' && typeof error.code === 'string' && Number.isInteger(error.numericCode)) {
+        const status = error.code === 'NOT_FOUND' ? 404 : error.code === 'ALREADY_EXISTS' ? 409 : 503;
+        res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { name: error.name, code: error.code, numericCode: error.numericCode } }));
+      } else { if (!res.headersSent) res.writeHead(400); res.end('Fake Artifacts request failed'); }
+    }
   });
   await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));
   binding.origin = `http://127.0.0.1:${server.address().port}`;

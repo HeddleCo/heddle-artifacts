@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "purpose": "Operator-reviewed public synthetic demo fixtures only. Changes require an out-of-band source and lockfile review; this is not a sandbox.",
+  "purpose": "Operator-reviewed public demo fixtures only. Changes require an out-of-band source and lockfile review; this is not a sandbox.",
   "trees": [
     {
       "name": "demo-seed",
@@ -223,6 +223,132 @@
         {
           "path": "test",
           "type": "directory"
+        },
+        {
+          "path": "test/table.test.ts",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 803,
+          "sha256": "9510e9f268d0ce2624e1aa4c3b091800dfc5c90fcbfe2e4271e8cfbf831caa6b"
+        },
+        {
+          "path": "tsconfig.json",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 179,
+          "sha256": "35065caada58983e5e5a42b3e780debf4490e795a46ff4823221967cc02d9ba2"
+        }
+      ]
+    },
+    {
+      "name": "genuine-native-scan",
+      "sha256": "266e3f9e01bb63cd2f4139b9a225b83557733d656520869f856f8c764c7aff61",
+      "entries": [
+        {
+          "path": "README.md",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 427,
+          "sha256": "bb74a73129765333ddd40c4c20f2bce2fc7d44195be2e3e3a80e40edfd7030bd"
+        },
+        {
+          "path": "package-lock.json",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 39893,
+          "sha256": "860ae31915e9ae87f9064123c8701069f3c107fea61800dabfe4ef0dbc78ad69"
+        },
+        {
+          "path": "package.json",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 337,
+          "sha256": "142c5c318473e901b9224ad06a31957668d3deb7387c2abba50d703d786f70b1"
+        },
+        {
+          "path": "src",
+          "type": "directory"
+        },
+        {
+          "path": "src/table.ts",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 1084,
+          "sha256": "b00138fa7c980c5fdfc559bb4549cb76510b9f310b927e181e3c9271f9ce3fec"
+        },
+        {
+          "path": "test",
+          "type": "directory"
+        },
+        {
+          "path": "test/escapes.test.ts",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 3212,
+          "sha256": "be4b24469abd01fd92944f6b45bb3df2fc558514eb0060fd85e7f5fa5b33e988"
+        },
+        {
+          "path": "test/table.test.ts",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 803,
+          "sha256": "9510e9f268d0ce2624e1aa4c3b091800dfc5c90fcbfe2e4271e8cfbf831caa6b"
+        },
+        {
+          "path": "tsconfig.json",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 179,
+          "sha256": "35065caada58983e5e5a42b3e780debf4490e795a46ff4823221967cc02d9ba2"
+        }
+      ]
+    },
+    {
+      "name": "genuine-native-parity",
+      "sha256": "d3782809f58026c35839bc7226d1b54e43d46e5fc7f6320a12b9b4b5fdb37287",
+      "entries": [
+        {
+          "path": "README.md",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 427,
+          "sha256": "bb74a73129765333ddd40c4c20f2bce2fc7d44195be2e3e3a80e40edfd7030bd"
+        },
+        {
+          "path": "package-lock.json",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 39893,
+          "sha256": "860ae31915e9ae87f9064123c8701069f3c107fea61800dabfe4ef0dbc78ad69"
+        },
+        {
+          "path": "package.json",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 337,
+          "sha256": "142c5c318473e901b9224ad06a31957668d3deb7387c2abba50d703d786f70b1"
+        },
+        {
+          "path": "src",
+          "type": "directory"
+        },
+        {
+          "path": "src/table.ts",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 1355,
+          "sha256": "b9ca990eaf820083fd53c1fbf6c4c98d3f21d4034e83a6abe9a2ba6e3ce29d47"
+        },
+        {
+          "path": "test",
+          "type": "directory"
+        },
+        {
+          "path": "test/escapes.test.ts",
+          "type": "file",
+          "mode": "100644",
+          "bytes": 2919,
+          "sha256": "b89b144b9bf587c43ffedc738e82bdb854a3ee7e91391f364fb7b17c73cc282e"
         },
         {
           "path": "test/table.test.ts",
