@@ -1,18 +1,19 @@
 SPDX-License-Identifier: Apache-2.0
 Mutation: setView(pending.current.reduce(updateTask, task)); → setView(task);
-$ npm test -- --grep 'C-T2 initial compare snapshot retains early discussion and landing'
+$ npm test -- --grep 'C-T8 compare review buffers discussion and landing'
 Exit: 1
 
 > test
-> playwright test --grep C-T2 initial compare snapshot retains early discussion and landing
+> node build.mjs && playwright test --grep C-T8 compare review buffers discussion and landing
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:132:1 › C-T2 initial compare snapshot retains early discussion and landing (8.4s)
+  ✘  1 test/acceptance.spec.ts:325:1 › C-T8 compare review buffers discussion and landing while its snapshot is delayed (6.5s)
 
 
-  1) test/acceptance.spec.ts:132:1 › C-T2 initial compare snapshot retains early discussion and landing 
+  1) test/acceptance.spec.ts:325:1 › C-T8 compare review buffers discussion and landing while its snapshot is delayed 
 
     Error: expect(locator).toBeVisible() failed
 
@@ -26,16 +27,16 @@ Running 1 test using 1 worker
       - waiting for getByText('✓ Landed bob on main')
 
 
-      144 |   await request.post('/__mock/replay');
-      145 |   release();
-    > 146 |   await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+      339 |   await expect(page.getByRole('button', { name: 'Refresh recorded decision' })).toBeDisabled();
+      340 |   release(); await expect(page.getByRole('button', { name: 'Refresh recorded decision' })).toHaveCount(0);
+    > 341 |   await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
           |                                                        ^
-      147 |   await expect(page.locator('.discussion')).toContainText('Agree — API stability matters more than the shorter regex.');
-      148 | });
-      149 |
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:146:56
+      342 |   await expect(page.locator('.discussion')).toContainText('Context arrived during review.');
+      343 | });
+      344 |
+        at test/acceptance.spec.ts:341:56
 
-    Error Context: test-results/acceptance-C-T2-initial-co-62909-arly-discussion-and-landing/error-context.md
+    Error Context: test-results/acceptance-C-T8-compare-re-63494-ile-its-snapshot-is-delayed/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:132:1 › C-T2 initial compare snapshot retains early discussion and landing 
+    test/acceptance.spec.ts:325:1 › C-T8 compare review buffers discussion and landing while its snapshot is delayed 

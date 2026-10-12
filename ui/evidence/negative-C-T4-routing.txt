@@ -4,15 +4,16 @@ $ npm test -- --grep 'C-T4'
 Exit: 1
 
 > test
-> playwright test --grep C-T4
+> node build.mjs && playwright test --grep C-T4
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (7.1s)
+  ✘  1 test/acceptance.spec.ts:85:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (7.2s)
 
 
-  1) test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots 
+  1) test/acceptance.spec.ts:85:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots 
 
     Error: expect(locator).toContainText(expected) failed
 
@@ -26,16 +27,16 @@ Running 1 test using 1 worker
       - waiting for locator('.narrative')
 
 
-       97 |   await page.getByRole('button', { name: 'Land candidate →' }).focus(); await page.keyboard.press('Enter');
-       98 |   await page.getByRole('link', { name: /See why/ }).click();
-    >  99 |   await expect(page.locator('.narrative')).toContainText('Chosen:    bob');
+       99 |   await page.getByRole('button', { name: 'Land candidate →' }).focus(); await page.keyboard.press('Enter');
+      100 |   await page.getByRole('link', { name: /See why/ }).click();
+    > 101 |   await expect(page.locator('.narrative')).toContainText('Chosen:    bob');
           |                                            ^
-      100 |   await page.screenshot({ path: `${shots}/why-dark.png`, fullPage: true });
-      101 |   await page.getByRole('button', { name: 'Switch to light theme' }).click();
-      102 |   await page.screenshot({ path: `${shots}/why-light.png`, fullPage: true });
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:99:44
+      102 |   await page.screenshot({ path: `${shots}/why-dark.png`, fullPage: true });
+      103 |   await page.getByRole('button', { name: 'Switch to light theme' }).click();
+      104 |   await page.screenshot({ path: `${shots}/why-light.png`, fullPage: true });
+        at test/acceptance.spec.ts:101:44
 
     Error Context: test-results/acceptance-C-T4-wrangler-s-bd077-ision-why-login-screenshots/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots 
+    test/acceptance.spec.ts:85:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots 

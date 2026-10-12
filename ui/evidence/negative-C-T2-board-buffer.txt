@@ -1,43 +1,44 @@
 SPDX-License-Identifier: Apache-2.0
 Mutation: setView(pending.current.reduce(updateBoard, data)); → setView(data);
-$ npm test -- --grep 'C-T2 early feed survives delayed initial board snapshot'
+$ npm test -- --grep 'C-T8 board double-click keeps one refresh'
 Exit: 1
 
 > test
-> playwright test --grep C-T2 early feed survives delayed initial board snapshot
+> node build.mjs && playwright test --grep C-T8 board double-click keeps one refresh
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:114:1 › C-T2 early feed survives delayed initial board snapshot (8.4s)
+  ✘  1 test/acceptance.spec.ts:249:1 › C-T8 board double-click keeps one refresh and retains the live candidate (6.3s)
 
 
-  1) test/acceptance.spec.ts:114:1 › C-T2 early feed survives delayed initial board snapshot ───────
+  1) test/acceptance.spec.ts:249:1 › C-T8 board double-click keeps one refresh and retains the live candidate 
 
     Error: expect(locator).toContainText(expected) failed
 
-    Locator: getByTestId('lane-alice')
-    Expected substring: "fail · 12/14"
-    Received string:    "AAliceopenai / gpt-6○ Tests pendingactiveLast push Waiting for a push"
+    Locator: getByTestId('lane-bob')
+    Expected substring: "Latest buffered candidate"
+    Received string:    "BBobanthropic / sonnet✓ pass · 14/14activeLast push bbbbbbbbbbSupport escaped pipes⚑ 1 conflict region+14 −3"
     Timeout: 6000ms
 
     Call log:
-      - Expect "toContainText" getByTestId('lane-alice') with timeout 6000ms
-      - waiting for getByTestId('lane-alice')
-        16 × locator resolved to <article class="lane-card" data-push="received" data-testid="lane-alice">…</article>
-           - unexpected value "AAliceopenai / gpt-6○ Tests pendingactiveLast push Waiting for a push"
+      - Expect "toContainText" getByTestId('lane-bob') with timeout 6000ms
+      - waiting for getByTestId('lane-bob')
+        16 × locator resolved to <article data-push="idle" class="lane-card" data-testid="lane-bob">…</article>
+           - unexpected value "BBobanthropic / sonnet✓ pass · 14/14activeLast push bbbbbbbbbbSupport escaped pipes⚑ 1 conflict region+14 −3"
 
 
-      126 |   await request.post('/__mock/replay');
-      127 |   release();
-    > 128 |   await expect(page.getByTestId('lane-alice')).toContainText('fail · 12/14');
-          |                                                ^
-      129 |   await expect(page.getByRole('link', { name: /Why ffffffffff landed/ })).toBeVisible();
-      130 | });
-      131 |
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:128:48
+      267 |   await expect(page.getByTestId('lane-bob')).toContainText('Latest buffered candidate');
+      268 |   release(); await expect(page.getByRole('button', { name: 'Refresh board' })).toBeEnabled();
+    > 269 |   await expect(page.getByTestId('lane-bob')).toContainText('Latest buffered candidate'); expect(reads).toBe(1);
+          |                                              ^
+      270 | });
+      271 |
+      272 | test('C-T8 repeated discussion submit is single-flight and freezes the pending draft', async ({ page, request }) => {
+        at test/acceptance.spec.ts:269:46
 
-    Error Context: test-results/acceptance-C-T2-early-feed-8fb1b-ayed-initial-board-snapshot/error-context.md
+    Error Context: test-results/acceptance-C-T8-board-doub-c01c8--retains-the-live-candidate/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:114:1 › C-T2 early feed survives delayed initial board snapshot ────────
+    test/acceptance.spec.ts:249:1 › C-T8 board double-click keeps one refresh and retains the live candidate 

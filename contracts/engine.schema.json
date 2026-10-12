@@ -832,6 +832,66 @@
         },
         "leaseId": {
           "type": "string"
+        },
+        "briefing": {
+          "type": "object",
+          "properties": {
+            "hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "omitted": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "annotations": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "annotationId": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "attribution": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target",
+                  "scope",
+                  "annotationId",
+                  "revisionId",
+                  "kind",
+                  "content",
+                  "attribution"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "hash",
+            "omitted",
+            "annotations"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

@@ -14,7 +14,9 @@ it('review waits for every active agent lane, or REVIEW_WAIT_MS after the first 
   await ok(`${base}/tasks`, { slug: 'escape', intent: 'escape test' });
   for (const id of ['a', 'b']) await ok(`${base}/tasks/escape/agents`, { id, kind: 'agent', displayName: id });
   await ok(`${base}/tasks/escape/agents`, { id: 'reviewer', kind: 'reviewer', displayName: 'Reviewer' });
-  await runInDurableObject(env.PROJECT.getByName(p), async (instance: any) => {
+  // ProjectDO's full RPC type makes runInDurableObject's generic too deep for tsc (TS2589); inspect untyped.
+  const inspect = runInDurableObject as unknown as (stub: unknown, fn: (instance: any) => Promise<void>) => Promise<void>;
+  await inspect(env.PROJECT.getByName(p), async (instance: any) => {
     const now = new Date().toISOString(), old = new Date(Date.now() - REVIEW_WAIT_MS - 1000).toISOString();
     const candidate = (agent: string, capturedAt = now) => ({ task: 'escape', agent, capturedAt, conflicts: [], tests: { status: 'pass' } });
     // The reviewer's own lane never counts as a lane awaiting a candidate.

@@ -200,3 +200,10 @@ pre { margin: 0; overflow: auto; }
 @media (max-width: 1000px) { .compare-layout, .why-layout { grid-template-columns: 1fr; } .rail { position: static; } .candidate-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 .reviewer .muted { font-family: var(--font-body); font-size: 14.5px; font-style: italic; }
+/* Context carried forward from earlier decisions. */
+.briefed { margin: 6px 0 0; }
+.context-supplied ul { list-style: none; padding: 0; margin: 6px 0 0; }
+.context-supplied li { border-top: 1px dashed var(--stroke-subtle); padding: 8px 0; }
+.context-supplied .briefing { margin-top: 10px; }
+.briefing-target { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.context-supplied .muted { font-family: var(--font-body); font-style: italic; font-size: 14px; }

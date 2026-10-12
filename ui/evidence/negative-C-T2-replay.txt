@@ -4,15 +4,16 @@ $ npm test -- --grep 'C-T2 WebSocket replay updates board without reload'
 Exit: 1
 
 > test
-> playwright test --grep C-T2 WebSocket replay updates board without reload
+> node build.mjs && playwright test --grep C-T2 WebSocket replay updates board without reload
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:37:1 › C-T2 WebSocket replay updates board without reload (8.3s)
+  ✘  1 test/acceptance.spec.ts:39:1 › C-T2 WebSocket replay updates board without reload (8.4s)
 
 
-  1) test/acceptance.spec.ts:37:1 › C-T2 WebSocket replay updates board without reload ─────────────
+  1) test/acceptance.spec.ts:39:1 › C-T2 WebSocket replay updates board without reload ─────────────
 
     Error: expect(locator).toHaveAttribute(expected) failed
 
@@ -28,16 +29,16 @@ Running 1 test using 1 worker
            - unexpected value "idle"
 
 
-      42 |   const apiReads: string[] = []; page.on('request', r => { if (r.url().includes('/api/') && r.method() === 'GET') apiReads.push(r.url()); });
-      43 |   const response = await request.post('/__mock/replay'); expect(response.status()).toBe(200);
-    > 44 |   await expect(page.getByTestId('lane-alice')).toHaveAttribute('data-push', 'received');
+      44 |   const apiReads: string[] = []; page.on('request', r => { if (r.url().includes('/api/') && r.method() === 'GET') apiReads.push(r.url()); });
+      45 |   const response = await request.post('/__mock/replay'); expect(response.status()).toBe(200);
+    > 46 |   await expect(page.getByTestId('lane-alice')).toHaveAttribute('data-push', 'received');
          |                                                ^
-      45 |   await expect(page.getByTestId('lane-alice')).toContainText('fail · 12/14');
-      46 |   await expect(page.getByTestId('lane-bob')).toContainText('pass · 14/14');
-      47 |   await expect(page.getByTestId('lane-carol')).toContainText('Clean candidate');
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:44:48
+      47 |   await expect(page.getByTestId('lane-alice')).toContainText('fail · 12/14');
+      48 |   await expect(page.getByTestId('lane-bob')).toContainText('pass · 14/14');
+      49 |   await expect(page.getByTestId('lane-carol')).toContainText('Clean candidate');
+        at test/acceptance.spec.ts:46:48
 
     Error Context: test-results/acceptance-C-T2-WebSocket--d4b20-pdates-board-without-reload/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:37:1 › C-T2 WebSocket replay updates board without reload ──────────────
+    test/acceptance.spec.ts:39:1 › C-T2 WebSocket replay updates board without reload ──────────────
