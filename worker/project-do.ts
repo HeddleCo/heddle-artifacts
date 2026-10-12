@@ -423,7 +423,10 @@ export class ProjectDO extends DurableObject<Env> {
           lanes: this.store.all<Lane>('lanes').map(l => ({ task: l.task, agent: l.agent, status: l.status, lastSeenSha: l.lastSeenSha })),
           pushes: this.store.rows<{ id: string; status: string }>('SELECT id,status FROM pushes ORDER BY rowid').map(r => ({ id: r.id, status: r.status })),
           ops: this.store.rows<{ id: string; command: string; status: string; attempts: number; result: string | null }>('SELECT id,command,status,attempts,result FROM ops ORDER BY rowid DESC LIMIT 40')
-            .map(o => ({ id: o.id.slice(0, 48), command: o.command, status: o.status, attempts: o.attempts, error: error(o.result) })) }, { headers: { 'cache-control': 'no-store' } });
+            .map(o => ({ id: o.id.slice(0, 48), command: o.command, status: o.status, attempts: o.attempts, error: error(o.result) })),
+          // Review attempts carry only the reviewer's payload-free diagnostics (reason codes, shapes, timings).
+          reviews: this.store.rows<{ key: string; data: string }>(`SELECT key,data FROM meta WHERE key LIKE 'reviewAttempt:%' ORDER BY rowid DESC LIMIT 20`)
+            .map(r => { const a = JSON.parse(r.data); return { id: r.key.slice('reviewAttempt:'.length, 80), status: a.status, createdAt: a.createdAt, model: a.review?.model, diagnostics: a.diagnostics ?? [] }; }) }, { headers: { 'cache-control': 'no-store' } });
       }
       if (parts[3] === 'ws' && request.method === 'GET') {
         if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, 'websocket_required');

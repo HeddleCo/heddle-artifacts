@@ -261,7 +261,9 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     const { base: other } = await setup(); expect((await api(other, undefined, null)).status).toBe(403);
   });
   it('operator diagnostics expose queue states without credentials or payloads', async () => {
-    const { p, base, joins } = await setup(); const fork = `${p}--parser-escapes--agent-0`;
+    const { p, base, joins, project } = await setup(); const fork = `${p}--parser-escapes--agent-0`;
+    await runInDurableObject(project, async instance => { instance.store.put('meta', 'reviewAttempt:parser-escapes:abc', { status: 'prepared', heads: [], createdAt: '2026-10-12T00:00:00.000Z',
+      review: { model: 'fallback', summary: 'prompt text must not leak' }, diagnostics: [{ reason: 'deadline', attempt: 1, elapsedMs: 90000 }] }); });
     memoryArtifacts.repos.get(fork)!.tip = sha(30);
     await routeEvent({ type: 'cf.artifacts.repo.pushed', source: { namespace: 'heddle-demo', repoName: fork }, payload: { ref: 'refs/heads/main', after: sha(30) } }, env);
     await waitCandidates(base, 1);
@@ -270,6 +272,8 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     expect(d.open).toBe(true); expect(d.pushes.map((x: any) => x.status)).toContain('done');
     expect(d.ops.some((o: any) => o.command === 'ingest' && o.status === 'done')).toBe(true);
     for (const secret of [joins[0].agentKey, joins[0].fork.token, joins[0].upstream.readToken, op]) expect(text).not.toContain(secret);
+    expect(d.reviews).toEqual([{ id: 'parser-escapes:abc', status: 'prepared', createdAt: '2026-10-12T00:00:00.000Z', model: 'fallback', diagnostics: [{ reason: 'deadline', attempt: 1, elapsedMs: 90000 }] }]);
+    expect(text).not.toContain('prompt text must not leak');
     expect((await api(`${base}/diagnostics`, undefined, null)).status).toBe(403);
     expect((await api(`${base}/diagnostics`, undefined, joins[0].agentKey)).status).toBe(403);
   });
