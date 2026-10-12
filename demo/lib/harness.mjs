@@ -160,8 +160,10 @@ async function run(opts) {
       await mkdir(directory, { recursive: true, mode: 0o700 });
       const joined = await enrollment(opts.projectUrl, { task: agent === 'carol' ? 'docs-readme' : 'parser-escapes', as: agent,
         provider: `cloudflare-sandbox/${lane.provider.slice(3)}`, model: lane.model ?? 'runner-default' });
+      // The agent key lets the runner post the agent's closing message as its signed discussion turn.
       await writeFile(grant, JSON.stringify({ forkRemote: joined.fork.remote, forkToken: joined.fork.token,
-        upstreamRemote: joined.upstream.remote, upstreamToken: joined.upstream.readToken }), { mode: 0o600 });
+        upstreamRemote: joined.upstream.remote, upstreamToken: joined.upstream.readToken,
+        discussion: { url: `${joined.api}/tasks/${joined.task}/turns`, token: joined.agentKey } }), { mode: 0o600 });
       state.clones[agent] = directory; state.grants[agent] = grant;
       continue;
     }
@@ -198,10 +200,12 @@ async function run(opts) {
   if (live) {
     // Live agents write their own code: require signed, tested candidates, not the scripted outcome.
     for (const c of [...parser.candidates, ...docs.candidates]) if (!c.sourceSha || !c.signedBy) throw new Error(`Missing signed candidate: ${c.agent}`);
+    // A review can land before the last candidate does; wait for one that covers every current candidate.
     parser = await waitFor(opts, async () => {
       const view = await request(`${opts.api}/tasks/parser-escapes`, process.env.OPERATOR_TOKEN);
-      return view.review && view.turns.some(t => t.kind === 'reviewer' && t.signedBy) ? view : undefined;
-    }, 'signed reviewer discussion');
+      const covered = new Set((view.review?.perCandidate ?? []).map(r => r.agent));
+      return view.turns.some(t => t.kind === 'reviewer' && t.signedBy) && view.candidates.every(c => covered.has(c.agent)) ? view : undefined;
+    }, 'signed review covering every candidate');
     const lines = parser.candidates.map(c => `  ${c.agent}: ${c.tests.status} ${c.tests.passed}/${c.tests.passed + c.tests.failed} (${c.tests.provenance ?? 'reviewed fixture'}), ${c.conflicts.length} conflict region(s)`);
     console.log(`Live candidates ready for a human decision.\n${lines.join('\n')}\n  reviewer (${parser.review.model}) recommends: ${parser.review.recommendation?.pick ?? 'no recommendation'}`);
     console.log(`Decide at ${new URL(opts.url).origin}/p/${opts.project}/t/parser-escapes, then run: demo/run.sh verify --url ${new URL(opts.url).origin} --project ${opts.project} --dir ${opts.directory}`);

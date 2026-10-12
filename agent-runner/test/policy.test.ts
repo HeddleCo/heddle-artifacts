@@ -71,3 +71,21 @@ test("Workers AI inference for this account gets the token and gateway; the rest
   assert.equal(at("https://api.cloudflare.com/client/v4/user/tokens", "GET").kind, "deny");
   assert.equal(at("https://api.cloudflare.com/client/v4/accounts/acct/ai/v1/chat/completions", "DELETE").kind, "deny");
 });
+
+test("a discussion target is exactly one task's turns endpoint on the control plane", async () => {
+  const { validDiscussion } = await import("../src/policy.ts");
+  const cp = "heddle-artifacts.example.workers.dev";
+  const ok = { url: `https://${cp}/api/projects/demo/tasks/parser-escapes/turns`, token: "agent-key" };
+  assert.ok(validDiscussion(ok, cp));
+  for (const bad of [
+    { ...ok, url: ok.url.replace(cp, "evil.example") },
+    { ...ok, url: ok.url.replace("https:", "http:") },
+    { ...ok, url: ok.url.replace("/turns", "/decision") },
+    { ...ok, url: `https://${cp}/api/projects/demo/humans` },
+    { ...ok, url: `${ok.url}?as=luke` },
+    { ...ok, url: ok.url.replace("https://", "https://u:p@") },
+    { ...ok, token: "a b" },
+    { ...ok, token: "" },
+    { url: ok.url },
+  ]) assert.equal(validDiscussion(bad, cp), false, JSON.stringify(bad));
+});

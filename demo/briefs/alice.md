@@ -17,3 +17,9 @@ on camera. Use only the actual provider/model attribution supplied by the runtim
 or operator; omit unknown details. Do not invent a coauthor identity or email.
 Run tests and report exact output; demonstrate the new test fails on
 the base. If blocked, report the exact cause; use only a named fallback.
+
+## Closing message to your team
+
+End your run with a short message for your teammates and the human who decides (3 to 5 sentences):
+your approach, the trade-off you chose and why, and your exact test result. It is posted to this
+task's discussion under your name. Never include credentials, tokens or configuration.
