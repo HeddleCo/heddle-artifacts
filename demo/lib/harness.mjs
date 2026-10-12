@@ -130,7 +130,10 @@ async function launchLive(opts, state) {
     if (provider.startsWith('cf-')) {
       // The lane's Git grant sits in a 0600 file the pane script reads once and deletes; only paths appear here.
       const script = join(demoRoot, 'lib', 'sandbox-lane.mjs');
-      await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexec node ${quote(script)} ${quote(provider.slice(3))} ${quote(`${opts.project}-${agent}-${state.generation}`)} ${quote(state.grants[agent])} ${quote(brief)} ${quote(marker)}\n`, { mode: 0o700 });
+      // tmux panes inherit the tmux server's environment, not ours: pass the runner origin and token path explicitly.
+      const runner = process.env.DEMO_RUNNER_URL, tokenFile = process.env.DEMO_RUNNER_TOKEN_FILE;
+      if (!runner || !tokenFile) throw new Error('cf-* lanes need DEMO_RUNNER_URL and DEMO_RUNNER_TOKEN_FILE');
+      await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexport DEMO_RUNNER_URL=${quote(runner)} DEMO_RUNNER_TOKEN_FILE=${quote(tokenFile)}\nexec node ${quote(script)} ${quote(provider.slice(3))} ${quote(`${opts.project}-${agent}-${state.generation}`)} ${quote(state.grants[agent])} ${quote(brief)} ${quote(marker)}\n`, { mode: 0o700 });
     } else {
     const modelFlag = model ? ` --model ${quote(model)}` : '';
     const invocation = provider === 'codex' ? `${quote(executable)} exec --sandbox workspace-write --ephemeral -c sandbox_workspace_write.network_access=true${modelFlag} - < ${quote(brief)}` :

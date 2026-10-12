@@ -90,6 +90,8 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
       this.ctx.storage.kv.put(GRANT_KEY, lane.grant);
       await this.#ensureExecution(name);
       const steps: string[][] = [
+        // A retried start may find a partial clone from a container that started cold and failed.
+        ["rm", "-rf", REPOSITORY_DIRECTORY],
         ["git", "clone", "--quiet", "--", lane.grant.forkRemote, REPOSITORY_DIRECTORY],
         ["git", "-C", REPOSITORY_DIRECTORY, "remote", "add", "upstream", lane.grant.upstreamRemote],
         ["git", "-C", REPOSITORY_DIRECTORY, "config", "user.name", lane.author.name],

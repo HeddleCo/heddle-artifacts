@@ -15,9 +15,14 @@ try {
   const grant = JSON.parse(await readFile(grantPath, 'utf8')); await rm(grantPath, { force: true });
   const lane = new URL(`/lanes/${agent}/${name}`, base), headers = { authorization: `Bearer ${token}` };
   const who = name.split('-').at(-2);
-  const started = await fetch(lane, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' },
-    body: JSON.stringify({ grant, prompt: await readFile(briefPath, 'utf8'), author: { name: who, email: `${who}@heddle-artifacts.local` } }),
-    signal: AbortSignal.timeout(300000) });
+  const body = JSON.stringify({ grant, prompt: await readFile(briefPath, 'utf8'), author: { name: who, email: `${who}@heddle-artifacts.local` } });
+  // A sandbox image's first start in a location can fail while it provisions; retry that, nothing else.
+  let started;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    started = await fetch(lane, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body, signal: AbortSignal.timeout(300000) });
+    if (started.status !== 500) break;
+    console.log(`${who}: sandbox still starting (attempt ${attempt}), retrying`); await new Promise(r => setTimeout(r, 15000));
+  }
   if (started.status !== 202) { await finish(1, `${who}: sandbox start failed (HTTP ${started.status})`); process.exit(); }
   console.log(`${who}: ${agent} running in a Cloudflare Sandbox`);
   let last = '';
@@ -31,5 +36,6 @@ try {
   }
   await finish(1, `${who}: timed out after 40 minutes`);
 } catch (error) {
-  await finish(1, `${name ?? 'lane'}: ${error.message === 'usage' ? 'invalid arguments' : 'sandbox lane failed'}`);
+  // Messages here come from this script's own checks or fetch/fs errors; none carry the grant or bearer.
+  await finish(1, `${name ?? 'lane'}: sandbox lane failed: ${error.message === 'usage' ? 'invalid arguments' : String(error.message).slice(0, 160)}`);
 }
