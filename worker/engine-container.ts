@@ -2,6 +2,7 @@
 import { Container } from '@cloudflare/containers';
 import { deadline, DeadlineError } from './deadline';
 export const ENGINE_COMMAND_MS = 180000;
+export const ENGINE_START_MS = 120000;
 export class HeddleEngine extends Container {
   // Bounded single-project demo: do not keep idle paid compute awake for hours.
   // Five minutes exceeds the per-command three-minute deadline below.
@@ -10,11 +11,15 @@ export class HeddleEngine extends Container {
   entrypoint = ['sleep', 'infinity'];
   async fetch(request: Request): Promise<Response> {
     const command = new URL(request.url).pathname.slice(1);
-    if (!['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'].includes(command)) return new Response(null, { status: 404 });
+    if (!['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'tests.record', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'].includes(command)) return new Response(null, { status: 404 });
     if (!this.ctx.container) throw new Error('container_unavailable');
     // Custom exec bypasses Container.fetch, so renew the SDK's separate idle deadline.
     this.renewActivityTimeout();
-    if (!this.ctx.container.running) await this.start();
+    // Bound the start too: every deadline lives here, beside the container, so callers never wait forever.
+    if (!this.ctx.container.running) {
+      try { await deadline(this.start(), ENGINE_START_MS, 'engine_start_timeout'); }
+      catch (error) { if (!(error instanceof DeadlineError)) throw error; await this.destroy().catch(() => {}); return new Response(null, { status: 504 }); }
+    }
     await this.ctx.container.setInactivityTimeout(5 * 60 * 1000);
     const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}') as Record<string, string>;
     const process = await this.ctx.container.exec(['engine', command], { stdin: request.body ?? undefined, env, stderr: 'ignore', signal: AbortSignal.timeout(ENGINE_COMMAND_MS) });

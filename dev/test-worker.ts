@@ -6,14 +6,17 @@ import { emptyState, executeFixture } from './stub-engine.mjs';
 import { ProjectDO as Coordinator } from '../worker/project-do';
 import { memoryArtifacts } from './memory-artifacts';
 import type { Env } from '../worker/env';
+import { fakeTestRunner } from './fake-test-runner';
 export class ProjectDO extends Coordinator {
-  constructor(ctx: DurableObjectState, env: Env) { super(ctx, env.DEV === '1' ? env : { ...env, ARTIFACTS: memoryArtifacts, REVIEW: { async review(input) { return { summary: 'Fixture review', perCandidate: input.candidates.map(c => ({ agent: c.agent, verdict: 'approve' as const, notes: 'fixture' })), model: 'stub' }; } } }); }
+  constructor(ctx: DurableObjectState, env: Env) { super(ctx, env.DEV === '1' ? { ...env, TEST_RUNNER: fakeTestRunner } : { ...env, TEST_RUNNER: fakeTestRunner, ARTIFACTS: memoryArtifacts, REVIEW: { async review(input) { return { summary: 'Fixture review', perCandidate: input.candidates.map(c => ({ agent: c.agent, verdict: 'approve' as const, notes: 'fixture' })), model: 'stub' }; } } }); }
 }
 export class StubEngine extends DurableObject {
   state = emptyState();
   calls: Array<{ command: string; input: any; hasCanonicalRead?: boolean }> = [];
   delay: { command: string; ms: number } | undefined;
+  isolatedFixture = false;
   async delayNext(command: string, ms: number) { this.delay = { command, ms }; }
+  isolateUnreviewed() { this.isolatedFixture = true; }
   failures: { command: string; count: number; after: boolean } | undefined;
   async failNext(command: string, count = 1, after = true) { this.failures = { command, count, after }; }
   stats() { return { calls: this.calls, state: this.state }; }
@@ -23,6 +26,7 @@ export class StubEngine extends DurableObject {
     if (command === 'restore') { this.state = JSON.parse(await request.text()); this.calls.push({ command, input: {} }); return Response.json({ generation: this.state.generation }); }
     if (command === 'snapshot') return new Response(JSON.stringify(this.state));
     const input = await request.json();
+    if (this.isolatedFixture) this.state.isolateUnreviewed = true;
     const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}');
     const reads = JSON.parse(env.ARTIFACTS_READ_TOKENS ?? '{}');
     this.calls.push({ command, input, hasCanonicalRead: command === 'publish' ? typeof reads[input.canonical.remote] === 'string' : undefined });

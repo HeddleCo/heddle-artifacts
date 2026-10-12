@@ -22,7 +22,7 @@ for (const record of transcript) {
   }
   commands.add(record.cmd);
 }
-assert.equal(commands.size, 13, 'Every JSON command has real contract evidence');
+assert.equal(commands.size, 14, 'Every JSON command has real contract evidence');
 console.log(`Contracts PASS: ${count} real JSON request/response checks against Track A engine.schema.json; ${commands.size} JSON commands; snapshot verified separately as tar.zst`);
 const validate = ajv.getSchema(schema.$id + '#/$defs/candidates.output');
 const broken = structuredClone(transcript.find(r => r.cmd === 'candidates' && r.exit === 0).output);

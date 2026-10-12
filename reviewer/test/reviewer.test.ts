@@ -4,6 +4,15 @@ import Ajv from "ajv";
 import { createReviewer, isReview, review, REVIEW_MODEL, REVIEW_SCHEMA, REVIEW_TIMEOUT_MS, type ReviewDiagnostic, type ReviewInput,
   type ReviewModelInput, type ReviewValidationFailure } from "../reviewer";
 const validates = new Ajv().compile(REVIEW_SCHEMA);
+it('can recommend a candidate with passing isolated sandbox tests and retains provenance in model input', async () => {
+  const input: ReviewInput = { intent: 'Improve parser', base: 'base', turns: [], candidates: [{ agent: 'alice', diff: '+parser',
+    tests: { status: 'pass', passed: 18, failed: 0, summary: 'Isolated sandbox: 18 passed, 0 failed', durationMs: 50, provenance: 'isolated sandbox', sourceSha: 'a'.repeat(40) } }] };
+  const response = { summary: 'Parser meets intent', perCandidate: [{ agent: 'alice', verdict: 'approve', notes: 'Tests pass' }], recommendation: { pick: 'alice', why: 'Preserves API' }, model: REVIEW_MODEL };
+  const result = await createReviewer({ AI: { run: async (_model, payload) => {
+    expect(JSON.stringify(payload)).toContain('isolated sandbox'); return { response: JSON.stringify(response) };
+  } } })(input);
+  expect(result.recommendation?.pick).toBe('alice'); expect(result.model).toBe(REVIEW_MODEL);
+});
 for (const count of [1, 2, 3]) {
   it(`D-T2 validates ${count} candidates`, async () => {
     const input: ReviewInput = { intent: "Support escaped pipes", base: "base", turns: [],

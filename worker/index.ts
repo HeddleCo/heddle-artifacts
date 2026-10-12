@@ -4,3 +4,4 @@ import { queue } from './events';
 export { ProjectDO } from './project-do';
 export { HeddleEngine } from './engine-container';
 export default { fetch: fetchApi, queue };
+export { CandidateTestSandbox, TestOutbound } from './test-sandbox';

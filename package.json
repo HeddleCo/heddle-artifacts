@@ -19,7 +19,8 @@
     "test:storyline-real": "node dev/local-flow.mjs --storyline"
   },
   "dependencies": {
-    "@cloudflare/containers": "0.3.7"
+    "@cloudflare/containers": "0.3.7",
+    "@cloudflare/sandbox": "1.0.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.23.0",
