@@ -309,7 +309,7 @@ export class ProjectDO extends DurableObject<Env> {
           await this.ctx.storage.sync();
           if (!current()) throw new HttpError(409, 'review_inputs_changed');
           attempt.review = await this.env.REVIEW.review({ intent: task.intent, base: task.baseSha, candidates: diffs, turns: this.store.all<Turn>('turns').filter(t => t.task === task.slug) }, {
-            timeoutMs: 90000, maxAttempts: 1,
+            timeoutMs: 150000, maxAttempts: 1,
             onDiagnostic: diagnostic => { attempt.diagnostics.push(diagnostic); this.store.put('meta', key, attempt); },
           });
           attempt.status = 'prepared'; this.store.put('meta', key, attempt); await this.ctx.storage.sync();
@@ -364,7 +364,7 @@ export class ProjectDO extends DurableObject<Env> {
       for (const c of this.candidates(task.slug)) diffs.push({ agent: c.agent, tests: c.tests, diff: (await this.engine.read('diff', { task: task.slug, agent: c.agent, maxBytes: 524288 })).diff });
       unchanged();
       const review = await this.env.REVIEW.review({ intent: task.intent, base: task.baseSha, candidates: diffs, turns: this.store.all<Turn>('turns').filter(t => t.task === task.slug) }, {
-        timeoutMs: 90000, maxAttempts: 1,
+        timeoutMs: 150000, maxAttempts: 1,
         onDiagnostic: diagnostic => { reservation.diagnostics.push(diagnostic); this.store.put('meta', key, reservation); },
       });
       unchanged();

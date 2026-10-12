@@ -270,7 +270,7 @@ export function createReviewer(env: ReviewerEnv, options: ReviewOptions = {}): (
 }
 export async function review(input: ReviewInput, env: ReviewerEnv = {}, options: ReviewOptions = {}): Promise<Review> {
   const timeoutMs = options.timeoutMs ?? REVIEW_TIMEOUT_MS, maxAttempts = options.maxAttempts ?? 3;
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 90000 ||
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180000 ||
       !Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) throw new Error("invalid review execution bounds");
   const report = (reason: ReviewDiagnosticReason, attempt: number, startedAt: number,
     detail: Pick<ReviewDiagnostic, "responseType" | "responseLength" | "providerStatus" | "providerCode" | "validationFailure"> = {}) => {
@@ -301,8 +301,9 @@ export async function review(input: ReviewInput, env: ReviewerEnv = {}, options:
           ...(attempt ? [{ role: "user" as const, content: "The previous response failed validation. Return strict schema JSON with the supplied agent ids." }] : []),
         ],
         response_format: { type: "json_schema", json_schema: schema },
-        // Reasoning models spend output tokens before the JSON; 2048 truncated GLM-5.2 replies.
-        temperature: 0, max_tokens: 4096, stream: false,
+        // GLM-5.2 reasons before answering; at 4096 tokens it often ran out mid-reasoning (finish_reason "length",
+        // empty content). 16000 lets it finish: about 55 s and 7.5k tokens on a two-candidate parser review.
+        temperature: 0, max_tokens: 16000, stream: false,
       }), timeoutMs);
     } catch (error) {
       report(error instanceof ReviewDeadlineError ? "deadline" : "provider_error", attempt + 1, startedAt, providerCodes(error));
