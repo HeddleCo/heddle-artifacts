@@ -76,6 +76,18 @@ push timestamps supply recording evidence. If any agent fails, inspect its
 private clone, reset, and use the named §9.5 R7 scripted fallback. Real live work
 is not claimed by tests using stand-in executables.
 
+### Revision round
+
+With `DEMO_REVISION_ROUND=1`, a live run whose lanes are `cf-*` gives each agent one more turn after the
+review. The harness waits for each task's signed review of its current candidates and refuses the
+fallback review, which no model wrote. Then it starts one new sandbox lane per agent with the same grant,
+which it holds in memory only. Each brief is the original brief, the review summary, that agent's verdict
+and notes, the recommendation, and the other agents' closing notes, quoted verbatim from the discussion.
+The agent may revise and push, or keep its candidate and say why. Its closing turn begins with
+"Revision:". A push becomes the lane's new head on the board, and it is tested and reviewed again. The
+harness prints each agent's outcome. It writes the briefs, the before and after diffs, and `result.json`
+to `<dir>/<generation>/revision-<n>/`. The round must finish inside the project's one-hour write window.
+
 ## Independent local contract test
 
 Until Track A's fake-artifacts plus wrangler and Track B's engine are available:
