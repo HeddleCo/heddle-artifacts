@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { it, expect, vi } from 'vitest';
 import { Container } from '@cloudflare/containers';
-import { HeddleEngine } from '../engine-container';
+import { HeddleEngine, ENGINE_COMMAND_MS } from '../engine-container';
 it('container wrapper passes argv/stdin/env separately and maps domain/crash exits', async () => {
   for (const [code, status] of [[0, 200], [2, 422], [1, 502]]) {
     const calls: any[] = [];
@@ -36,4 +36,18 @@ it('custom exec renews the SDK idle deadline before awaiting the runtime call', 
     now = 300001; expect(fake.isActivityExpired()).toBe(false);
     now = 595001; expect(fake.isActivityExpired()).toBe(true);
   } finally { clock.mockRestore(); }
+});
+
+it('a hung engine process is killed with its container and reported as 504 instead of wedging the caller', async () => {
+  vi.useFakeTimers();
+  try {
+    let destroyed = 0;
+    const hung = new ReadableStream({ start() {} });
+    const fake = { renewActivityTimeout() {}, async destroy() { destroyed++; }, ctx: { container: { running: true, async setInactivityTimeout() {},
+      async exec() { return { stdout: hung, exitCode: new Promise<number>(() => {}) }; } } } };
+    const pending = HeddleEngine.prototype.fetch.call(fake as unknown as HeddleEngine, new Request('http://engine/ingest', { method: 'POST', body: '{}' }));
+    await vi.advanceTimersByTimeAsync(ENGINE_COMMAND_MS + 1);
+    const response = await pending;
+    expect(response.status).toBe(504); expect(destroyed).toBe(1);
+  } finally { vi.useRealTimers(); }
 });

@@ -326,6 +326,16 @@ export class ProjectDO extends DurableObject<Env> {
         const status = this.credentials.status();
         return Response.json(status, { status: parts[3] === 'cleanup' && !status.complete ? 202 : 200, headers: { 'cache-control': 'no-store' } });
       }
+      if (parts[3] === 'diagnostics' && parts.length === 4 && request.method === 'GET') {
+        // Operator-only queue state for a live session: ids, states and error codes only, never payloads.
+        if (!actor.op) throw new HttpError(403, 'forbidden');
+        const error = (result: string | null) => { try { const r = JSON.parse(result ?? 'null'); return r?.error ?? r?.reason ?? r?.code; } catch { return undefined; } };
+        return Response.json({ open: this.credentials.isOpen(), alarm: await this.ctx.storage.getAlarm(), draining: !!this.draining,
+          lanes: this.store.all<Lane>('lanes').map(l => ({ task: l.task, agent: l.agent, status: l.status, lastSeenSha: l.lastSeenSha })),
+          pushes: this.store.rows<{ id: string; status: string }>('SELECT id,status FROM pushes ORDER BY rowid').map(r => ({ id: r.id, status: r.status })),
+          ops: this.store.rows<{ id: string; command: string; status: string; attempts: number; result: string | null }>('SELECT id,command,status,attempts,result FROM ops ORDER BY rowid DESC LIMIT 40')
+            .map(o => ({ id: o.id.slice(0, 48), command: o.command, status: o.status, attempts: o.attempts, error: error(o.result) })) }, { headers: { 'cache-control': 'no-store' } });
+      }
       if (parts[3] === 'ws' && request.method === 'GET') {
         if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, 'websocket_required');
         this.credentials.assertOpen();
