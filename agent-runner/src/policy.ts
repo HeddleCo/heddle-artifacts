@@ -100,3 +100,16 @@ export function validGrant(value: unknown, artifactsHost: string, namespace: str
   const token = (t: unknown) => typeof t === "string" && t.length > 0 && t.length < 4096 && !/[\r\n\s]/.test(t);
   return remote(g.forkRemote) && remote(g.upstreamRemote) && g.forkRemote !== g.upstreamRemote && token(g.forkToken) && token(g.upstreamToken);
 }
+
+/** Where a finished lane posts its agent's message: exactly one task's turns endpoint on the control plane. */
+export interface DiscussionTarget { url: string; token: string }
+export function validDiscussion(value: unknown, controlPlaneHost: string): value is DiscussionTarget {
+  if (typeof value !== "object" || value === null) return false;
+  const d = value as Record<string, unknown>;
+  if (typeof d.token !== "string" || !d.token || d.token.length > 4096 || /[\r\n\s]/.test(d.token) || typeof d.url !== "string") return false;
+  try {
+    const u = new URL(d.url);
+    return u.protocol === "https:" && u.hostname === controlPlaneHost && !u.username && !u.password && !u.search && !u.hash &&
+      /^\/api\/projects\/[a-z0-9][a-z0-9-]{0,62}\/tasks\/[a-z0-9][a-z0-9-]{0,62}\/turns$/.test(u.pathname);
+  } catch { return false; }
+}

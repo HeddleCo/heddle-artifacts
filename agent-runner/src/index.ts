@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Heddle agent runner: runs a coding agent per lane in a Cloudflare Sandbox.
-//   POST   /lanes/:agent/:name       { grant, prompt, author, model? }  start the lane (operator only)
+//   POST   /lanes/:agent/:name       { grant, prompt, author, model?, discussion? }  start the lane (operator only)
 //   GET    /lanes/:agent/:name       outcome: none | running | succeeded | failed | lost
 //   GET    /lanes/:agent/:name/log   last bytes of the agent's JSON event stream
 //   DELETE /lanes/:agent/:name       destroy the sandbox
-import { validGrant } from "./policy";
+import { validDiscussion, validGrant } from "./policy";
 import type { LaneSandbox, RunnerEnv } from "./lane";
 
 export { CodexLane, ClaudeLane, OpencodeLane } from "./agents";
@@ -51,7 +51,11 @@ export default {
       if (body.model !== undefined && (agent !== "opencode" || typeof body.model !== "string" || !/^cloudflare-workers-ai\/@cf\/[\w.-]+\/[\w.-]+$/.test(body.model))) {
         return new Response("model must be a cloudflare-workers-ai/@cf/... id on an opencode lane\n", { status: 400 });
       }
-      const started = await lane.start(name, { grant: body.grant, prompt: body.prompt, author: body.author, ...(body.model ? { model: body.model as string } : {}) });
+      if (body.discussion !== undefined && !validDiscussion(body.discussion, env.CONTROL_PLANE_HOST)) {
+        return new Response("discussion must be { url, token } for one task's turns on the control plane\n", { status: 400 });
+      }
+      const started = await lane.start(name, { grant: body.grant, prompt: body.prompt, author: body.author,
+        ...(body.model ? { model: body.model as string } : {}), ...(body.discussion ? { discussion: body.discussion } : {}) });
       if (started === "busy") return new Response("Lane already ran\n", { status: 409 });
       if (started !== "started") return Response.json(started, { status: 502 });
       return Response.json({ state: "running" }, { status: 202 });

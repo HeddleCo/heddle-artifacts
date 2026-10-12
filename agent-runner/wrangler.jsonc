@@ -12,6 +12,7 @@
     "AI_GATEWAY_METADATA": "{\"app\":\"heddle-agent-runner\"}",
     "ARTIFACTS_HOST": "163867166be2a9e9a601132b1f3081a4.artifacts.cloudflare.net",
     "ARTIFACTS_NAMESPACE": "heddle-demo",
+    "CONTROL_PLANE_HOST": "heddle-artifacts.zephyr-forge.workers.dev",
     "CODEX_MODEL": "@cf/openai/gpt-oss-120b",
     "CLAUDE_MODEL": "claude-sonnet-5-5",
     "OPENCODE_MODEL": "cloudflare-workers-ai/@cf/moonshotai/kimi-k2.7-code"

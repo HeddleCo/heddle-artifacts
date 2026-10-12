@@ -8,7 +8,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { z } from "zod";
 
 import type { Outbound } from "./outbound";
-import type { LaneGrant } from "./policy";
+import type { DiscussionTarget, LaneGrant } from "./policy";
 
 const REPOSITORY_DIRECTORY = "/workspace/repo";
 const TASK_DIRECTORY = "/workspace/task";
@@ -21,6 +21,10 @@ const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1_000;
 const TASK_CHECK_INTERVAL_MS = 60 * 1_000;
 const TASK_KEY = "task";
 const GRANT_KEY = "grant";
+const DISCUSSION_KEY = "discussion";
+const ANNOUNCED_KEY = "announced";
+// The agent's closing message, posted once to its task discussion; long transcripts are not.
+const MAX_ANNOUNCEMENT = 4000;
 const CA_PATH = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
 
 // exec() does not inherit start() env. Pass these on every command that makes HTTPS requests.
@@ -48,6 +52,7 @@ export interface RunnerEnv {
   AI_GATEWAY_METADATA?: string;
   ARTIFACTS_HOST: string;
   ARTIFACTS_NAMESPACE: string;
+  CONTROL_PLANE_HOST: string;
   CODEX_MODEL: string;
   CLAUDE_MODEL: string;
   OPENCODE_MODEL: string;
@@ -61,7 +66,7 @@ export interface AgentCommand { argv: string[]; env: Record<string, string> }
 export type TaskOutcome = { state: "succeeded"; result: string } | { state: "failed"; error: string };
 export type TaskStatus = { state: "none" } | { state: "running" } | { state: "lost" } | TaskOutcome;
 export interface CommandResult { exitCode: number; stdout: string; stderr: string }
-export interface LaneStart { grant: LaneGrant; prompt: string; author: { name: string; email: string }; model?: string }
+export interface LaneStart { grant: LaneGrant; prompt: string; author: { name: string; email: string }; model?: string; discussion?: DiscussionTarget }
 
 export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
   protected abstract readonly agent: string;
@@ -90,6 +95,7 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
     return this.ctx.blockConcurrencyWhile(async () => {
       if (this.ctx.storage.kv.get(TASK_KEY) !== undefined) return "busy";
       this.ctx.storage.kv.put(GRANT_KEY, lane.grant);
+      if (lane.discussion) this.ctx.storage.kv.put(DISCUSSION_KEY, lane.discussion);
       await this.#ensureExecution(name);
       const steps: string[][] = [
         // A retried start may find a partial clone from a container that started cold and failed.
@@ -119,17 +125,42 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
   // Each check is a request to the Container, so it stays awake while the agent runs.
   async alarm(): Promise<void> {
     if (!this.#container.running) return;
-    if ((await this.#taskStatus()).state === "running") {
+    const status = await this.#taskStatus();
+    if (status.state === "running") {
       await this.ctx.storage.setAlarm(Date.now() + TASK_CHECK_INTERVAL_MS);
       return;
     }
+    await this.#announce(status);
     // Finished: the grant is no longer needed by this lane.
     this.ctx.storage.kv.delete(GRANT_KEY);
   }
 
   async status(): Promise<TaskStatus> {
     if (!this.#container.running) return this.ctx.storage.kv.get(TASK_KEY) === undefined ? { state: "none" } : { state: "lost" };
-    return this.#taskStatus();
+    const status = await this.#taskStatus();
+    await this.#announce(status);
+    return status;
+  }
+
+  /**
+   * Post the agent's closing message to its task discussion as a signed turn, once. This runs in
+   * the Worker with the agent's own key; the sandbox never sees the key or reaches the control plane.
+   */
+  async #announce(status: TaskStatus): Promise<void> {
+    const target = this.ctx.storage.kv.get<DiscussionTarget>(DISCUSSION_KEY);
+    if (status.state !== "succeeded" || !target || this.ctx.storage.kv.get(ANNOUNCED_KEY)) return;
+    const body = status.result.trim().slice(0, MAX_ANNOUNCEMENT);
+    // Claim before the first await: the status poll and the alarm can both see the finished task,
+    // and only the claimant may post. A failed post releases the claim for a later retry.
+    this.ctx.storage.kv.put(ANNOUNCED_KEY, body ? "posting" : "empty");
+    if (!body) return;
+    try {
+      const response = await fetch(target.url, { method: "POST", signal: AbortSignal.timeout(20_000),
+        headers: { authorization: `Bearer ${target.token}`, "content-type": "application/json" }, body: JSON.stringify({ body }) });
+      if (response.ok) { this.ctx.storage.kv.put(ANNOUNCED_KEY, "posted"); this.ctx.storage.kv.delete(DISCUSSION_KEY); return; }
+      console.error({ event: "lane.announce.rejected", status: response.status });
+    } catch (cause) { console.error({ event: "lane.announce.failed", error: cause instanceof Error ? cause.name : "unknown" }); }
+    this.ctx.storage.kv.delete(ANNOUNCED_KEY);
   }
 
   /** The last bytes of the agent's event stream, for an operator watching the lane. */
@@ -142,6 +173,7 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
     await this.ctx.storage.deleteAlarm();
     this.ctx.storage.kv.delete(TASK_KEY);
     this.ctx.storage.kv.delete(GRANT_KEY);
+    this.ctx.storage.kv.delete(DISCUSSION_KEY);
     if (this.#container.running) await this.#container.destroy();
   }
 
