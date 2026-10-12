@@ -80,7 +80,7 @@ describe('composed Worker and production reviewer admission', () => {
     const before = await ok(f.task);
     expect(before.review.model).toBe('fallback');
     expect(before.reviewAttempt.diagnostics.map((d: any) => [d.reason, d.validationFailure])).toEqual([['started', undefined], ['invalid_review', 'fallback_echo']]);
-    expect(before.reviewAttempt.diagnostics.every((d: any) => d.maxAttempts === 1 && d.timeoutMs === 90000)).toBe(true);
+    expect(before.reviewAttempt.diagnostics.every((d: any) => d.maxAttempts === 1 && d.timeoutMs === 150000)).toBe(true);
     expect(before.turns).toHaveLength(1);
     const original = JSON.stringify(before.turns[0]);
     const human = await ok(`${f.task}/turns`, { as: 'human', body: 'Keep the current parser API; inspect trailing delimiters.' });
@@ -120,7 +120,7 @@ describe('composed Worker and production reviewer admission', () => {
     const result = await ok(`${f.task}/review/retry`, retry);
     expect(result.review.model).toBe('fallback');
     expect(result.retry).toMatchObject({ status: 'completed', model: 'fallback' });
-    expect(result.retry.diagnostics.at(-1)).toMatchObject({ reason: 'invalid_review', validationFailure: 'fallback_echo', timeoutMs: 90000, maxAttempts: 1 });
+    expect(result.retry.diagnostics.at(-1)).toMatchObject({ reason: 'invalid_review', validationFailure: 'fallback_echo', timeoutMs: 150000, maxAttempts: 1 });
     await ok(`${f.task}/review/retry`, retry);
     const after = await ok(f.task);
     expect(after.turns).toHaveLength(2); expect(after.turns[0]).toEqual(before.turns[0]);
@@ -198,12 +198,12 @@ describe('composed Worker and production reviewer admission', () => {
     const originalTimer = globalThis.setTimeout;
     const reviewTimers: number[] = [];
     globalThis.setTimeout = ((callback: (...args: any[]) => void, delay?: number, ...args: any[]) => {
-      if (delay === 90000) reviewTimers.push(delay);
-      return originalTimer(callback, delay === 90000 ? 1 : delay, ...args);
+      if (delay === 150000) reviewTimers.push(delay);
+      return originalTimer(callback, delay === 150000 ? 1 : delay, ...args);
     }) as typeof setTimeout;
     try { await automatic(f.project); }
     finally { globalThis.setTimeout = originalTimer; }
-    expect(reviewTimers).toEqual([90000]);
+    expect(reviewTimers).toEqual([150000]);
     const before = await ok(f.task);
     expect(before.review.model).toBe('fallback');
     expect(before.reviewAttempt.diagnostics.map((d: any) => d.reason)).toEqual(['started', 'deadline']);

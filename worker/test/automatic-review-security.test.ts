@@ -33,7 +33,7 @@ async function installReviewer(project: ReturnType<Env['PROJECT']['getByName']>,
   await runInDurableObject(project, instance => {
     (instance as any).env.REVIEW = { review: async (_input: unknown, options: any) => {
       instance.store.put('meta', 'fixtureCalls', (instance.store.get<number>('meta', 'fixtureCalls') ?? 0) + 1);
-      expect(options.timeoutMs).toBe(90000); expect(options.maxAttempts).toBe(1);
+      expect(options.timeoutMs).toBe(150000); expect(options.maxAttempts).toBe(1);
       options.onDiagnostic({ model: REVIEW_MODEL, reason: 'started', attempt: 1, elapsedMs: 0, timeoutMs: 90000, maxAttempts: 1 });
       if (paused) await new Promise<void>(resolve => { (instance as any).fixtureRelease = resolve; });
       options.onDiagnostic({ model: REVIEW_MODEL, reason: 'admitted', attempt: 1, elapsedMs: 1, timeoutMs: 90000, maxAttempts: 1, responseType: 'object' });

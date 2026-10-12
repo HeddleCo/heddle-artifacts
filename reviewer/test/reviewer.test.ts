@@ -117,7 +117,7 @@ it("guarded retry admits a valid response after 31 seconds with exactly one call
       calls++;
       expect(payload.response_format.type).toBe("json_schema");
       expectBoundSchema(payload.response_format.json_schema, conflictInput);
-      expect(payload.max_tokens).toBe(4096); expect(payload.stream).toBe(false);
+      expect(payload.max_tokens).toBe(16000); expect(payload.stream).toBe(false);
       await new Promise(resolve => setTimeout(resolve, 31000));
       return { response: JSON.stringify(good) };
     } } }, { timeoutMs: 90000, maxAttempts: 1, onDiagnostic: value => diagnostics.push(value) })(conflictInput);
@@ -244,7 +244,7 @@ it("per-call options override factory options without mutating subsequent calls"
   expect(factoryDiagnostics.map(d => d.reason)).toEqual(["started", "malformed_json", "started", "malformed_json", "started", "malformed_json"]);
 });
 
-for (const options of [{ timeoutMs: 0 }, { timeoutMs: 90001 }, { timeoutMs: NaN }, { timeoutMs: 1.5 },
+for (const options of [{ timeoutMs: 0 }, { timeoutMs: 180001 }, { timeoutMs: NaN }, { timeoutMs: 1.5 },
   { maxAttempts: 0 }, { maxAttempts: 4 }, { maxAttempts: Infinity }, { maxAttempts: 1.5 }]) {
   it(`rejects invalid execution bounds ${JSON.stringify(options)} before inference`, async () => {
     let calls = 0;
@@ -271,7 +271,7 @@ async function captureSchema(input: ReviewInput) {
   let captured!: ReviewModelInput["response_format"]["json_schema"];
   const result = await createReviewer({ AI: { run: async (_model, payload) => {
     captured = payload.response_format.json_schema;
-    expect(payload.temperature).toBe(0); expect(payload.max_tokens).toBe(4096); expect(payload.stream).toBe(false);
+    expect(payload.temperature).toBe(0); expect(payload.max_tokens).toBe(16000); expect(payload.stream).toBe(false);
     return { response: { summary: "Evidence checked", perCandidate: input.candidates.map(c =>
       ({ agent: c.agent, verdict: "concerns", notes: "Human review required" })), model: REVIEW_MODEL } };
   } } }, { timeoutMs: 90000, maxAttempts: 1 })(input);
