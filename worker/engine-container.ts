@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Container } from '@cloudflare/containers';
+import { deadline, DeadlineError } from './deadline';
+export const ENGINE_COMMAND_MS = 180000;
 export class HeddleEngine extends Container {
   // Bounded single-project demo: do not keep idle paid compute awake for hours.
   // Five minutes exceeds the per-command three-minute deadline below.
@@ -15,7 +17,7 @@ export class HeddleEngine extends Container {
     if (!this.ctx.container.running) await this.start();
     await this.ctx.container.setInactivityTimeout(5 * 60 * 1000);
     const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}') as Record<string, string>;
-    const process = await this.ctx.container.exec(['engine', command], { stdin: request.body ?? undefined, env, stderr: 'ignore', signal: AbortSignal.timeout(180000) });
+    const process = await this.ctx.container.exec(['engine', command], { stdin: request.body ?? undefined, env, stderr: 'ignore', signal: AbortSignal.timeout(ENGINE_COMMAND_MS) });
     // Preserve streaming for snapshots; the stream fails if the process exits nonzero.
     const stdout = process.stdout;
     if (command === 'snapshot' && stdout) {
@@ -26,8 +28,15 @@ export class HeddleEngine extends Container {
         }, cancel: reason => reader.cancel(reason)
       }), { headers: { 'content-type': 'application/zstd' } });
     }
-    const body = stdout ? await new Response(stdout).text() : '';
-    const code = await process.exitCode;
-    return new Response(body, { status: code === 0 ? 200 : code === 2 ? 422 : 502, headers: { 'content-type': 'application/json' } });
+    // The exec signal bounds process start only; bound reading its output and exit too. A process
+    // that outlives the deadline is killed with its container, and the journal retries from R2 state.
+    try {
+      const [body, code] = await deadline(Promise.all([stdout ? new Response(stdout).text() : Promise.resolve(''), process.exitCode]), ENGINE_COMMAND_MS, 'engine_timeout');
+      return new Response(body, { status: code === 0 ? 200 : code === 2 ? 422 : 502, headers: { 'content-type': 'application/json' } });
+    } catch (error) {
+      if (!(error instanceof DeadlineError)) throw error;
+      await this.destroy().catch(() => {});
+      return new Response(null, { status: 504 });
+    }
   }
 }

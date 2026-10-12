@@ -33,7 +33,9 @@ test('demo Container build context and compute defaults are bounded', async () =
   const source = await readFile(new URL('worker/engine-container.ts', root), 'utf8');
   assert.match(source, /sleepAfter = '5m'/);
   assert.match(source, /setInactivityTimeout\(5 \* 60 \* 1000\)/);
-  assert.match(source, /AbortSignal\.timeout\(180000\)/);
+  assert.match(source, /ENGINE_COMMAND_MS = 180000;/);
+  assert.match(source, /AbortSignal\.timeout\(ENGINE_COMMAND_MS\)/);
+  assert.match(source, /deadline\(Promise\.all\(\[stdout/);
 });
 test('root Docker context is an exact runtime-source allowlist, excluding private state', async () => {
   const rules = (await readFile(new URL('.dockerignore', root), 'utf8')).split(/\r?\n/).filter(line => line && !line.startsWith('#'));
