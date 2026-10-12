@@ -55,3 +55,28 @@ export function ReviewBody({ review }: { review: Review }) {
     {review.recommendation && <p class="recommendation">Recommends <strong>{review.recommendation.pick}</strong>: <InlineText text={review.recommendation.why}/></p>}
   </div>;
 }
+
+const PROOF = /^(\s*)(Test|Turn|Decision) proof:\s*(\{.*\})\s*$/;
+const REVIEW = /^(\s*Review:\s+)(.*?):\s*(\{.*\})\s*$/;
+function parsed(json: string): Record<string, unknown> | undefined {
+  try { const v = JSON.parse(json); return v && typeof v === 'object' ? v : undefined; } catch { return undefined; }
+}
+/**
+ * The Why note, line by line. Every line and every proof byte stays on the page; signed proof
+ * envelopes and review JSON fold into expandable rows so the record reads as a record.
+ */
+export function Narrative({ text }: { text: string }) {
+  return <div class="narrative-lines">{text.split('\n').map(line => {
+    const proof = PROOF.exec(line);
+    if (proof) {
+      const key = parsed(proof[3])?.publicKey;
+      return <details class="proof"><summary>{proof[1]}{proof[2]} proof · signed{typeof key === 'string' ? <> · <code>ed25519:{key.slice(0, 8)}…</code></> : null}</summary><code class="proof-body">{proof[3]}</code></details>;
+    }
+    const review = REVIEW.exec(line);
+    const summary = review && parsed(review[3])?.summary;
+    if (review && typeof summary === 'string') {
+      return <details class="proof"><summary>{review[1]}{identifiers(review[2])}: {summary}</summary><code class="proof-body">{review[3]}</code></details>;
+    }
+    return <div class="line">{identifiers(line) }</div>;
+  })}</div>;
+}
