@@ -86,6 +86,7 @@ export async function enrollment(input, options = {}) {
   const result = await request(`${api}/tasks/${task}/agents`, token, {
     id: agent, kind: 'agent', displayName: agent,
     ...(options.provider ? { provider: options.provider } : {}), ...(options.model ? { model: options.model } : {}),
+    ...(options.briefing === false ? { briefing: false } : {}),
   });
   if (typeof result.agentKey !== 'string' || typeof result.setup !== 'string' ||
       !result.fork || !result.upstream) throw new Error('Invalid §7.2 enrollment response');

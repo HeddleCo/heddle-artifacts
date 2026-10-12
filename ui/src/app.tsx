@@ -92,6 +92,7 @@ function Board({ p }: { p: string }) {
         return <article class="lane-card" key={`${lane.agent}/${pulse[`${task.slug}/${lane.agent}`] || 0}`} data-testid={`lane-${lane.agent}`} data-push={pulse[`${task.slug}/${lane.agent}`] ? 'received' : 'idle'}>
           <div class={`push-pulse ${pulse[`${task.slug}/${lane.agent}`] ? 'pulsing' : ''}`}><span class="avatar">{lane.agent.slice(0, 1).toUpperCase()}</span><div><h3>{agent?.displayName || lane.agent}</h3><p class="muted">{agent?.provider || 'agent'} / {agent?.model || 'unspecified'}</p></div></div>
           <div class="card-status"><Badge candidate={candidate}/><span class="muted">{lane.status}</span></div>
+          {lane.unbriefed && <p class="briefed"><span class="tag dashed control" title="Opened without a Heddle briefing, as a control">○ no briefing · control</span></p>}
           {!!lane.briefing?.annotations.length && <p class="briefed"><span class="tag dashed" title={`Heddle briefing ${lane.briefing.hash}`}>◆ briefed · {lane.briefing.annotations.length} earlier decision{lane.briefing.annotations.length === 1 ? '' : 's'}</span></p>}
           <p class="sha">Last push <code>{lane.lastSeenSha ? short(lane.lastSeenSha) : 'Waiting for a push'}</code></p>
           {candidate && <><p class="subject">{candidate.subject}</p><div class="card-footer"><span class={candidate.conflicts.length ? 'conflict-text' : 'success-text'}>{candidate.conflicts.length ? `⚑ ${candidate.conflicts.length} conflict region` : '✓ Clean candidate'}</span><span>+{candidate.diffstat.insertions} −{candidate.diffstat.deletions}</span></div></>}
@@ -209,6 +210,7 @@ function Compare({ p, t }: { p: string; t: string }) {
       </section>
       {lanes.some(l => l.briefing?.annotations.length) && <section class="panel context-supplied" aria-label="Context supplied"><p class="eyebrow">CONTEXT SUPPLIED</p>
         <p class="muted">Heddle briefed each agent with earlier decisions on this code before it started.</p>
+        {lanes.some(l => l.unbriefed) && <p class="muted control-note">Not briefed, as a control: {lanes.filter(l => l.unbriefed).map(l => l.agent).join(', ')}.</p>}
         {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
           <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span><span class="verdict-notes">“{a.content}”</span><span class="muted">— {displayName(a.attribution)}</span></li>)}</ul></div>)}
       </section>}

@@ -204,6 +204,10 @@ const carried = followUp.briefing.annotations.find(a => a.content === 'Keep the 
 assert.ok(carried, 'decision rationale reaches the next lane briefing');
 assert.equal(carried.kind, 'rationale'); assert.equal(carried.target, 'src/table.ts'); assert.match(carried.attribution, /Luke/i);
 assert.match(followUp.briefing.hash, /^[0-9a-f]{64}$/);
+// A control lane (brief: false) on the same task starts with no briefing at all.
+await mutate('agent.enroll', { agent: { id: 'control', kind: 'agent', displayName: 'Control fixture' } });
+const control = await mutate('lane.open', { task: 'unreviewed-code', agent: 'control', brief: false });
+assert.equal(control.briefing, undefined, 'control lanes are not briefed');
 const unknownCheckout = join(root, 'unknown-git'); await git(root, ['clone', unknownFork, unknownCheckout]);
 const sentinel = join(state, 'synthetic-custody-sentinel.txt'), attemptedRead = join(state, 'synthetic-attempted-read.txt');
 await writeFile(sentinel, 'PUBLIC-SYNTHETIC-CUSTODY-MARKER\n', { mode: 0o600 });

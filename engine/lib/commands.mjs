@@ -97,8 +97,8 @@ export async function openLane(state, request) {
   await writeFile(join(path, '.heddle', 'engine-lease.json'), JSON.stringify({ leaseId, token: grant.token, expiresAt: grant.reservation.lease_expires_at }), { mode: 0o600 });
   // Brief the new lane before its agent starts: Heddle's bounded pre-turn briefing carries earlier
   // decisions' annotations (for example a decider's rationale) and records a signed briefing for the
-  // lane. Reviewers judge candidates; they are not briefed as authors.
-  const briefing = agent.kind === 'agent' ? laneBriefing(await heddle(['context', '--for-thread', thread], path, agent)) : undefined;
+  // lane. Reviewers judge candidates; they are not briefed as authors. `brief: false` opens a control lane.
+  const briefing = agent.kind === 'agent' && request.brief !== false ? laneBriefing(await heddle(['context', '--for-thread', thread], path, agent)) : undefined;
   state.lanes[key] = { task: request.task, agent: request.agent, thread, path, leaseId, remote: forkRemote(state.canonical, state.project, request.task, request.agent), status: 'active', seen: {}, ...(briefing ? { briefing } : {}) };
   return { laneThread: thread, leaseId, ...(briefing ? { briefing } : {}) };
 }
