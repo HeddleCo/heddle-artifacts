@@ -1,8 +1,13 @@
-Copyright 2020 The Newsreader Project Authors (http://github.com/productiontype/Newsreader)
+PaperMono-Variable.woff2 is a modified version of Paper Mono 1.000: subset to
+the characters listed in scripts/fonts/paper-mono.sh, with the ss01 ligatures
+and the slashed zero on by default (scripts/fonts/paper-mono-features.py).
+The license below declares no Reserved Font Name.
+
+Copyright 2025 The Paper-Mono.Git Project Authors (https://github.com/paper-design/paper-mono.git)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-http://scripts.sil.org/OFL
+https://openfontlicense.org
 
 
 -----------------------------------------------------------

@@ -10,7 +10,7 @@ Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 403 response (6.4s)
+  ✘  1 test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 403 response (6.6s)
 
 
   1) test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 403 response ─────────────────────

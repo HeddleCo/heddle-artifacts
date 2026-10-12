@@ -77,8 +77,9 @@ Set `UI_NEGATIVE_EVIDENCE_DIR` to a separate relative output directory when pres
 Exact transcripts live in `evidence/`; screenshots are generated at a 1280×720 viewport, with full-page
 captures for the compare and Why pages. Browser evidence covers the local mock, not deployed Artifacts.
 
-Assets use a restrictive same-origin CSP and do not load remote scripts or fonts. Diff and narrative
-content are rendered as text. The directory-match badge compares public keys; it is not a cryptographic
+Assets use a restrictive same-origin CSP and do not load remote scripts or fonts. Interface and reading
+text are set in Cal Sans and code in Paper Mono, both self-hosted from `fonts/` under the SIL Open Font
+License 1.1 (licence texts alongside). Diff and narrative content are rendered as text. The directory-match badge compares public keys; it is not a cryptographic
 signature verification claim. Disconnects immediately mark compare data stale; refresh explicitly after reconnecting before landing. Initial decisions also wait for a post-subscription snapshot. Malformed live messages close the socket and recover through the same reconnect path.
 
 Cloudflare routing references: [Workers SPA assets](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/)

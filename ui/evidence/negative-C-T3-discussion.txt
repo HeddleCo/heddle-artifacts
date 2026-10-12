@@ -10,7 +10,7 @@ Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion (6.6s)
+  ✘  1 test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion (6.8s)
 
 
   1) test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion ────────────
