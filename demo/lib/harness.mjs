@@ -163,7 +163,7 @@ async function run(opts) {
       // The agent key lets the runner post the agent's closing message as its signed discussion turn.
       await writeFile(grant, JSON.stringify({ forkRemote: joined.fork.remote, forkToken: joined.fork.token,
         upstreamRemote: joined.upstream.remote, upstreamToken: joined.upstream.readToken,
-        discussion: { url: `${joined.api}/tasks/${joined.task}/turns`, token: joined.agentKey } }), { mode: 0o600 });
+        discussion: { url: `${joined.api}/tasks/${joined.task}/turns`, token: joined.agentKey }, briefing: joined.briefing }), { mode: 0o600 });
       state.clones[agent] = directory; state.grants[agent] = grant;
       continue;
     }
@@ -271,6 +271,40 @@ async function verifyPublication(opts, state, runDir, mainSha, pick, pushed) {
   if (!why.narrative.includes('bob') || !why.narrative.includes('alice')) throw new Error('Why API lost alternatives');
   return { main, mainTree, chosenTree };
 }
+// A task opened after the parser decision. Its agent starts from Heddle's briefing of earlier decisions.
+const FOLLOW_UP = { slug: 'parser-newlines', intent: 'Support escaped newlines (\\n) inside table cells.' };
+/** After a human decides: open a follow-up task whose sandboxed agent is briefed with earlier decisions. */
+async function followup(opts) {
+  const state = await saved(opts);
+  if (!state) throw new Error('No demo state in --dir; run the storyline first');
+  const runner = process.env.DEMO_RUNNER_URL, tokenFile = process.env.DEMO_RUNNER_TOKEN_FILE;
+  if (!runner || !tokenFile) throw new Error('followup needs DEMO_RUNNER_URL and DEMO_RUNNER_TOKEN_FILE');
+  const model = process.env.DEMO_FOLLOWUP_MODEL ?? '@cf/moonshotai/kimi-k2.7-code', token = process.env.OPERATOR_TOKEN;
+  const decided = await request(`${opts.api}/tasks/parser-escapes`, token);
+  if (!decided.decision?.mainSha) throw new Error('Decide parser-escapes before opening the follow-up');
+  try { await request(`${opts.api}/tasks`, token, FOLLOW_UP); } catch (error) { if (error.status !== 409) throw error; }
+  const generation = Date.now(), grant = join(opts.directory, `${generation}-dave.grant.json`), marker = join(opts.directory, `${generation}-dave.exit`);
+  const joined = await enrollment(opts.projectUrl, { task: FOLLOW_UP.slug, as: 'dave', provider: 'cloudflare-sandbox/opencode', model });
+  await writeFile(grant, JSON.stringify({ forkRemote: joined.fork.remote, forkToken: joined.fork.token, upstreamRemote: joined.upstream.remote,
+    upstreamToken: joined.upstream.readToken, discussion: { url: `${joined.api}/tasks/${FOLLOW_UP.slug}/turns`, token: joined.agentKey }, briefing: joined.briefing }), { mode: 0o600 });
+  const carried = joined.briefing?.annotations ?? [];
+  console.log(`Dave's lane is briefed with ${carried.length} annotation(s) from earlier decisions (briefing ${String(joined.briefing?.hash).slice(0, 12)}):`);
+  for (const a of carried) console.log(`  ${a.target} ${a.scope} · ${a.kind} · ${a.attribution}: ${a.content}`);
+  const launcher = join(opts.directory, `${generation}-dave.sh`), session = `heddle-${opts.project}-followup-${generation}`;
+  await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexport DEMO_RUNNER_URL=${quote(runner)} DEMO_RUNNER_TOKEN_FILE=${quote(tokenFile)} DEMO_LANE_MODEL=${quote(model)}\nexec node ${quote(join(demoRoot, 'lib', 'sandbox-lane.mjs'))} opencode ${quote(`${opts.project}-dave-${generation}`)} ${quote(grant)} ${quote(join(demoRoot, 'briefs', 'dave.md'))} ${quote(marker)}\n`, { mode: 0o700 });
+  await command('tmux', ['new-session', '-d', '-s', session, '-x', '180', '-y', '20', 'bash', launcher]);
+  await command('tmux', ['set-option', '-t', session, 'remain-on-exit', 'on']);
+  console.log(`Dave launched in a Cloudflare Sandbox. Watch with: tmux attach -t ${session}`);
+  const view = await waitFor(opts, async () => {
+    try { const code = (await readFile(marker, 'utf8')).trim(); if (code !== '0') throw new Error(`dave: live coding agent failed (exit ${code})`); }
+    catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+    const task = await request(`${opts.api}/tasks/${FOLLOW_UP.slug}`, token);
+    const covered = new Set((task.review?.perCandidate ?? []).map(r => r.agent));
+    return task.candidates.length && task.candidates.every(c => c.tests && c.tests.status !== 'pending' && covered.has(c.agent)) ? task : undefined;
+  }, 'briefed follow-up candidate with tests and review');
+  for (const c of view.candidates) console.log(`  ${c.agent}: ${c.tests.status} ${c.tests.passed}/${c.tests.passed + c.tests.failed} (${c.tests.provenance ?? 'reviewed fixture'})`);
+  console.log(`Follow-up ready: ${new URL(opts.url).origin}/p/${opts.project}/t/${FOLLOW_UP.slug}`);
+}
 /** After a human decides in the UI: verify the published result against the live candidates. */
 async function verify(opts) {
   const state = await saved(opts);
@@ -286,7 +320,7 @@ async function verify(opts) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [action, ...args] = process.argv.slice(2);
   Promise.resolve().then(() => { const opts = options(args);
-    if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); if (action === 'verify') return verify(opts);
-    throw new Error('Expected run, verify or reset');
+    if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); if (action === 'verify') return verify(opts); if (action === 'followup') return followup(opts);
+    throw new Error('Expected run, verify, followup or reset');
   }).catch(error => { console.error(`demo: ${error.message}`); process.exitCode = 1; });
 }

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-# demo/run.sh [verify] [options]: run the storyline, or verify a published human decision.
-if [ "${1:-}" = verify ]; then shift; exec node "$root/lib/harness.mjs" verify "$@"; fi
+# demo/run.sh [verify|followup] [options]: run the storyline, verify a published human decision,
+# or open the follow-up task whose agent is briefed with earlier decisions.
+case "${1:-}" in verify|followup) action=$1; shift; exec node "$root/lib/harness.mjs" "$action" "$@";; esac
 exec node "$root/lib/harness.mjs" run "$@"

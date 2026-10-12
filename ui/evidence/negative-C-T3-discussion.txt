@@ -4,15 +4,16 @@ $ npm test -- --grep 'C-T3 required rationale'
 Exit: 1
 
 > test
-> playwright test --grep C-T3 required rationale
+> node build.mjs && playwright test --grep C-T3 required rationale
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion (7.4s)
+  ✘  1 test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion (6.6s)
 
 
-  1) test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ────────────
+  1) test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion ────────────
 
     Error: expect(locator).toContainText(expected) failed
 
@@ -24,22 +25,20 @@ Running 1 test using 1 worker
     Call log:
       - Expect "toContainText" locator('.discussion') with timeout 6000ms
       - waiting for locator('.discussion')
-        - locator resolved to <section class="panel discussion">…</section>
-        - unexpected value "Discussion 1reviewerreviewer · 08:15 PMBob preserves the public API and handles escaped pipes. Alice changes the API.ed25519:dddddddd…ddddddddReply to reviewerSpeak asSelect a human identityLukeYour replyReplying to turn-review Cancel replyPosting…"
-        15 × locator resolved to <section class="panel discussion">…</section>
+        16 × locator resolved to <section class="panel discussion">…</section>
            - unexpected value "Discussion 1reviewerreviewer · 08:15 PMBob preserves the public API and handles escaped pipes. Alice changes the API.ed25519:dddddddd…ddddddddReply to reviewerSpeak asSelect a human identityLukeYour replyPost signed reply"
 
 
-      76 |   await page.getByLabel('Your reply').fill('Keep the API stable.');
-      77 |   await page.getByRole('button', { name: 'Post signed reply' }).click();
-    > 78 |   await expect(page.locator('.discussion')).toContainText('Keep the API stable.');
+      78 |   await page.getByLabel('Your reply').fill('Keep the API stable.');
+      79 |   await page.getByRole('button', { name: 'Post signed reply' }).click();
+    > 80 |   await expect(page.locator('.discussion')).toContainText('Keep the API stable.');
          |                                             ^
-      79 |   const posted = await (await request.get('/__mock/requests')).json();
-      80 |   expect(posted[0].body).toEqual({ body: 'Keep the API stable.', as: 'luke', replyTo: 'turn-review' });
-      81 | });
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:78:45
+      81 |   const posted = await (await request.get('/__mock/requests')).json();
+      82 |   expect(posted[0].body).toEqual({ body: 'Keep the API stable.', as: 'luke', replyTo: 'turn-review' });
+      83 | });
+        at test/acceptance.spec.ts:80:45
 
     Error Context: test-results/acceptance-C-T3-required-r-5dd21-and-signed-human-discussion/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ─────────────
+    test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion ─────────────

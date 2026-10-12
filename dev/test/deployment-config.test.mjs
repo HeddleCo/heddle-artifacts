@@ -11,7 +11,8 @@ test('demo Container build context and compute defaults are bounded', async () =
   assert.equal(parsed.error, undefined);
   assert.equal(parsed.config.containers.length, 2);
   const container = parsed.config.containers[0];
-  assert.equal(container.image, './engine/Dockerfile.layer');
+  // Anyone can build the engine from public source; Dockerfile.layer is an operator fast path over a prebuilt image.
+  assert.equal(container.image, './engine/Dockerfile');
   assert.equal(container.image_build_context, '.');
   assert.equal(container.max_instances, 1);
   const sandbox = parsed.config.containers[1];

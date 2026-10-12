@@ -1,18 +1,19 @@
 SPDX-License-Identifier: Apache-2.0
-Mutation: disabled={!pick || !rationale.trim() || !who → disabled={!pick || !who
+Mutation: if (!choice.pick || !choice.decider || !choice.rationale.trim()) return; → if (!choice.pick || !choice.decider) return;
 $ npm test -- --grep 'C-T3 required rationale'
 Exit: 1
 
 > test
-> playwright test --grep C-T3 required rationale
+> node build.mjs && playwright test --grep C-T3 required rationale
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion (9.5s)
+  ✘  1 test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion (6.4s)
 
 
-  1) test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ────────────
+  1) test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion ────────────
 
     Error: expect(locator).toBeDisabled() failed
 
@@ -28,16 +29,16 @@ Running 1 test using 1 worker
            - unexpected value "enabled"
 
 
-      72 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
-      73 |   await page.getByLabel('Why this candidate?').fill('   ');
+      72 |   await reset(request); await page.goto('/p/demo/t/parser-escapes');
+      73 |   await page.getByRole('radio', { name: /bob/ }).check();
     > 74 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
          |                                                                        ^
-      75 |   await page.getByRole('button', { name: 'Reply to reviewer' }).click();
-      76 |   await page.getByLabel('Your reply').fill('Keep the API stable.');
-      77 |   await page.getByRole('button', { name: 'Post signed reply' }).click();
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:74:72
+      75 |   await page.getByLabel('Why this candidate?').fill('   ');
+      76 |   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+      77 |   await page.getByRole('button', { name: 'Reply to reviewer' }).click();
+        at test/acceptance.spec.ts:74:72
 
     Error Context: test-results/acceptance-C-T3-required-r-5dd21-and-signed-human-discussion/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion ─────────────
+    test/acceptance.spec.ts:71:1 › C-T3 required rationale and signed human discussion ─────────────

@@ -4,15 +4,16 @@ $ npm test -- --grep 'C-T1'
 Exit: 1
 
 > test
-> playwright test --grep C-T1
+> node build.mjs && playwright test --grep C-T1
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (6.2s)
+  ✘  1 test/acceptance.spec.ts:18:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (6.3s)
 
 
-  1) test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
+  1) test/acceptance.spec.ts:18:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
 
     Error: expect(locator).toContainText(expected) failed
 
@@ -26,16 +27,16 @@ Running 1 test using 1 worker
       - waiting for getByRole('region', { name: 'Conflict regions' })
 
 
-      20 |   await expect(page.getByTestId('lane-alice')).toContainText('Waiting for a push');
-      21 |   await reset(request, 'conflict'); await page.goto('/p/demo/t/parser-escapes');
-    > 22 |   await expect(page.getByRole('region', { name: 'Conflict regions' })).toContainText('src/table.ts:parseRow');
+      22 |   await expect(page.getByTestId('lane-alice')).toContainText('Waiting for a push');
+      23 |   await reset(request, 'conflict'); await page.goto('/p/demo/t/parser-escapes');
+    > 24 |   await expect(page.getByRole('region', { name: 'Conflict regions' })).toContainText('src/table.ts:parseRow');
          |                                                                        ^
-      23 |   await expect(page.locator('.candidate')).toHaveCount(2);
-      24 |   await expect(page.getByLabel('alice candidate')).toContainText('fail · 12/14');
-      25 |   await expect(page.getByLabel('bob candidate')).toContainText('pass · 14/14');
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:22:72
+      25 |   await expect(page.locator('.candidate')).toHaveCount(2);
+      26 |   await expect(page.getByLabel('alice candidate')).toContainText('fail · 12/14');
+      27 |   await expect(page.getByLabel('bob candidate')).toContainText('pass · 14/14');
+        at test/acceptance.spec.ts:24:72
 
     Error Context: test-results/acceptance-C-T1-fixture-sc-ba6b8-onflict-compare-decided-why/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 
+    test/acceptance.spec.ts:18:1 › C-T1 fixture screens: pushing board, conflict compare, decided why 

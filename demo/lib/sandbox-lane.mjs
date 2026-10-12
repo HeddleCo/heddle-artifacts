@@ -12,12 +12,16 @@ try {
   if (base.protocol !== 'https:' || base.pathname !== '/') throw new Error('DEMO_RUNNER_URL must be an https origin');
   const token = (await readFile(process.env.DEMO_RUNNER_TOKEN_FILE ?? '', 'utf8')).trim();
   // Read the lane grant once, then remove it from disk; it travels only to the runner Worker.
-  const { discussion, ...grant } = JSON.parse(await readFile(grantPath, 'utf8')); await rm(grantPath, { force: true });
+  const { discussion, briefing, ...grant } = JSON.parse(await readFile(grantPath, 'utf8')); await rm(grantPath, { force: true });
   const lane = new URL(`/lanes/${agent}/${name}`, base), headers = { authorization: `Bearer ${token}` };
   const who = name.split('-').at(-2);
   // DEMO_LANE_MODEL (set per lane by the harness) picks a Workers AI model for opencode lanes.
   const model = process.env.DEMO_LANE_MODEL ? `cloudflare-workers-ai/${process.env.DEMO_LANE_MODEL}` : undefined;
-  const body = JSON.stringify({ grant, prompt: await readFile(briefPath, 'utf8'), author: { name: who, email: `${who}@heddle-artifacts.local` }, ...(agent === 'opencode' && model ? { model } : {}), ...(discussion ? { discussion } : {}) });
+  // Heddle's briefing of earlier decisions leads the prompt, so the agent starts from recorded intent.
+  const context = briefing?.annotations?.length ? `## Context from earlier decisions (Heddle briefing ${String(briefing.hash).slice(0, 12)})\n\n` +
+    `Earlier decisions on this code recorded these. Respect them, and say in your closing message how your change does.\n\n` +
+    briefing.annotations.map(a => `- ${a.target}${a.scope && a.scope !== 'file' ? ` (${a.scope})` : ''}, ${a.kind} by ${a.attribution}: ${a.content}`).join('\n') + '\n\n' : '';
+  const body = JSON.stringify({ grant, prompt: context + await readFile(briefPath, 'utf8'), author: { name: who, email: `${who}@heddle-artifacts.local` }, ...(agent === 'opencode' && model ? { model } : {}), ...(discussion ? { discussion } : {}) });
   // A sandbox image's first start in a location can fail while it provisions; retry that, nothing else.
   let started;
   for (let attempt = 1; attempt <= 3; attempt++) {
