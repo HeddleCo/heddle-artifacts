@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+{
+  "name": "heddle-agent-runner",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "AI_GATEWAY_ACCOUNT_ID": "163867166be2a9e9a601132b1f3081a4",
+    "AI_GATEWAY_ID": "heddle-artifacts",
+    "AI_GATEWAY_METADATA": "{\"app\":\"heddle-agent-runner\"}",
+    "ARTIFACTS_HOST": "163867166be2a9e9a601132b1f3081a4.artifacts.cloudflare.net",
+    "ARTIFACTS_NAMESPACE": "heddle-demo",
+    "CODEX_MODEL": "@cf/openai/gpt-oss-120b",
+    "CLAUDE_MODEL": "claude-sonnet-5-5",
+    "OPENCODE_MODEL": "cloudflare-workers-ai/@cf/moonshotai/kimi-k2.7-code"
+  },
+  "secrets": { "required": ["AI_GATEWAY_TOKEN", "RUNNER_TOKEN"] },
+  "durable_objects": { "bindings": [
+    { "name": "CODEX", "class_name": "CodexLane" },
+    { "name": "CLAUDE", "class_name": "ClaudeLane" },
+    { "name": "OPENCODE", "class_name": "OpencodeLane" }
+  ] },
+  "containers": [
+    { "class_name": "CodexLane", "scheduling_policy": "durable_object", "images": { "sandbox": { "dockerfile": "./images/codex.Dockerfile" } } },
+    { "class_name": "ClaudeLane", "scheduling_policy": "durable_object", "images": { "sandbox": { "dockerfile": "./images/claude.Dockerfile" } } },
+    { "class_name": "OpencodeLane", "scheduling_policy": "durable_object", "images": { "sandbox": { "dockerfile": "./images/opencode.Dockerfile" } } }
+  ],
+  "exports": {
+    "CodexLane": { "type": "durable-object", "storage": "sqlite" },
+    "ClaudeLane": { "type": "durable-object", "storage": "sqlite" },
+    "OpencodeLane": { "type": "durable-object", "storage": "sqlite" }
+  },
+  "observability": { "enabled": true }
+}
