@@ -1,12 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ArtifactsBinding, ArtifactsRepo, Env, RepoInfo } from './env';
 import { digest, HttpError } from './auth';
+import { deadline } from './deadline';
 export async function forkName(project: string, task: string, agent: string): Promise<string> {
   const full = `${project}--${task}--${agent}`;
   return full.length <= 63 ? full : `${full.slice(0, 46)}-${(await digest(full)).slice(0, 16)}`;
 }
+// Bound every provider call: a hung binding promise would otherwise wedge the project queue forever.
+export const ARTIFACTS_CALL_MS = 20000;
+function bounded(binding: ArtifactsBinding): ArtifactsBinding {
+  const call = <T>(p: Promise<T>) => deadline(p, ARTIFACTS_CALL_MS, 'artifacts_timeout');
+  const repo = (r: ArtifactsRepo): ArtifactsRepo => ({
+    info: () => call(r.info()),
+    fork: (name, options) => call(r.fork(name, options)),
+    createToken: (scope, ttl) => call(r.createToken(scope, ttl)),
+    revokeToken: token => call(r.revokeToken(token)),
+    log: options => call(r.log(options)),
+    [Symbol.dispose]: () => r[Symbol.dispose](),
+  });
+  return { create: (name, options) => call(binding.create(name, options)), get: async name => repo(await call(binding.get(name))) };
+}
 export function artifacts(env: Env): ArtifactsBinding {
-  if (env.DEV !== '1') { if (!env.ARTIFACTS) throw new HttpError(503, 'artifacts_unavailable'); return env.ARTIFACTS; }
+  if (env.DEV !== '1') { if (!env.ARTIFACTS) throw new HttpError(503, 'artifacts_unavailable'); return bounded(env.ARTIFACTS); }
   const origin = env.FAKE_ARTIFACTS_URL ?? 'http://127.0.0.1:8788';
   async function call(method: string, args: unknown[], repo?: string): Promise<any> {
     const response = await fetch(`${origin}/__binding`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method, args, repo }), signal: AbortSignal.timeout(10000) });
