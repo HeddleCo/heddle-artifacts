@@ -174,6 +174,24 @@ for (const [name, output, reason] of [
   });
 }
 
+for (const [name, wrap] of [
+  ["a json fence", (j: string) => "```json\n" + j + "\n```"],
+  ["a think block", (j: string) => "<think>Compare {alice} and {bob} first.</think>\n" + j],
+  ["surrounding prose", (j: string) => "Here is the review:\n" + j + "\nDone."],
+] as const) {
+  it(`admits schema JSON wrapped in ${name}`, async () => {
+    const diagnostics: ReviewDiagnostic[] = [];
+    const result = await createReviewer({ AI: { run: async () => ({ choices: [{ message: { content: wrap(JSON.stringify(good)) } }] }) } },
+      { timeoutMs: 90000, maxAttempts: 1, onDiagnostic: d => diagnostics.push(d) })(conflictInput);
+    expect(result).toEqual(good);
+    expect(diagnostics.map(d => d.reason)).toEqual(["started", "admitted"]);
+  });
+}
+it("wrapped text that is not schema JSON still falls back", async () => {
+  const result = await createReviewer({ AI: { run: async () => ({ response: "```json\n{ not json }\n```" }) } }, { timeoutMs: 90000, maxAttempts: 1 })(conflictInput);
+  expect(result.model).toBe("fallback");
+});
+
 it("provider failures expose only numeric status/code and never retry", async () => {
   let calls = 0;
   const diagnostics: ReviewDiagnostic[] = [];

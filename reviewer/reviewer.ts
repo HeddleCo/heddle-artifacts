@@ -208,12 +208,23 @@ function payload(output: unknown): { present: boolean; value?: unknown } {
   }
   return { present: false };
 }
+/**
+ * Reasoning models sometimes wrap schema JSON despite response_format: a <think> block, a Markdown fence,
+ * or a sentence around the object. Unwrap those to the outermost object; the schema still validates it.
+ */
+function unwrapJson(text: string): string {
+  const body = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n?```$/.exec(body);
+  if (fenced) return fenced[1];
+  const start = body.indexOf("{"), end = body.lastIndexOf("}");
+  return body.startsWith("{") || start < 0 || end < start ? body : body.slice(start, end + 1);
+}
 function decode(output: unknown): unknown {
   const { present, value } = payload(output);
   if (!present) throw new ReviewDecodeError("invalid_envelope");
   if (typeof value === "string") {
     if (value.length > 64000) throw new ReviewDecodeError("response_too_large");
-    try { return JSON.parse(value); } catch { throw new ReviewDecodeError("malformed_json"); }
+    try { return JSON.parse(unwrapJson(value)); } catch { throw new ReviewDecodeError("malformed_json"); }
   }
   return value;
 }
