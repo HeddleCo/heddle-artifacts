@@ -1,0 +1,122 @@
+{
+  "format": 1,
+  "purpose": "Distinct historical-candidate decision replay evidence; no new coding/reviewer session",
+  "files": [
+    {
+      "path": "REPORT.md",
+      "bytes": 4251,
+      "sha256": "ec93af4709f9c83259ab8ba5d85c01b4af1124f8b03bec6b1805533fdcac31f1"
+    },
+    {
+      "path": "candidate-view.json",
+      "bytes": 3411,
+      "sha256": "1c1a2e2fcf3d9d7a990b32ea106c3d9886568eea7a3cfec544cdf9acc92abbd0"
+    },
+    {
+      "path": "checked-source-hashes.json",
+      "bytes": 710,
+      "sha256": "74446f8ff1794faf66946e8ed43ad6344e04ffc9e1dce32f1f03bb7b883e122e"
+    },
+    {
+      "path": "decision-time-stability.json",
+      "bytes": 1062,
+      "sha256": "37a2a993402dc2221294ad0e15158971db89807814e1377adb780a2c09ea169b"
+    },
+    {
+      "path": "decision.json",
+      "bytes": 1872,
+      "sha256": "b2572305406bbf0506c15c99259782654fbdd6dc89c0a3705a909395cc264b94"
+    },
+    {
+      "path": "git-log.txt",
+      "bytes": 32241,
+      "sha256": "7aa8bb74270dd0f0071a9ffcd99f52ca5e3ccf023ddad812db7fc30aaace78c5"
+    },
+    {
+      "path": "native-parity.diff",
+      "bytes": 4676,
+      "sha256": "6960a7ce37009fc9ba9f19d40931334e89142125c8688cfa105ca591db27ccbc"
+    },
+    {
+      "path": "native-review.json",
+      "bytes": 5252,
+      "sha256": "a4fab29b01e70180b608a37ad4a9f8aabec4e5fccbe1d3575ba0dc35e4d0d3d9"
+    },
+    {
+      "path": "native-scan.diff",
+      "bytes": 4748,
+      "sha256": "046fafcba57325a9f1cb77fa5264d90cb22a3cf722df405e6e7a7cd36b5b616b"
+    },
+    {
+      "path": "operator-approval.json",
+      "bytes": 2460,
+      "sha256": "7ccd77ba5a0008c54554d9efd0c23b8eec74a0171ffe49c23e6af1abd529825d"
+    },
+    {
+      "path": "public-identities.json",
+      "bytes": 756,
+      "sha256": "637766c54ccaa325055b0e54d9b87d8415ed0d42c9aa9ade8a21d522339b4b94"
+    },
+    {
+      "path": "public-proof-verification.json",
+      "bytes": 986,
+      "sha256": "69a7c2d8edf72251ddf54181c794b9fe83b4c5d02d520fe0664e350c1008cca6"
+    },
+    {
+      "path": "published-agent-directory.json",
+      "bytes": 1057,
+      "sha256": "81421694a78b739bcb350fd1e1804d0fc3c212f5ad7a09ee443072b24cf765be"
+    },
+    {
+      "path": "ready.json",
+      "bytes": 678,
+      "sha256": "452a0690990cc5d3e760776be334176fdd38530eacc98d761556c3ece0af96bb"
+    },
+    {
+      "path": "refs.txt",
+      "bytes": 454,
+      "sha256": "6c5620537fac93a98dc8a6ab52900c567cd57ac0351a422de7a77a8b3d5ac0a3"
+    },
+    {
+      "path": "replay-context-turn.json",
+      "bytes": 644,
+      "sha256": "c0172680aa4a4c9466862cedf94848a3ee14b87d07ade22646c2a658dd8a67c3"
+    },
+    {
+      "path": "result.json",
+      "bytes": 9433,
+      "sha256": "cf59c8655962a832523c0b02e014853e7b956757487b20fbb268c83bfd7ded62"
+    },
+    {
+      "path": "review-input.json",
+      "bytes": 3718,
+      "sha256": "655a3d18641ae68f3437c0f34a34594cfce049a3e018ee50f5f8302eb1d7769b"
+    },
+    {
+      "path": "review-turn.json",
+      "bytes": 5433,
+      "sha256": "bbbfc660c53e129df35b0154f6da666c407bdad482721db373a0bb7075e0891a"
+    },
+    {
+      "path": "trusted-manifest.json",
+      "bytes": 7751,
+      "sha256": "51267306fd342e5eee7623bfd48f05ed028b5a0130e65ad5a06b2f8ac5b621fc"
+    },
+    {
+      "path": "why.json",
+      "bytes": 33315,
+      "sha256": "2c8ac211f53e84701627085b72ced4307dbe2895dedd5f79fd2630824af5a1fe"
+    }
+  ],
+  "excluded": [
+    "private/ including raw snapshot/restored state/keys",
+    "all fork .git/auth/config files",
+    "Wrangler logs and token-bearing binding configuration"
+  ],
+  "secretScan": {
+    "passed": true,
+    "knownLocalCredentialsCompared": 6,
+    "privateKeyAndBearerPatternsChecked": true
+  },
+  "exportTransformation": "Unsigned absolute execution paths redacted for v2 export. Signed payload bytes unchanged. Original hashes are in provenance/source-export-hashes.json."
+}

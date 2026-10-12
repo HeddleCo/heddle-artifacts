@@ -1,0 +1,58 @@
+{
+  "provider": "openai-native-collaboration",
+  "taskIdentity": "/root/refresh_artifacts_gateway_prototype/rehearse_genuine_entry_agents/review_genuine_candidates",
+  "runKind": "separately timestamped confirmation of original reviewer check",
+  "originalLogStatus": "The original check output remains in the tool transcript but was not saved as an on-disk log. These stdout/stderr files were captured during this later confirmation, not the original run.",
+  "scriptProvenance": "Exact JavaScript from the original node --input-type=module heredoc, saved as an .mjs file without changing its statements.",
+  "command": "node <ENTRY_WORKSPACE>/genuine-v2/evidence/reviewer-checks/compare-parsers.mjs",
+  "nodeVersion": "v24.19.0",
+  "startedAt": "2026-10-10T21:09:21.447994Z",
+  "finishedAt": "2026-10-10T21:09:25.922168Z",
+  "timestampSource": "Execution-host UTC datetime, consistent with clock.curr_time at 2026-10-10T21:08:41Z and host read at 21:08:50Z.",
+  "exitCode": 0,
+  "sourceShas": {
+    "native-scan": "167c9385e04e1b9028588f6534b51c5e1c398494",
+    "native-parity": "299f09558f9bb50b99127c122dcaa827a98752c1"
+  },
+  "caseCount": {
+    "exhaustive": 335923,
+    "targeted": 32776,
+    "baseline": 21845,
+    "perCandidateTotal": 390544,
+    "candidates": 2,
+    "totalCandidateComparisons": 781088,
+    "clarification": "Counts are executed cases/comparisons, not unique inputs across suites. The baseline suite intentionally overlaps the exhaustive suite."
+  },
+  "reviewTimingClarification": "The signed review finishedAt of 2026-10-10T21:07:26Z marks completion of substantive review work. Writing and verifying native-review.json completed later, by the 2026-10-10T21:07:51Z tool completion. This later confirmation is separate and does not revise that signed review.",
+  "reviewSha256Unchanged": "a4fab29b01e70180b608a37ad4a9f8aabec4e5fccbe1d3575ba0dc35e4d0d3d9",
+  "snapshotSha256Unchanged": {
+    "native-scan": {
+      "README.md": "bb74a73129765333ddd40c4c20f2bce2fc7d44195be2e3e3a80e40edfd7030bd",
+      "package-lock.json": "860ae31915e9ae87f9064123c8701069f3c107fea61800dabfe4ef0dbc78ad69",
+      "package.json": "142c5c318473e901b9224ad06a31957668d3deb7387c2abba50d703d786f70b1",
+      "src/table.ts": "b00138fa7c980c5fdfc559bb4549cb76510b9f310b927e181e3c9271f9ce3fec",
+      "test/escapes.test.ts": "be4b24469abd01fd92944f6b45bb3df2fc558514eb0060fd85e7f5fa5b33e988",
+      "test/table.test.ts": "9510e9f268d0ce2624e1aa4c3b091800dfc5c90fcbfe2e4271e8cfbf831caa6b",
+      "tsconfig.json": "35065caada58983e5e5a42b3e780debf4490e795a46ff4823221967cc02d9ba2"
+    },
+    "native-parity": {
+      "README.md": "bb74a73129765333ddd40c4c20f2bce2fc7d44195be2e3e3a80e40edfd7030bd",
+      "package-lock.json": "860ae31915e9ae87f9064123c8701069f3c107fea61800dabfe4ef0dbc78ad69",
+      "package.json": "142c5c318473e901b9224ad06a31957668d3deb7387c2abba50d703d786f70b1",
+      "src/table.ts": "b9ca990eaf820083fd53c1fbf6c4c98d3f21d4034e83a6abe9a2ba6e3ce29d47",
+      "test/escapes.test.ts": "b89b144b9bf587c43ffedc738e82bdb854a3ee7e91391f364fb7b17c73cc282e",
+      "test/table.test.ts": "9510e9f268d0ce2624e1aa4c3b091800dfc5c90fcbfe2e4271e8cfbf831caa6b",
+      "tsconfig.json": "35065caada58983e5e5a42b3e780debf4490e795a46ff4823221967cc02d9ba2"
+    }
+  },
+  "artifactSha256": {
+    "compare-parsers.mjs": "b12e181762673747bc18490b0ec7247937e1929b6cd3940b863c8a1f42f9f422",
+    "confirmation.stdout.json": "76fd89d152d2cc612ffebc2943fe33cfac7dd56b5f1fcbc9818699e83e7c0656",
+    "confirmation.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "limitations": [
+    "Finite deterministic input coverage; no proof for all JavaScript strings.",
+    "TypeScript annotations are removed in memory; this is not a TypeScript compiler check or a Vitest rerun.",
+    "No package installs, external requests, keys, or private-state reads; no candidate or signed-review changes."
+  ]
+}

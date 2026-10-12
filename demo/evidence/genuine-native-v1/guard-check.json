@@ -1,0 +1,19 @@
+{
+  "approved": {
+    "authorized": true,
+    "fixture": "genuine-native-scan",
+    "sha256": "266e3f9e01bb63cd2f4139b9a225b83557733d656520869f856f8c764c7aff61"
+  },
+  "afterUnexpectedFile": {
+    "authorized": false,
+    "reason": "complete source tree is not in the operator-reviewed SHA-256 allowlist"
+  },
+  "unknownTreeTests": {
+    "status": "skipped",
+    "passed": 0,
+    "failed": 0,
+    "summary": "Tests withheld: complete source tree is not in the operator-reviewed SHA-256 allowlist",
+    "durationMs": 42
+  },
+  "claim": "The existing guard accepted exact reviewed bytes, then withheld an unknown complete tree before npm; no sandbox claim."
+}

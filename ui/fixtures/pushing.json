@@ -1,0 +1,97 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "project": {
+    "id": "demo",
+    "canonicalRemote": "https://example.artifacts.cloudflare.net/git/heddle-demo/demo.git"
+  },
+  "agents": [
+    {
+      "id": "alice",
+      "kind": "agent",
+      "displayName": "Alice",
+      "publicKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "provider": "openai",
+      "model": "gpt-6"
+    },
+    {
+      "id": "bob",
+      "kind": "agent",
+      "displayName": "Bob",
+      "publicKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "provider": "anthropic",
+      "model": "sonnet"
+    },
+    {
+      "id": "carol",
+      "kind": "agent",
+      "displayName": "Carol",
+      "publicKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "provider": "openai",
+      "model": "gpt-6"
+    },
+    {
+      "id": "reviewer",
+      "kind": "reviewer",
+      "displayName": "Reviewer",
+      "publicKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "provider": "workers-ai",
+      "model": "qwen-coder"
+    },
+    {
+      "id": "luke",
+      "kind": "human",
+      "displayName": "Luke",
+      "publicKey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "parser-escapes",
+      "intent": "Support escaped pipes (\\|) inside table cells",
+      "status": "active",
+      "lanes": [
+        {
+          "project": "demo",
+          "task": "parser-escapes",
+          "agent": "alice",
+          "forkRepo": "demo--parser-escapes--alice",
+          "forkRemote": "https://example.artifacts.cloudflare.net/git/heddle-demo/demo--parser-escapes--alice.git",
+          "laneThread": "task/parser-escapes/alice",
+          "status": "active"
+        },
+        {
+          "project": "demo",
+          "task": "parser-escapes",
+          "agent": "bob",
+          "forkRepo": "demo--parser-escapes--bob",
+          "forkRemote": "https://example.artifacts.cloudflare.net/git/heddle-demo/demo--parser-escapes--bob.git",
+          "laneThread": "task/parser-escapes/bob",
+          "status": "active"
+        }
+      ],
+      "candidates": []
+    },
+    {
+      "slug": "docs-readme",
+      "intent": "Document escaped pipes with a working example",
+      "status": "active",
+      "lanes": [
+        {
+          "project": "demo",
+          "task": "docs-readme",
+          "agent": "carol",
+          "forkRepo": "demo--docs-readme--carol",
+          "forkRemote": "https://example.artifacts.cloudflare.net/git/heddle-demo/demo--docs-readme--carol.git",
+          "laneThread": "task/docs-readme/carol",
+          "status": "active"
+        }
+      ],
+      "candidates": []
+    }
+  ],
+  "turns": [],
+  "why": {
+    "sha": "ffffffffffffffffffffffffffffffffffffffff",
+    "narrative": "Heddle decision \u00b7 task parser-escapes\nIntent:    Support escaped pipes (\\|) inside table cells\nChosen:    bob   bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  tests 14/14  signed ed25519:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb (anthropic / sonnet)\nRejected:  alice aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  tests 12/14  conflicts: src/table.ts:parseRow\nReview:    reviewer (workers-ai/qwen-coder): bob keeps the public API.\nDiscussion: luke: agree \u2014 API stability matters more than the shorter regex.\nDecided by luke ed25519:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee \u00b7 resolution state-resolution \u00b7 land state-land"
+  }
+}

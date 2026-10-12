@@ -1,0 +1,113 @@
+{
+  "genuineNativeAgents": true,
+  "baseSha": "f4904fb643b3c283017e69817420e39c11c0ae56",
+  "pushed": {
+    "native-scan": "167c9385e04e1b9028588f6534b51c5e1c398494",
+    "native-parity": "299f09558f9bb50b99127c122dcaa827a98752c1"
+  },
+  "main": "beab62afbd2c660d8753e8210e9529b131cb0a1e",
+  "mainTree": "01ee577e5987a2329d46390960abfcbdecb773cb",
+  "chosenTree": "01ee577e5987a2329d46390960abfcbdecb773cb",
+  "decision": {
+    "task": "parser-escapes",
+    "decider": "scripted-test-choice",
+    "pick": "native-parity",
+    "rationale": "SCRIPTED TEST CHOICE, not a human product decision. Follow the independent native reviewer recommendation: Both implementations pass the same independent behavioral checks. Native-parity's committed matrix explicitly protects unknown-escape handling for every tested run length and long-run behavior, and its source directly encodes the requested parity rule. These are concrete maintenance advantages; raw test count alone is not the basis for the recommendation.",
+    "alternatives": [
+      "native-scan"
+    ],
+    "resolutionState": "hs-fw8f0k3pwvf3q91xrp8ev1b1x4fj6bm1g485pq0503qm9d1f6kmg",
+    "landState": "hs-fw8f0k3pwvf3q91xrp8ev1b1x4fj6bm1g485pq0503qm9d1f6kmg",
+    "mainSha": "beab62afbd2c660d8753e8210e9529b131cb0a1e",
+    "at": "2026-10-10T21:05:18.487550132+00:00"
+  },
+  "reviewTurn": {
+    "id": "co-aapddt5jp4fpzpv3hphnsvyvdbf2zw64aj01tg3km3bf9ncj336g",
+    "task": "parser-escapes",
+    "author": "native-reviewer",
+    "kind": "reviewer",
+    "body": "{\"provider\":\"openai-native-collaboration\",\"model\":\"runtime-selected-not-exposed\",\"taskIdentity\":\"/root/refresh_artifacts_gateway_prototype/rehearse_genuine_entry_agents/review_genuine_candidates\",\"startedAt\":\"2026-10-10T21:06:11Z\",\"finishedAt\":\"2026-10-10T21:07:26Z\",\"sourceShas\":{\"native-scan\":\"167c9385e04e1b9028588f6534b51c5e1c398494\",\"native-parity\":\"299f09558f9bb50b99127c122dcaa827a98752c1\"},\"summary\":\"Both candidates correctly implement the requested escaped-pipe and backslash-pair semantics while retaining the string[] API and existing non-escape behavior. No blocking defect found. Independent read-only checks found identical correct results across 390,544 cases per candidate. Recommend native-parity for its more systematic committed regression coverage and explicit run-parity implementation. This is an independent technical recommendation; any subsequent scripted test choice is not a human product decision.\",\"perCandidate\":[{\"agent\":\"native-scan\",\"verdict\":\"approve\",\"notes\":[\"Compact, single-pass pair consumption correctly distinguishes escaped trailing pipes from optional borders, preserves unknown escapes and unmatched backslashes, and retains empty cells and trimming.\",\"The 42 added tests cover runs 0..7, boundaries, Unicode, unrelated escapes and parseTable integration. Supplied guarded-test evidence reports all 56 tests passing and 31 failures against baseline.\",\"Smaller implementation than native-parity; no functional disadvantage found in independent checks. Its committed tests are less systematic for runs before ordinary text and contain no long-run case.\"]},{\"agent\":\"native-parity\",\"verdict\":\"approve\",\"notes\":[\"Explicitly counts each backslash run, decodes pairs and handles the odd remainder before recognizing delimiters. Every loop path advances; leading/trailing borders and empty rows remain correct.\",\"The 56 added tests systematically cover runs 0..8 before interior pipes, trailing pipes, ordinary text and end-of-input, plus a 1,025-backslash case and table integration. Supplied guarded-test evidence reports all 70 tests passing and 46 failures against baseline.\",\"Slightly longer implementation but the parity rule is directly auditable. No candidate-specific dependency, lifecycle, I/O or API changes were found.\"]}],\"recommendation\":{\"pick\":\"native-parity\",\"why\":\"Both implementations pass the same independent behavioral checks. Native-parity's committed matrix explicitly protects unknown-escape handling for every tested run length and long-run behavior, and its source directly encodes the requested parity rule. These are concrete maintenance advantages; raw test count alone is not the basis for the recommendation.\"},\"checks\":[\"Read review-input.json, candidate-view.json, both complete diffs, operator-approval.json and baseline-regressions.json; inspected all source, tests, README, package configuration and complete parsed lockfile metadata for both seven-file trees.\",\"Verified all fourteen snapshot files byte-for-byte against the exact committed Git blobs, both tree OIDs and both complete baseline diffs. All entries are regular 100644 blobs. Verified five unchanged baseline files per candidate, including package-lock.json and original tests.\",\"Verified the candidates have identical lockfiles; inspected all 70 dependency records and root metadata. All package download URLs use registry.npmjs.org and all integrity entries decode as 64-byte SHA-512 values. Existing optional fsevents install metadata is unchanged; no dependency installation was performed.\",\"Executed only the inspected pure parser source, with TypeScript annotations erased in memory and no imported dependencies. Compared both candidates against an independent regex-token oracle for all 335,923 rows of length 0..7 over a, pipe, backslash, space, tab and alpha: all passed.\",\"Compared both candidates against that oracle on 32,776 additional rows with backslash runs 0..4096 before interior pipes, final pipes, ordinary q and end-of-input, with and without a leading border: all passed.\",\"Compared both candidates with the original baseline algorithm on all 21,845 non-escape rows of length 0..7 over a, pipe, space and tab: all passed. Confirmed parseTable source remains unchanged.\"],\"limitations\":[\"Guarded Vitest outcomes and baseline regression counts were inspected from supplied evidence, not rerun by this reviewer. No separate TypeScript compiler check or performance benchmark was run.\",\"Dependency metadata inspection is not a dependency-source or vulnerability audit; no external security database was queried.\",\"This review covers the parser candidates, not live/cloud deployment or complete Markdown conformance. Existing parseTable separator filtering remains outside the requested change.\",\"Native signatures, engine conflict detection and custodial discussion attestation rely on the existing engine/orchestrator evidence; this reviewer did not independently verify cryptographic signatures or read signing secrets.\"]}",
+    "heddleDiscussion": "disc-01a127a4-c9e7-73de-b671-3efd8dc2c26c",
+    "signedBy": "872a63e2de73406d83ab628bfc4279383bb39e6ceb16e3865603ffe8ce8ea1fc",
+    "at": "2026-10-10T21:07:53.447Z"
+  },
+  "identity": {
+    "provider": "openai-native-collaboration",
+    "model": "runtime-selected-not-exposed"
+  },
+  "seconds": 226.983,
+  "timeline": [
+    {
+      "stage": "forks-ready",
+      "at": "2026-10-10T21:04:24.363Z",
+      "elapsedMs": 11509
+    },
+    {
+      "stage": "complete-trees-approved",
+      "at": "2026-10-10T21:05:16.802Z",
+      "elapsedMs": 63948
+    },
+    {
+      "stage": "concurrent-git-pushes-complete",
+      "at": "2026-10-10T21:05:17.068Z",
+      "elapsedMs": 64214,
+      "pushed": {
+        "native-scan": "167c9385e04e1b9028588f6534b51c5e1c398494",
+        "native-parity": "299f09558f9bb50b99127c122dcaa827a98752c1"
+      }
+    },
+    {
+      "stage": "signed-tested-conflicting-candidates-ready",
+      "at": "2026-10-10T21:05:30.055Z",
+      "elapsedMs": 77201
+    },
+    {
+      "stage": "genuine-review-signed",
+      "at": "2026-10-10T21:07:53.649Z",
+      "elapsedMs": 220795,
+      "discussion": "disc-01a127a4-c9e7-73de-b671-3efd8dc2c26c"
+    },
+    {
+      "stage": "fresh-clone-proof-complete",
+      "at": "2026-10-10T21:07:59.837Z",
+      "elapsedMs": 226983
+    }
+  ],
+  "verification": {
+    "sha": "beab62afbd2c660d8753e8210e9529b131cb0a1e",
+    "exportRoundTrip": true,
+    "treeMatch": true,
+    "fsck": true,
+    "checkedAt": "2026-10-10T21:07:58.825Z"
+  },
+  "checks": [
+    "separate enrolled Git forks",
+    "operator-reviewed complete trees before push",
+    "concurrent ordinary Git pushes",
+    "exact source OIDs",
+    "native capture signatures",
+    "overlapping candidate conflicts",
+    "locked candidate tests",
+    "genuine independent native review",
+    "signed native review discussion",
+    "explicitly scripted test choice",
+    "fresh clone",
+    "exact candidate refs",
+    "selected tree equality",
+    "strict fsck",
+    "strict index-pack",
+    "notes and native trailers",
+    "SHA-bound publication verification"
+  ],
+  "limitations": [
+    "local Wrangler/workerd SQLite and R2",
+    "local fake Artifacts smart HTTP service",
+    "host native engine, not deployed Container",
+    "provider label is declared provenance, not model-provider attestation",
+    "custodial signing keys",
+    "reviewer is a real native collaboration subagent, not Workers AI",
+    "scripted test choice, no real human decision",
+    "whole-tree review gate is not an arbitrary-code sandbox",
+    "no cloud deployment or external publication"
+  ]
+}

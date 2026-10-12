@@ -1,0 +1,20 @@
+SPDX-License-Identifier: Apache-2.0
+$ PLAYWRIGHT_BROWSERS_PATH=/runner/heddleco-build/scratch/heddle-artifacts-C-target/browsers npm --prefix ui run test:negative
+
+> test:negative
+> node test/negative.mjs
+
+Baseline: 9 browser checks passed against local wrangler dev.
+C-T1-board: removed behavior → expected assertion failure (exit 1; Expected: 3).
+C-T1-conflict: removed behavior → expected assertion failure (exit 1; src/table.ts:parseRow).
+C-T1-why: removed behavior → expected assertion failure (exit 1; Chosen:    bob).
+C-T2-replay: removed behavior → expected assertion failure (exit 1; data-push).
+C-T2-board-buffer: removed behavior → expected assertion failure (exit 1; fail · 12/14).
+C-T2-compare-buffer: removed behavior → expected assertion failure (exit 1; ✓ Landed bob on main).
+C-T3-heads: removed behavior → expected assertion failure (exit 1; state-alice-1).
+C-T3-forbidden: removed behavior → expected assertion failure (exit 1; Access denied).
+C-T3-stale: removed behavior → expected assertion failure (exit 1; toBeDisabled).
+C-T3-rationale: removed behavior → expected assertion failure (exit 1; toBeDisabled).
+C-T3-discussion: removed behavior → expected assertion failure (exit 1; Keep the API stable.).
+C-T4-routing: removed behavior → expected assertion failure (exit 1; Chosen:    bob).
+Restored: 9 browser checks passed. All source mutations reverted.

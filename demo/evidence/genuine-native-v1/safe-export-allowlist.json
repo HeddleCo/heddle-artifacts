@@ -1,0 +1,228 @@
+{
+  "format": 1,
+  "purpose": "Explicit public evidence export allowlist for the genuine native-agent local rehearsal",
+  "createdAt": "2026-10-10T21:11:11.552Z",
+  "files": [
+    {
+      "path": "REPORT.md",
+      "bytes": 6378,
+      "sha256": "2ad91c6af386f8e9f9e521dd49d5c597ad3ecd594b4746598f59cd456451102b"
+    },
+    {
+      "path": "baseline-regressions.json",
+      "bytes": 5625,
+      "sha256": "089c09f19d564f135d1f9f18a604312fb14c957c9167f1579afb41129e7bece3"
+    },
+    {
+      "path": "candidate-view.json",
+      "bytes": 3414,
+      "sha256": "36e0f225dd9a296cf528f1406fffbec1d089e83f883ea0abbdf317868b09a62f"
+    },
+    {
+      "path": "candidates/native-parity/README.md",
+      "bytes": 427,
+      "sha256": "bb74a73129765333ddd40c4c20f2bce2fc7d44195be2e3e3a80e40edfd7030bd"
+    },
+    {
+      "path": "candidates/native-parity/package-lock.json",
+      "bytes": 39893,
+      "sha256": "860ae31915e9ae87f9064123c8701069f3c107fea61800dabfe4ef0dbc78ad69"
+    },
+    {
+      "path": "candidates/native-parity/package.json",
+      "bytes": 337,
+      "sha256": "142c5c318473e901b9224ad06a31957668d3deb7387c2abba50d703d786f70b1"
+    },
+    {
+      "path": "candidates/native-parity/src/table.ts",
+      "bytes": 1355,
+      "sha256": "b9ca990eaf820083fd53c1fbf6c4c98d3f21d4034e83a6abe9a2ba6e3ce29d47"
+    },
+    {
+      "path": "candidates/native-parity/test/escapes.test.ts",
+      "bytes": 2919,
+      "sha256": "b89b144b9bf587c43ffedc738e82bdb854a3ee7e91391f364fb7b17c73cc282e"
+    },
+    {
+      "path": "candidates/native-parity/test/table.test.ts",
+      "bytes": 803,
+      "sha256": "9510e9f268d0ce2624e1aa4c3b091800dfc5c90fcbfe2e4271e8cfbf831caa6b"
+    },
+    {
+      "path": "candidates/native-parity/tsconfig.json",
+      "bytes": 179,
+      "sha256": "35065caada58983e5e5a42b3e780debf4490e795a46ff4823221967cc02d9ba2"
+    },
+    {
+      "path": "candidates/native-scan/README.md",
+      "bytes": 427,
+      "sha256": "bb74a73129765333ddd40c4c20f2bce2fc7d44195be2e3e3a80e40edfd7030bd"
+    },
+    {
+      "path": "candidates/native-scan/package-lock.json",
+      "bytes": 39893,
+      "sha256": "860ae31915e9ae87f9064123c8701069f3c107fea61800dabfe4ef0dbc78ad69"
+    },
+    {
+      "path": "candidates/native-scan/package.json",
+      "bytes": 337,
+      "sha256": "142c5c318473e901b9224ad06a31957668d3deb7387c2abba50d703d786f70b1"
+    },
+    {
+      "path": "candidates/native-scan/src/table.ts",
+      "bytes": 1084,
+      "sha256": "b00138fa7c980c5fdfc559bb4549cb76510b9f310b927e181e3c9271f9ce3fec"
+    },
+    {
+      "path": "candidates/native-scan/test/escapes.test.ts",
+      "bytes": 3212,
+      "sha256": "be4b24469abd01fd92944f6b45bb3df2fc558514eb0060fd85e7f5fa5b33e988"
+    },
+    {
+      "path": "candidates/native-scan/test/table.test.ts",
+      "bytes": 803,
+      "sha256": "9510e9f268d0ce2624e1aa4c3b091800dfc5c90fcbfe2e4271e8cfbf831caa6b"
+    },
+    {
+      "path": "candidates/native-scan/tsconfig.json",
+      "bytes": 179,
+      "sha256": "35065caada58983e5e5a42b3e780debf4490e795a46ff4823221967cc02d9ba2"
+    },
+    {
+      "path": "decision.json",
+      "bytes": 1767,
+      "sha256": "abb294fb00bc3c7773426c7df8c637459a54f68bcdc911716a7da6d797966638"
+    },
+    {
+      "path": "git-log.txt",
+      "bytes": 29214,
+      "sha256": "5428da0c5ab3a785f034e7e73f1e757ebafd580f4e5d10cee38beb26fcf1a95d"
+    },
+    {
+      "path": "guard-check.json",
+      "bytes": 658,
+      "sha256": "f9da9c4afb4e655bea02386b7e5446ba37d26775f7d3b35a551102dcc93f03da"
+    },
+    {
+      "path": "native-agent-provenance.json",
+      "bytes": 1722,
+      "sha256": "be33d6255cd02a9bf7dfcee1ca6825adfe05706634fc1c7fde056b560cae4c8e"
+    },
+    {
+      "path": "native-note-map.txt",
+      "bytes": 246,
+      "sha256": "41694e609f5a45985627aeaa4bc5af343907118483de2513e0eacdd9e0830e89"
+    },
+    {
+      "path": "native-parity.diff",
+      "bytes": 4676,
+      "sha256": "6960a7ce37009fc9ba9f19d40931334e89142125c8688cfa105ca591db27ccbc"
+    },
+    {
+      "path": "native-review.json",
+      "bytes": 5252,
+      "sha256": "a4fab29b01e70180b608a37ad4a9f8aabec4e5fccbe1d3575ba0dc35e4d0d3d9"
+    },
+    {
+      "path": "native-scan.diff",
+      "bytes": 4748,
+      "sha256": "046fafcba57325a9f1cb77fa5264d90cb22a3cf722df405e6e7a7cd36b5b616b"
+    },
+    {
+      "path": "operator-approval.json",
+      "bytes": 2296,
+      "sha256": "716fe33fa6fda81ce895c17956ae3ae90583a590898c14b3e4dca3a73a4f3189"
+    },
+    {
+      "path": "public-identities.json",
+      "bytes": 756,
+      "sha256": "4ad57ced2d07ab1d3bee5f42ea9128d38b6410b379ac162c18a33198240b9870"
+    },
+    {
+      "path": "public-proof-verification.json",
+      "bytes": 986,
+      "sha256": "1a51f85d71ed388c5796a4f2203f17aa5bb9ff72485368a4245cb58068db8140"
+    },
+    {
+      "path": "published-agent-directory.json",
+      "bytes": 1058,
+      "sha256": "5984b1f8fe8bf7283fcb75fa6694f623e8fe75944c2ec630644a184d223bf14e"
+    },
+    {
+      "path": "ready.json",
+      "bytes": 474,
+      "sha256": "8b0e03baa5d19cfc5cb016a4792cdc5d341b6ff3c3fb8621b1e3b4bcc201cae9"
+    },
+    {
+      "path": "refs.txt",
+      "bytes": 454,
+      "sha256": "6c7fb49de72e81a62ca101957fc21f8b145781c8fae955c45a9dbccb07df46b8"
+    },
+    {
+      "path": "result.json",
+      "bytes": 9201,
+      "sha256": "2cfa39b00b8199e57ca6cf41a6b99c6cf68cd2c91a110c9988d02fb4ca5006a8"
+    },
+    {
+      "path": "review-input.json",
+      "bytes": 3705,
+      "sha256": "f54d96761d76681aa683688ea94e65d55fcfd372ccbf6602ede617d29c18ae4e"
+    },
+    {
+      "path": "review-turn.json",
+      "bytes": 5433,
+      "sha256": "e829eecd6cd48e61c8c8ab0c22c15951660303af254f0a0698a9b9270297fbb0"
+    },
+    {
+      "path": "reviewer-checks/compare-parsers.mjs",
+      "bytes": 2659,
+      "sha256": "0613f245fdb6908336fd887089537acc91ee275c3e54d26e90b6f69c546222ae"
+    },
+    {
+      "path": "reviewer-checks/confirmation-metadata.json",
+      "bytes": 3921,
+      "sha256": "8eb253dd035545f175dce247795db558e7ec8ece88eac77f7c96ba545598490b"
+    },
+    {
+      "path": "reviewer-checks/confirmation.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "reviewer-checks/confirmation.stdout.json",
+      "bytes": 498,
+      "sha256": "76fd89d152d2cc612ffebc2943fe33cfac7dd56b5f1fcbc9818699e83e7c0656"
+    },
+    {
+      "path": "trusted-manifest.json",
+      "bytes": 7751,
+      "sha256": "51267306fd342e5eee7623bfd48f05ed028b5a0130e65ad5a06b2f8ac5b621fc"
+    },
+    {
+      "path": "versions.json",
+      "bytes": 257,
+      "sha256": "e32ce623c31e0f551e3f7cdcb1e65587aceb1621de0fecf04a7fd478aa1cf098"
+    },
+    {
+      "path": "why.json",
+      "bytes": 30237,
+      "sha256": "54d3170f1f8f9d2e8ab84100aba790c3f07b2021bde21d8f1324a7f1242ce6e4"
+    }
+  ],
+  "excluded": [
+    "private runtime state and keys",
+    "all .git directories and Git auth/setup files",
+    "ha-auth and ha.json",
+    "Wrangler logs and configuration containing bindings",
+    "raw process environments and command lines",
+    "raw native/DO/R2 snapshots"
+  ],
+  "scan": {
+    "passed": true,
+    "knownLocalForkAndAgentCredentialsCompared": 12,
+    "privateKeyAndBearerPatternsChecked": true,
+    "allFilesRegular": true,
+    "note": "Only explicitly listed source/evidence files were inspected and exported; an allowlist plus scan is not a general secret-detection guarantee."
+  },
+  "exportTransformation": "Unsigned absolute execution paths redacted for v2 export. Signed payload bytes unchanged. Original hashes are in provenance/source-export-hashes.json."
+}

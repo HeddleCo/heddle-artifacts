@@ -1,0 +1,27 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "name": "@heddle-artifacts/ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "dev": "node dev-server.mjs",
+    "dev:worker": "wrangler dev --config wrangler.mock.jsonc --local --ip 127.0.0.1 --port 8788 --inspector-port 9231",
+    "test": "node build.mjs && playwright test",
+    "test:unit": "node --test test/*.test.mjs",
+    "test:negative": "node test/negative.mjs"
+  },
+  "dependencies": {
+    "preact": "10.29.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.10.0",
+    "esbuild": "0.25.12",
+    "preact-render-to-string": "6.8.0",
+    "typescript": "5.9.3",
+    "wrangler": "4.149.0",
+    "ws": "8.21.0"
+  }
+}

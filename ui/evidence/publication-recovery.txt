@@ -1,0 +1,51 @@
+SPDX-License-Identifier: Apache-2.0
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> typecheck
+> tsc --noEmit
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test:unit
+> node --test test/*.test.mjs
+
+✔ fixture board and task share canonical candidate/state shapes (8.987164ms)
+✔ fixture rejects stale heads and accepts the exact reviewed decision (3.248606ms)
+✔ fixture preserves explicit missing verification and fallback fields (0.976075ms)
+✔ fixture signed human discussion retains author and reply anchor (1.60589ms)
+✔ live reducers retain independent lanes and deduplicate repeated turns (1.298487ms)
+✔ fixture API errors are returned as HTTP outcomes (1.387079ms)
+✔ failed publication keeps the recorded decision immutable and retryable (2.26394ms)
+✔ only a complete commit SHA establishes publication (0.984309ms)
+✔ retry preserves exact recorded choice, signer and rationale with current heads (3.72179ms)
+✔ published decisions cannot submit again and new choices require rationale (0.353715ms)
+✔ publication conflicts are not reported as changed candidate heads (0.527655ms)
+✔ pending publication renders immutable context without landed text or Why link (1.789044ms)
+✔ published decision renders the exact commit Why link (0.682472ms)
+✔ only exact-SHA complete publication evidence passes (0.885818ms)
+✔ a missing API verification stays unavailable (0.150717ms)
+✔ reject verification for another SHA and responses for another route (0.252411ms)
+✔ exportRoundTrip must be a boolean and false must fail (0.193094ms)
+✔ treeMatch must be a boolean and false must fail (0.113387ms)
+✔ fsck must be a boolean and false must fail (0.239381ms)
+✔ malformed publication timestamp does not claim verification (0.15604ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 218.08873
+accept pending decision as published: rejected, exit 1; ℹ fail 3
+replace signed choice with editable draft: rejected, exit 1; ℹ fail 1
+drop reviewed heads from publication retry: rejected, exit 1; ℹ fail 1
+remove exact SHA binding: rejected, exit 1; ℹ fail 1
+ignore failed publication checks: rejected, exit 1; ℹ fail 3
+accept malformed boolean values: rejected, exit 1; ℹ fail 3
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> build
+> node build.mjs
+
+Built ui/dist: index.html, app.js, style.css, _headers

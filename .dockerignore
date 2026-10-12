@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+# Root build context: send only reviewed engine runtime and public demo inputs.
+# Never send local credentials, native stores, Git metadata, logs or dependencies.
+**
+!engine/
+engine/**
+!engine/Dockerfile
+!engine/engine.mjs
+!engine/lib/
+engine/lib/**
+!engine/lib/process.mjs
+!engine/lib/trusted-tests.mjs
+!engine/lib/projection.mjs
+!engine/lib/state.mjs
+!engine/lib/commands.mjs
+!engine/lib/tests.mjs
+!engine/lib/publish.mjs
+!engine/lib/ordered-publication.mjs
+!engine/lib/publication-input.mjs
+!engine/lib/snapshots.mjs
+!engine/lib/attestations.mjs
+!engine/lib/git.mjs
+!engine/lib/why.mjs
+!engine/lib/signatures.mjs
+!contracts/
+contracts/**
+!contracts/types.ts
+!contracts/engine.schema.json
+!contracts/events.ts
+!demo/
+demo/**
+!demo/trusted-test-trees.json
+!demo/seed-project/
+demo/seed-project/**
+!demo/seed-project/README.md
+!demo/seed-project/package.json
+!demo/seed-project/package-lock.json
+!demo/seed-project/tsconfig.json
+!demo/seed-project/src/
+demo/seed-project/src/**
+!demo/seed-project/src/table.ts
+!demo/seed-project/test/
+demo/seed-project/test/**
+!demo/seed-project/test/table.test.ts

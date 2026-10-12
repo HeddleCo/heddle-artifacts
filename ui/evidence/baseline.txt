@@ -1,0 +1,20 @@
+SPDX-License-Identifier: Apache-2.0
+$ npm test
+
+> test
+> playwright test
+
+
+Running 9 tests using 1 worker
+
+  ✓  1 test/acceptance.spec.ts:16:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (592ms)
+  ✓  2 test/acceptance.spec.ts:37:1 › C-T2 WebSocket replay updates board without reload (2.3s)
+  ✓  3 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 200 response (228ms)
+  ✓  4 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 403 response (236ms)
+  ✓  5 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response (304ms)
+  ✓  6 test/acceptance.spec.ts:69:1 › C-T3 required rationale and signed human discussion (267ms)
+  ✓  7 test/acceptance.spec.ts:83:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (832ms)
+  ✓  8 test/acceptance.spec.ts:114:1 › C-T2 early feed survives delayed initial board snapshot (2.4s)
+  ✓  9 test/acceptance.spec.ts:132:1 › C-T2 initial compare snapshot retains early discussion and landing (2.4s)
+
+  9 passed (10.0s)

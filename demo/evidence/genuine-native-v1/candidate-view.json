@@ -1,0 +1,91 @@
+{
+  "task": {
+    "slug": "parser-escapes",
+    "intent": "Implement escaped pipe and backslash parity support in parseRow, preserving string[] and baseline behavior. Two independent native coding agents propose competing implementations.",
+    "thread": "task/parser-escapes",
+    "baseState": "hs-86pwr0a4djx14g4qp9hfn8cyr1hnv4d5qakcx1w9r322a6xjzkjg",
+    "baseSha": "f4904fb643b3c283017e69817420e39c11c0ae56",
+    "status": "open"
+  },
+  "candidates": [
+    {
+      "task": "parser-escapes",
+      "agent": "native-parity",
+      "state": "hs-fw8f0k3pwvf3q91xrp8ev1b1x4fj6bm1g485pq0503qm9d1f6kmg",
+      "sourceSha": "299f09558f9bb50b99127c122dcaa827a98752c1",
+      "treeSha": "01ee577e5987a2329d46390960abfcbdecb773cb",
+      "parentSha": "f4904fb643b3c283017e69817420e39c11c0ae56",
+      "subject": "Support table escapes with backslash-run parity",
+      "diffstat": {
+        "files": 2,
+        "insertions": 113,
+        "deletions": 3
+      },
+      "tests": {
+        "status": "pass",
+        "passed": 70,
+        "failed": 0,
+        "summary": "RUN  v4.1.11 <ENTRY_WORKSPACE>/evidence/engine/heddle-reviewed-tests-RTIIAB/project\n\n ✓ test/escapes.test.ts (56 tests) 12ms\n ✓ test/table.test.ts (14 tests) 10ms\n\n Test Files  2 passed (2)\n      Tests  70 passed (70)\n   Start at  16:05:21\n   Duration  592ms (transform 72ms, setup 0ms, import 118ms, tests 22ms, environment 0ms)",
+        "durationMs": 3148
+      },
+      "conflicts": [
+        {
+          "path": "src/table.ts",
+          "with": [
+            "native-scan"
+          ]
+        },
+        {
+          "path": "test/escapes.test.ts",
+          "with": [
+            "native-scan"
+          ]
+        }
+      ],
+      "signedBy": "08318184c244692dc1647e737aa77f93507faf9e41159ce34eddf18a58000271",
+      "capturedAt": "2026-10-10T21:05:18.487550132+00:00"
+    },
+    {
+      "task": "parser-escapes",
+      "agent": "native-scan",
+      "state": "hs-kxmf6dds7mxbnz9jhf82v64k0trppmq84akcyha1vzp4797dk47g",
+      "sourceSha": "167c9385e04e1b9028588f6534b51c5e1c398494",
+      "treeSha": "3daa7fe43712cbab5b75e8804a0863b35a79ea8a",
+      "parentSha": "f4904fb643b3c283017e69817420e39c11c0ae56",
+      "subject": "Decode table row escapes with one-pass scanner",
+      "diffstat": {
+        "files": 2,
+        "insertions": 88,
+        "deletions": 5
+      },
+      "tests": {
+        "status": "pass",
+        "passed": 56,
+        "failed": 0,
+        "summary": "RUN  v4.1.11 <ENTRY_WORKSPACE>/evidence/engine/heddle-reviewed-tests-2ovrEq/project\n\n ✓ test/escapes.test.ts (42 tests) 26ms\n ✓ test/table.test.ts (14 tests) 9ms\n\n Test Files  2 passed (2)\n      Tests  56 passed (56)\n   Start at  16:05:25\n   Duration  608ms (transform 54ms, setup 0ms, import 98ms, tests 36ms, environment 0ms)",
+        "durationMs": 3644
+      },
+      "conflicts": [
+        {
+          "path": "src/table.ts",
+          "with": [
+            "native-parity"
+          ]
+        },
+        {
+          "path": "test/escapes.test.ts",
+          "with": [
+            "native-parity"
+          ]
+        }
+      ],
+      "signedBy": "b81a5414d8f45b4b6e89a1aa12ef2efe084025698ddfc259336af1cce74706bc",
+      "capturedAt": "2026-10-10T21:05:22.425902082+00:00"
+    }
+  ],
+  "turns": [],
+  "heads": [
+    "hs-fw8f0k3pwvf3q91xrp8ev1b1x4fj6bm1g485pq0503qm9d1f6kmg",
+    "hs-kxmf6dds7mxbnz9jhf82v64k0trppmq84akcyha1vzp4797dk47g"
+  ]
+}

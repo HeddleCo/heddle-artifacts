@@ -1,0 +1,15 @@
+{
+  "origin": "http://127.0.0.1:33059",
+  "project": "genuine-2d8239fc",
+  "task": "parser-escapes",
+  "baseSha": "f4904fb643b3c283017e69817420e39c11c0ae56",
+  "clones": {
+    "native-scan": "<ENTRY_WORKSPACE>/genuine-v2/forks/native-scan",
+    "native-parity": "<ENTRY_WORKSPACE>/genuine-v2/forks/native-parity"
+  },
+  "identity": {
+    "provider": "openai-native-collaboration",
+    "model": "runtime-selected-not-exposed"
+  },
+  "startedAt": "2026-10-10T21:04:12.854Z"
+}
