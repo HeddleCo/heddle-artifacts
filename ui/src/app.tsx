@@ -8,7 +8,7 @@ import { updateBoard, updateTask } from './feed';
 import { publicationEvidence } from './verification';
 import { isPublished, decisionRequest, conflictMessage } from './decision';
 import { DecisionNotice } from './decision-notice';
-import { parseReview, ReviewBody, RichText } from './rich-text';
+import { identifiers, InlineText, parseReview, ReviewBody, RichText } from './rich-text';
 
 const short = (s: string) => s.slice(0, 10);
 const link = (p: string, t?: string) => `/p/${encodeURIComponent(p)}${t ? `/t/${encodeURIComponent(t)}` : ''}`;
@@ -22,7 +22,7 @@ function Badge({ candidate }: { candidate?: Candidate }) {
 }
 function Signature({ signedBy, agent }: { signedBy: string; agent?: Agent }) {
   const matches = agent?.publicKey === signedBy;
-  return <span class={`signature ${agent && !matches ? 'error-text' : ''}`} title={signedBy}>{fingerprint(signedBy)}{agent ? matches ? ' · directory match' : ' · key mismatch' : ''}</span>;
+  return <span class={`signature ${agent && !matches ? 'error-text' : ''}`} title={signedBy}><code>{fingerprint(signedBy)}</code>{agent ? matches ? ' · directory match' : ' · key mismatch' : ''}</span>;
 }
 function useFeed(p: string, onEvent: (event: FeedEvent) => void, onConnect: (reconnected: boolean) => void, onDisconnect: () => void = () => {}) {
   const callbacks = useRef({ onEvent, onConnect, onDisconnect }); callbacks.current = { onEvent, onConnect, onDisconnect };
@@ -78,7 +78,7 @@ function Board({ p }: { p: string }) {
   }, () => { if (loading.current) reloadRequested.current = true; else void load(); });
   const agents = new Map(view?.agents.map(a => [a.id, a]));
   const ready = view?.tasks.reduce((n, t) => n + t.candidates.length, 0) || 0;
-  return <><Header p={p} live={live}/><main><PageTitle eyebrow={`PROJECT / ${p}`} title="Work in parallel. Decide together."><p>Every agent has a lane. Every alternative stays with the code.</p></PageTitle>
+  return <><Header p={p} live={live}/><main><PageTitle eyebrow={`PROJECT / ${p}`} title="Tasks"><p>Each agent pushes to its own fork. Its latest push shows here as a candidate.</p></PageTitle>
     {error && <ErrorNotice text={error}/>}
     <div class="toolbar"><span>{view?.tasks.length || 0} tasks <span class="separator">/</span> {view?.agents.filter(a => a.kind === 'agent').length || 0} agents <span class="separator">/</span> {ready} candidates</span><button class="quiet" disabled={refreshing} onClick={load}>{refreshing ? 'Refreshing…' : 'Refresh board'}</button></div>
     {!view ? <p role="status">Loading project…</p> : <div class="board">{view.tasks.map(task => <section class="task-column" key={task.slug} aria-label={task.slug}>
@@ -198,7 +198,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
     </div>
     {view && <aside class="rail" aria-label="Decision">
-      <section class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">The rationale and every alternative travel with the code.</p>
+      <section class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">Your reason is saved with the decision on main.</p>
         <form onSubmit={submit}><fieldset disabled={busy || !!view.decision || changed || reviewing}><legend>Candidate to land</legend>{view.candidates.map(c => <label class="radio-choice"><input type="radio" name="pick" value={c.agent} required checked={(view.decision?.pick ?? pick) === c.agent} onChange={() => setPick(c.agent)}/><span>{c.agent}</span><Badge candidate={c}/></label>)}
           <label>Decide as<select required value={view.decision?.decider ?? who} onChange={e => setDecider(e.currentTarget.value)}><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
           <label>Why this candidate?<textarea required maxLength={10000} value={view.decision?.rationale ?? rationale} onInput={e => setRationale(e.currentTarget.value)} placeholder="Explain the tradeoff. This becomes part of the Git history."/></label>
@@ -211,7 +211,7 @@ function Compare({ p, t }: { p: string; t: string }) {
           <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span><span class="verdict-notes">“{a.content}”</span><span class="muted">— {a.attribution}</span></li>)}</ul></div>)}
       </section>}
       {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}</ul></section>}
-  {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p>{view.review.summary}</p>{view.review.recommendation && <p class="muted">{view.review.recommendation.why}</p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p>{c.notes}</p></li>)}</ul></section>}
+  {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p><InlineText text={view.review.summary}/></p>{view.review.recommendation && <p class="muted"><InlineText text={view.review.recommendation.why}/></p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p><InlineText text={c.notes}/></p></li>)}</ul></section>}
     </aside>}</div>
   </main></>;
 }
@@ -239,7 +239,7 @@ function Why({ p, sha }: { p: string; sha: string }) {
   const commands = `read -r -s -p 'Artifacts read token: ' HEDDLE_READ_TOKEN; printf '\\n'\nexport HEDDLE_READ_TOKEN\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" clone '${cloneRemote}' heddle-check\ncd heddle-check\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" fetch origin '+refs/notes/*:refs/notes/*'\nunset HEDDLE_READ_TOKEN\ngit log --notes='heddle*' -3\ngit branch -r`;
   const proof = `git fsck --strict${/^[a-f0-9]{40}$/i.test(sha) && view?.decision && /^[a-zA-Z0-9_-]+$/.test(view.decision.task) && /^[a-zA-Z0-9_-]+$/.test(view.decision.pick) ? `\ngit rev-parse '${sha}^{tree}' 'origin/candidates/${view.decision.task}/${view.decision.pick}^{tree}'` : ''}`;
   return <><Header p={p}/><main><a class="breadcrumb" href={link(p)}>← {p} / board</a><PageTitle eyebrow="THE WHY / PLAIN GIT" title="The decision stays with the code."><p>Commit <code>{short(sha)}</code> · the chosen work, the alternatives, and the reasoning.</p></PageTitle>{error && <ErrorNotice text={error}/>}
-    <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2><pre>{view?.narrative || 'Loading narrative…'}</pre>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
+    <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2><pre>{identifiers(view?.narrative || 'Loading narrative…')}</pre>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
       <Verification view={view} sha={sha} proof={proof}/></div>
     <section class="panel git-instructions"><div class="section-heading"><h2>See it in plain Git</h2><button class="quiet" onClick={async () => { try { await navigator.clipboard.writeText(commands); setCopied('Copied'); } catch { setCopied('Select and copy the commands below.'); } }}>Copy commands</button></div><p class="muted">Use Bash. Enter your repo-scoped read token at the hidden prompt.{cloneRemote === '<CANONICAL_REMOTE>' ? ' Replace <CANONICAL_REMOTE> with the project’s Artifacts HTTPS clone URL.' : ''}</p><pre tabIndex={0}><code>{commands}</code></pre><p role="status">{copied}</p></section>
   </main></>;

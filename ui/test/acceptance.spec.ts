@@ -17,7 +17,7 @@ async function choose(page: Page) {
 
 test('C-T1 fixture screens: pushing board, conflict compare, decided why', async ({ page, request }) => {
   await reset(request, 'pushing'); await page.goto('/p/demo');
-  await expect(page.getByRole('heading', { name: 'Work in parallel. Decide together.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tasks', exact: true })).toBeVisible();
   await expect(page.locator('.lane-card')).toHaveCount(3);
   await expect(page.getByTestId('lane-alice')).toContainText('Waiting for a push');
   await reset(request, 'conflict'); await page.goto('/p/demo/t/parser-escapes');
@@ -203,7 +203,7 @@ test('C-T6 cancel reply clears target and browser history restores board and com
   const posted = await (await request.get('/__mock/requests')).json();
   expect(posted[0].body).toEqual({ body: 'Keep this as a top-level comment.', as: 'luke' });
   await page.goBack();
-  await expect(page.getByRole('heading', { name: 'Work in parallel. Decide together.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tasks', exact: true })).toBeVisible();
   await page.goForward();
   await expect(page.getByLabel('Diff for bob')).toContainText('const cells');
   await expect(page.getByRole('radio', { name: /bob/ })).not.toBeChecked();

@@ -10,7 +10,7 @@ Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:85:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (7.2s)
+  ✘  1 test/acceptance.spec.ts:85:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (7.4s)
 
 
   1) test/acceptance.spec.ts:85:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots 

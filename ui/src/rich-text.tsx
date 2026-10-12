@@ -16,6 +16,16 @@ function inline(text: string): ComponentChildren[] {
   return out;
 }
 
+/** One line of prose with the same inline formatting as agent turns: `code` and **bold**. */
+export function InlineText({ text }: { text: string }) { return <>{inline(text)}</>; }
+
+// Commit and object IDs, signing keys, and file paths with an optional symbol (src/table.ts:parseRow).
+const IDENTIFIER = /(ed25519:[0-9a-f]+|\b[0-9a-f]{7,64}\b|[\w.-]*\/[\w./-]*\.\w+(?::\w+)?)/g;
+/** Prose that carries identifiers, such as a decision note: the identifiers become `code`, the text is unchanged. */
+export function identifiers(text: string): ComponentChildren[] {
+  return text.split(IDENTIFIER).map((part, i) => i % 2 ? <code>{part}</code> : part).filter(part => part !== '');
+}
+
 export function RichText({ text }: { text: string }) {
   const blocks: ComponentChildren[] = [];
   for (const [i, chunk] of text.split(/```[^\n]*\n?/g).entries()) {
@@ -40,8 +50,8 @@ export function parseReview(body: string): Review | undefined {
 
 export function ReviewBody({ review }: { review: Review }) {
   return <div class="review-body">
-    <p>{review.summary}</p>
-    <ul class="verdicts">{review.perCandidate.map(c => <li><span class={`verdict ${c.verdict}`}>{c.verdict === 'approve' ? '✓ approve' : '△ concerns'}</span> <strong>{c.agent}</strong><span class="verdict-notes">{c.notes}</span></li>)}</ul>
-    {review.recommendation && <p class="recommendation">Recommends <strong>{review.recommendation.pick}</strong>: {review.recommendation.why}</p>}
+    <p><InlineText text={review.summary}/></p>
+    <ul class="verdicts">{review.perCandidate.map(c => <li><span class={`verdict ${c.verdict}`}>{c.verdict === 'approve' ? '✓ approve' : '△ concerns'}</span> <strong>{c.agent}</strong><span class="verdict-notes"><InlineText text={c.notes}/></span></li>)}</ul>
+    {review.recommendation && <p class="recommendation">Recommends <strong>{review.recommendation.pick}</strong>: <InlineText text={review.recommendation.why}/></p>}
   </div>;
 }
