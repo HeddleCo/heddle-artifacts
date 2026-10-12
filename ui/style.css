@@ -213,6 +213,13 @@ pre { margin: 0; overflow: auto; }
 /* The narrative is the decision note as Git stores it, but people read it: Cal Sans, wrapped. */
 .narrative pre { font-family: var(--font-body); font-size: 14.5px; font-feature-settings: normal; }
 .narrative pre code { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.narrative-lines { background: var(--code-bg); border: 1px solid var(--stroke-subtle); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; font-size: 14.5px; line-height: 1.6; }
+.narrative-lines .line { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.6em; }
+.narrative-lines code { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.narrative-lines .proof { margin: 1px 0 3px; }
+.narrative-lines .proof summary { cursor: pointer; color: var(--muted); font-size: 13px; white-space: pre-wrap; list-style-position: inside; }
+.narrative-lines .proof summary::marker { color: var(--faint); }
+.narrative-lines .proof-body { display: block; margin: 6px 0 8px 18px; font-size: 11.5px; color: var(--faint); white-space: pre-wrap; overflow-wrap: anywhere; }
 .narrative pre, .git-instructions pre, .verification pre { background: var(--code-bg); border: 1px solid var(--stroke-subtle); border-radius: var(--radius); padding: 14px; margin: 12px 0; white-space: pre-wrap; word-break: break-word; line-height: 1.6; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .verification ul { padding-left: 18px; font-size: 14px; }

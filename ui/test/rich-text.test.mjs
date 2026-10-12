@@ -12,7 +12,7 @@ const temp = await mkdtemp(fileURLToPath(new URL('./.rich-', import.meta.url)));
 after(() => rm(temp, { recursive: true, force: true }));
 await build({ entryPoints: [fileURLToPath(new URL('../src/rich-text.tsx', import.meta.url))], outfile: join(temp, 'rich.mjs'), bundle: true, platform: 'node', format: 'esm', jsx: 'automatic', jsxImportSource: 'preact', external: ['preact', 'preact/*'] });
 const mod = await import(pathToFileURL(join(temp, 'rich.mjs')));
-const { RichText, ReviewBody, parseReview } = mod;
+const { RichText, ReviewBody, parseReview, Narrative } = mod;
 const html = text => renderToString(h(RichText, { text }));
 
 test('agent turns get paragraphs, bold, inline and fenced code', () => {
@@ -44,4 +44,14 @@ test('decision narratives keep their text and set IDs, keys and paths as code', 
   assert.match(out, /<code>bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb<\/code>/); assert.match(out, /<code>ed25519:0a1b2c<\/code>/); assert.match(out, /<code>src\/table.ts:parseRow<\/code>/);
   assert.doesNotMatch(out, /<code>workers-ai/); assert.match(out, /Chosen:    bob   <code>/);
   assert.equal(out.replace(/<\/?(pre|code)>/g, ''), note);
+});
+test('why narratives fold proof envelopes and review JSON without dropping any byte', () => {
+  const proof = JSON.stringify({ publicKey: '6270b86e59ee07994f8d812b879bde7b8a349cd65cb902817f6314e680a6223a', payload: '{"domain":"x"}', signature: 'ab'.repeat(32) });
+  const review = JSON.stringify({ summary: 'Model review unavailable.', perCandidate: [] });
+  const text = `Heddle decision · task parser-escapes\nChosen:  bob tests 22/22\n    Test proof: ${proof}\n    Review:    reviewer (workers-ai/m): ${review}\nRationale: keep it explicit`;
+  const out = renderToString(h(Narrative, { text }));
+  assert.match(out, /<details class="proof"><summary>    Test proof · signed · <code>ed25519:6270b86e…<\/code><\/summary>/);
+  assert.match(out, /<summary>    Review:    reviewer \(workers-ai\/m\): Model review unavailable.<\/summary>/);
+  assert.ok(out.includes(proof.replace(/"/g, '&quot;')) || out.includes(proof), 'full proof JSON stays on the page');
+  assert.match(out, /Chosen:  bob tests 22\/22/); assert.match(out, /Rationale: keep it explicit/);
 });

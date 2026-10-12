@@ -8,7 +8,7 @@ import { updateBoard, updateTask } from './feed';
 import { publicationEvidence } from './verification';
 import { isPublished, decisionRequest, conflictMessage } from './decision';
 import { DecisionNotice } from './decision-notice';
-import { identifiers, InlineText, parseReview, ReviewBody, RichText } from './rich-text';
+import { identifiers, InlineText, Narrative, parseReview, ReviewBody, RichText } from './rich-text';
 import { displayName, plural } from './format';
 
 
@@ -241,7 +241,7 @@ function Why({ p, sha }: { p: string; sha: string }) {
   const commands = `read -r -s -p 'Artifacts read token: ' HEDDLE_READ_TOKEN; printf '\\n'\nexport HEDDLE_READ_TOKEN\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" clone '${cloneRemote}' heddle-check\ncd heddle-check\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" fetch origin '+refs/notes/*:refs/notes/*'\nunset HEDDLE_READ_TOKEN\ngit log --notes='heddle*' -3\ngit branch -r`;
   const proof = `git fsck --strict${/^[a-f0-9]{40}$/i.test(sha) && view?.decision && /^[a-zA-Z0-9_-]+$/.test(view.decision.task) && /^[a-zA-Z0-9_-]+$/.test(view.decision.pick) ? `\ngit rev-parse '${sha}^{tree}' 'origin/candidates/${view.decision.task}/${view.decision.pick}^{tree}'` : ''}`;
   return <><Header p={p}/><main><a class="breadcrumb" href={link(p)}>← {p} / board</a><PageTitle eyebrow="THE WHY / PLAIN GIT" title="The decision stays with the code."><p>Commit <code>{short(sha)}</code> · the chosen work, the alternatives, and the reasoning.</p></PageTitle>{error && <ErrorNotice text={error}/>}
-    <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2><pre>{identifiers(view?.narrative || 'Loading narrative…')}</pre>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
+    <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2><Narrative text={view?.narrative || 'Loading narrative…'}/>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
       <Verification view={view} sha={sha} proof={proof}/></div>
     <section class="panel git-instructions"><div class="section-heading"><h2>See it in plain Git</h2><button class="quiet" onClick={async () => { try { await navigator.clipboard.writeText(commands); setCopied('Copied'); } catch { setCopied('Select and copy the commands below.'); } }}>Copy commands</button></div><p class="muted">Use Bash. Enter your repo-scoped read token at the hidden prompt.{cloneRemote === '<CANONICAL_REMOTE>' ? ' Replace <CANONICAL_REMOTE> with the project’s Artifacts HTTPS clone URL.' : ''}</p><pre tabIndex={0}><code>{commands}</code></pre><p role="status">{copied}</p></section>
   </main></>;
