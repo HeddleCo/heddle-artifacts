@@ -4,7 +4,6 @@ import { DemoCredentials } from './credentials';
 import { HttpError } from './auth';
 import { streamSnapshot } from './snapshot';
 import { Store } from './store';
-import { deadline } from './deadline';
 import type { FeedEvent, Lane } from '../contracts/types';
 
 type Journal = { id: string; command: string; input: string; context: string; status: string; result: string | null; attempts: number };
@@ -15,8 +14,6 @@ function canonical(value: any): string {
   if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
   return JSON.stringify(value);
 }
-// Engine commands are killed at 180 s inside the container; a cold start can add about a minute.
-export const ENGINE_CALL_MS = 270000;
 export class EngineClient {
   private tail: Promise<unknown> = Promise.resolve();
   constructor(private env: Env, private store: Store, private project: () => string, private apply: (cmd: string, input: any, result: any, context: any) => FeedEvent[], private emit: (e: FeedEvent) => void, private credentials = new DemoCredentials(env, store)) {}
@@ -28,11 +25,7 @@ export class EngineClient {
     if (this.env.DEV === '1' && this.env.ENGINE_DEV_URL) {
       return fetch(`${this.env.ENGINE_DEV_URL}/projects/${this.project()}/${command}`, { method: 'POST', headers: request.headers, body: request.body, signal: AbortSignal.timeout(180000) });
     }
-    const engine = this.env.ENGINE.getByName(this.project());
-    // Snapshots stream to R2 and are bounded by their caller; every other reply is small, so buffer
-    // it inside the deadline. The container kills a command at 180 s; allow for a cold start on top.
-    if (command === 'snapshot') return deadline(engine.fetch(request), ENGINE_CALL_MS, 'engine_timeout');
-    return deadline(engine.fetch(request).then(async r => new Response(await r.arrayBuffer(), { status: r.status, headers: r.headers })), ENGINE_CALL_MS, 'engine_timeout');
+    return this.env.ENGINE.getByName(this.project()).fetch(request);
   }
   private async parsed(response: Response): Promise<any> {
     if (response.status === 422) {
@@ -103,7 +96,7 @@ export class EngineClient {
         const generation = this.store.get<number>('meta', 'stateGeneration') ?? 0;
         const response = await this.transport('snapshot', '{}');
         if (!response.ok || !response.body) throw new Error('snapshot_failed');
-        await deadline(streamSnapshot(this.env.STATE, `projects/${this.project()}/gen-${generation + 1}.tar.zst`, response.body), ENGINE_CALL_MS, 'snapshot_timeout');
+        await streamSnapshot(this.env.STATE, `projects/${this.project()}/gen-${generation + 1}.tar.zst`, response.body);
         this.credentials.assertOpen();
         let events: FeedEvent[] = [];
         this.store.storage.transactionSync(() => {

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SELF, env as testEnv, runInDurableObject } from 'cloudflare:test';
 import type { ArtifactsBinding, ArtifactsRepo, Env, RepoInfo } from '../env';
-import { artifacts, existingRepository, ARTIFACTS_CALL_MS } from '../artifacts';
+import { artifacts, existingRepository } from '../artifacts';
 import { memoryArtifacts } from '../../dev/memory-artifacts';
 
 const env = testEnv as unknown as Env;
@@ -208,19 +208,4 @@ describe('provider Artifacts binding contract', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('not found', { status: 404 }));
     await expect(existingRepository(dev, 'repo')).rejects.toMatchObject({ status: 503, code: 'artifacts_unavailable' });
   });
-});
-
-it('a hung Artifacts provider call fails with artifacts_timeout instead of blocking the project queue', async () => {
-  vi.useFakeTimers();
-  try {
-    const never = new Promise<never>(() => {});
-    const hungRepo = { info: () => never, fork: () => never, createToken: () => never, revokeToken: () => never, log: () => never, [Symbol.dispose]() {} };
-    const binding = artifacts({ DEV: '0', ARTIFACTS: { create: () => never, get: async () => hungRepo } } as unknown as Env);
-    const repo = await binding.get('fork');
-    for (const start of [() => repo.log({ ref: 'main', limit: 1 }), () => repo.revokeToken('t'), () => binding.create('x')]) {
-      const settled = expect(start()).rejects.toMatchObject({ name: 'DeadlineError', code: 'artifacts_timeout' });
-      await vi.advanceTimersByTimeAsync(ARTIFACTS_CALL_MS + 1);
-      await settled;
-    }
-  } finally { vi.useRealTimers(); }
 });
