@@ -30,7 +30,6 @@ candidate, write a reason and open the resulting Why page.
 git clone https://github.com/HeddleCo/heddle-artifacts.git
 cd heddle-artifacts/ui
 npm ci
-npm run build
 UI_FIXTURE=conflict npm run dev
 ```
 
@@ -41,29 +40,16 @@ then follow **See why … landed**. Stop the server with Ctrl-C.
 - To watch the story play out live: start with `UI_FIXTURE=pushing npm run dev`, open <http://127.0.0.1:4173/p/demo>,
   then run `curl -X POST http://127.0.0.1:4173/__mock/replay` in a second terminal. Pushes, tests, the conflict and
   a decision arrive on the board over a few seconds. `UI_FIXTURE=decided` starts after the decision.
-- `npm run dev` serves the files from `npm run build`. Re-run the build after changing `ui/src`.
+- `npm run dev` builds `ui/dist` the first time. Run `npm run build` again after changing `ui/src`.
 
 Deeper account-free checks (Worker tests against fake Artifacts, the browser suite, and the full native
 storyline with the Heddle CLI) are in [docs/LOCAL-INTEGRATION.md](docs/LOCAL-INTEGRATION.md) and [ui/README.md](ui/README.md).
 
 ### (c) Deploy your own
 
-This needs a Cloudflare account with Artifacts, Containers and Workers AI enabled. There is no single
-deploy script yet; the pieces are:
-
-1. The control-plane Worker is configured in [`wrangler.jsonc`](wrangler.jsonc): Artifacts namespace
-   `heddle-demo`, Durable Objects, two Containers (engine and candidate-test sandbox), the `artifacts-events`
-   Queue, R2 bucket `heddle-artifacts-state`, Workers AI and the UI assets from `ui/dist`. It needs the secrets
-   `OPERATOR_TOKEN` and `CF_EVENTS_API_TOKEN` and the variables `CF_ACCOUNT_ID` and `EVENTS_QUEUE_ID`
-   (see the comment at the end of that file). Build the UI first: `npm ci --prefix ui && npm run build` at the repo root.
-2. The engine image `engine/Dockerfile.layer` builds on an engine image in the maintainers' container
-   registry. `engine/Dockerfile` builds the engine from public source; see
-   [docs/CONTAINER-BUILD.md](docs/CONTAINER-BUILD.md).
-3. To run agents in Cloudflare Sandboxes, deploy [`agent-runner/`](agent-runner/README.md#deploy) (AI Gateway
-   plus two secrets).
-4. Drive the story with [`demo/run.sh`](demo/README.md): it creates the project, tasks and agents, pushes the
-   candidates, and after you decide in the UI, `demo/run.sh verify` checks the published result from a fresh clone.
-   See [Run the storyline](#run-the-storyline-against-a-deployment) below.
+Follow [docs/DEPLOY.md](docs/DEPLOY.md). It needs a Cloudflare account with Artifacts, Containers and Workers AI.
+It covers the R2 bucket, Queue, configuration and secrets, the first `wrangler deploy` (which builds the engine
+from public source), and a scripted smoke run. Running agents in Cloudflare Sandboxes is an optional extra step.
 
 ## Glossary
 
@@ -85,6 +71,10 @@ deploy script yet; the pieces are:
 - Candidate tests run in separate Sandboxes that hold no keys. A Workers AI model (GLM-5.2) reviews the candidates.
 - A human picks a candidate in the UI and gives a reason. The engine lands it on `main` with `Heddle-State` /
   `Heddle-Change` trailers and attaches the why note. `demo/run.sh verify` checks the result from a fresh clone.
+- The reason carries forward. The decision's reason becomes a Heddle annotation on the code it chose. When a later
+  agent opens a lane, Heddle gives it a signed briefing with those annotations (`heddle context --for-thread`).
+  The compare page's **Context supplied** panel shows exactly what each agent was told. `demo/run.sh followup`
+  runs this end to end.
 
 Cloudflare products used: Workers, Durable Objects, Artifacts, Queues, Containers, Sandboxes, R2, Workers AI and AI Gateway.
 Design details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
