@@ -9,6 +9,8 @@ import { publicationEvidence } from './verification';
 import { isPublished, decisionRequest, conflictMessage } from './decision';
 import { DecisionNotice } from './decision-notice';
 import { identifiers, InlineText, parseReview, ReviewBody, RichText } from './rich-text';
+import { displayName, plural } from './format';
+
 
 const short = (s: string) => s.slice(0, 10);
 const link = (p: string, t?: string) => `/p/${encodeURIComponent(p)}${t ? `/t/${encodeURIComponent(t)}` : ''}`;
@@ -82,7 +84,7 @@ function Board({ p }: { p: string }) {
     {error && <ErrorNotice text={error}/>}
     <div class="toolbar"><span>{view?.tasks.length || 0} tasks <span class="separator">/</span> {view?.agents.filter(a => a.kind === 'agent').length || 0} agents <span class="separator">/</span> {ready} candidates</span><button class="quiet" disabled={refreshing} onClick={load}>{refreshing ? 'Refreshing…' : 'Refresh board'}</button></div>
     {!view ? <p role="status">Loading project…</p> : <div class="board">{view.tasks.map(task => <section class="task-column" key={task.slug} aria-label={task.slug}>
-      <div class="column-heading"><span class="eyebrow">{isPublished(task.decision) ? 'LANDED' : task.decision ? 'PUBLICATION PENDING' : task.candidates.some(c => c.conflicts.length) ? 'NEEDS A DECISION' : 'IN PROGRESS'}</span><span>{task.lanes.filter(l => agents.get(l.agent)?.kind !== 'reviewer').length} lanes</span></div>
+      <div class="column-heading"><span class="eyebrow">{isPublished(task.decision) ? 'LANDED' : task.decision ? 'PUBLICATION PENDING' : task.candidates.some(c => c.conflicts.length) ? 'NEEDS A DECISION' : 'IN PROGRESS'}</span><span>{plural(task.lanes.filter(l => agents.get(l.agent)?.kind !== 'reviewer').length, 'lane')}</span></div>
       <h2><a href={link(p, task.slug)}>{task.slug}</a></h2><p class="intent">{task.intent}</p>
       {task.lanes.filter(l => agents.get(l.agent)?.kind === 'reviewer').map(l => <p class="reviewed-by" key={`reviewer/${l.agent}`}>Reviewed by <span class="tag">{agents.get(l.agent)?.model || l.agent}</span></p>)}
       {task.lanes.filter(l => agents.get(l.agent)?.kind !== 'reviewer').map(lane => {
@@ -208,7 +210,7 @@ function Compare({ p, t }: { p: string; t: string }) {
       {lanes.some(l => l.briefing?.annotations.length) && <section class="panel context-supplied" aria-label="Context supplied"><p class="eyebrow">CONTEXT SUPPLIED</p>
         <p class="muted">Heddle briefed each agent with earlier decisions on this code before it started.</p>
         {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
-          <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span><span class="verdict-notes">“{a.content}”</span><span class="muted">— {a.attribution}</span></li>)}</ul></div>)}
+          <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span><span class="verdict-notes">“{a.content}”</span><span class="muted">— {displayName(a.attribution)}</span></li>)}</ul></div>)}
       </section>}
       {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}</ul></section>}
   {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p><InlineText text={view.review.summary}/></p>{view.review.recommendation && <p class="muted"><InlineText text={view.review.recommendation.why}/></p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p><InlineText text={c.notes}/></p></li>)}</ul></section>}
