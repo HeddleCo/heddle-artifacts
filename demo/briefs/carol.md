@@ -22,4 +22,5 @@ the base. If blocked, report the exact cause; use only a named fallback.
 
 End your run with a short message for your teammates and the human who decides (3 to 5 sentences):
 your approach, the trade-off you chose and why, and your exact test result. It is posted to this
-task's discussion under your name. Never include credentials, tokens or configuration.
+task's discussion under your name, verbatim: start directly with the explanation, with no status
+lines such as "Committed and pushed". Never include credentials, tokens or configuration.
