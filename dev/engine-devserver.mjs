@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { emptyState, executeFixture } from './stub-engine.mjs';
-const commands = new Set(['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest']);
+const commands = new Set(['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'tests.record', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest']);
 export async function startEngineDevserver({ port = Number(process.env.ENGINE_DEV_PORT ?? 8789), engine = process.env.ENGINE_SCRIPT ?? resolve('engine/engine.mjs'), root = process.env.ENGINE_STATE_ROOT ?? '/home/scratch/heddle-engine-dev', stub = process.env.ENGINE_STUB === '1' } = {}) {
   const states = new Map();
   const server = createServer(async (req, res) => {
@@ -18,7 +18,7 @@ export async function startEngineDevserver({ port = Number(process.env.ENGINE_DE
         let state = states.get(project) ?? emptyState(), result;
         if (command === 'restore') { state = JSON.parse(input); result = { generation: state.generation }; }
         else if (command === 'snapshot') { res.writeHead(200, { 'content-type': 'application/zstd' }).end(JSON.stringify(state)); return; }
-        else result = executeFixture(state, command, JSON.parse(input));
+        else { if (command === 'ingest') state.isolateUnreviewed = true; result = executeFixture(state, command, JSON.parse(input)); }
         states.set(project, state); res.writeHead(result.error ? 422 : 200, { 'content-type': 'application/json' }).end(JSON.stringify(result) + '\n'); return;
       }
       const stateDir = join(root, project); await mkdir(stateDir, { recursive: true });

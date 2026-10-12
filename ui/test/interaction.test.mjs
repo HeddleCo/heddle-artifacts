@@ -27,6 +27,16 @@ function choose() {
   one(root, n => n.type === 'textarea').props.onInput({ currentTarget: { value: 'Preserve the public API.' } }); root.render();
   return one(root, n => n.type === 'form').props.onSubmit;
 }
+test('board and compare label isolated sandbox test provenance', async () => {
+  const p = project(), v = task();
+  p.tasks[0].candidates[0].tests.provenance = 'isolated sandbox';
+  v.candidates[0].tests.provenance = 'isolated sandbox';
+  handler = async url => Response.json(url === taskPath ? v : p);
+  root = mount(Board, { p: 'demo' }); FakeSocket.all[0].open(); await flush(root);
+  const badges = () => nodes(root.tree, n => typeof n.type === 'function' && n.type.name === 'Badge').map(n => textOf(n.type(n.props))).join(' ');
+  assert.match(badges(), /isolated sandbox/); root.unmount();
+  await compare(); assert.match(badges(), /isolated sandbox/);
+});
 test('discussion: two same-turn submits produce one signed reply', async () => {
   const gate = deferred(); handler = () => gate.promise;
   root = mount(Discussion, { p: 'demo', t: 'parser-escapes', turns: [], humans: fixture.agents.filter(a => a.kind === 'human'), onTurn() {} });

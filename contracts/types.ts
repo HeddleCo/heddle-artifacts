@@ -7,7 +7,9 @@ export interface Lane { project: string; task: string; agent: string; forkRepo: 
 export interface Candidate { task: string; agent: string; state: string /*Heddle State id*/;
   sourceSha: string /*agent's commit*/; treeSha: string; parentSha: string; subject: string;
   diffstat: { files: number; insertions: number; deletions: number };
-  tests?: { status: "pass"|"fail"|"error"|"skipped"; passed: number; failed: number; summary: string; durationMs: number };
+  tests?: { status: "pass"|"fail"|"error"|"skipped"|"pending"; passed: number; failed: number; summary: string; durationMs: number;
+    provenance?: "reviewed fixture"|"isolated sandbox"|"isolated sandbox (local fixture)"; sourceSha?: string;
+    observation?: { publicKey: string; payload: string; signature: string } };
   conflicts: Array<{ path: string; region?: string; with: string[] /*other agent ids*/ }>;
   signedBy: string /*pubkey hex*/; capturedAt: string; }
 export interface Turn { id: string; task: string; author: string; kind: AgentKind; body: string; replyTo?: string;
@@ -17,7 +19,7 @@ export interface Decision { task: string; decider: string; pick: string /*agent 
 export type FeedEvent =
   | { type: "push.received"; task: string; agent: string; sha: string; via: "event"|"poll" }
   | { type: "candidate.ready"; candidate: Candidate }
-  | { type: "tests.done"; task: string; agent: string; tests: Candidate["tests"] }
+  | { type: "tests.done"; task: string; agent: string; sourceSha?: string; tests: Candidate["tests"] }
   | { type: "review.posted"; turn: Turn; review: Review }
   | { type: "discussion.posted"; turn: Turn }
   | { type: "decision.landed"; decision: Decision }

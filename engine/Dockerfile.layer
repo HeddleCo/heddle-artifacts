@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+FROM registry.cloudflare.com/163867166be2a9e9a601132b1f3081a4/heddle-artifacts-engine@sha256:085fc19e7bc673d97204ca07e636c95cb51054658e1b0282f349549004e97445
+USER 0:0
+COPY --chown=0:0 engine/ /opt/engine/
+COPY --chown=0:0 contracts/ /opt/contracts/
+COPY --chown=0:0 demo/ /opt/demo/
+RUN chmod -R go-w /opt/engine /opt/contracts /opt/demo
+USER 65532:65532
+WORKDIR /opt/engine
+ENTRYPOINT ["engine"]

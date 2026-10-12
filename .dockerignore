@@ -5,6 +5,7 @@
 !engine/
 engine/**
 !engine/Dockerfile
+!engine/Dockerfile.layer
 !engine/engine.mjs
 !engine/lib/
 engine/lib/**
@@ -14,6 +15,7 @@ engine/lib/**
 !engine/lib/state.mjs
 !engine/lib/commands.mjs
 !engine/lib/tests.mjs
+!engine/lib/isolated-tests.mjs
 !engine/lib/publish.mjs
 !engine/lib/ordered-publication.mjs
 !engine/lib/publication-input.mjs

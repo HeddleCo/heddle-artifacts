@@ -187,6 +187,9 @@ assert.deepEqual(batch.results.map(r => r.status), ['captured', 'duplicate']);
 assert.equal(batch.results[0].candidate.state, batch.results[1].candidate.state);
 assert.equal(batch.results[0].candidate.tests.status, 'pass');
 console.log('Lifecycle PASS: restored checkout captures a new push; same-batch duplicate captured once; opId replay, diff and why verified');
+// The restored ingest published Carol's newer candidate ref. Bring the original
+// snapshot to that same source SHA before making another main-last publication.
+await mutate('ingest', { items: [update], runTests: true });
 // Native capture is allowed, but arbitrary candidate npm code must never share
 // the custodial engine process permissions. Use only a synthetic public marker.
 await mutate('task.create', { task: 'unreviewed-code', intent: 'Prove unknown source is captured without execution' });
@@ -210,4 +213,29 @@ assert.match(unknown.results[0].candidate.tests.summary, /^Tests withheld:/);
 assert.equal(await readFile(sentinel, 'utf8'), 'PUBLIC-SYNTHETIC-CUSTODY-MARKER\n');
 await assert.rejects(access(attemptedRead), { code: 'ENOENT' });
 console.log('Trusted execution PASS: unknown malicious fixture remains a signed native candidate; npm execution withheld; synthetic custody sentinel unchanged and unread');
+// Exercise the trusted observation endpoint on a real native Capture. The
+// output below is a test-runner fixture, not a claim of a live Cloudflare run.
+await writeFile(join(unknownCheckout, 'README.md'), '# Isolated observation fixture\n');
+await git(unknownCheckout, ['add', 'README.md']);
+await git(unknownCheckout, ['-c', 'user.name=Unreviewed fixture', '-c', 'user.email=unreviewed@example.invalid', 'commit', '-m', 'Isolated candidate']);
+await git(unknownCheckout, ['push', 'origin', 'HEAD:main']);
+const isolatedSha = await git(unknownCheckout, ['rev-parse', 'HEAD']);
+const isolated = await mutate('ingest', { runTests: true, isolateUnreviewed: true, items: [{ task: 'unreviewed-code', agent: 'unreviewed', fork: { remote: unknownFork }, ref: 'refs/heads/main', sha: isolatedSha }] });
+const isolatedCandidate = isolated.results[0].candidate;
+assert.equal(isolatedCandidate.tests.status, 'pending');
+const pendingHeads = (await call('candidates', { task: 'unreviewed-code' })).heads;
+assert.equal((await call('decide', { opId: 'pending-isolated', task: 'unreviewed-code', decider: 'luke', pick: 'unreviewed', rationale: 'Select', expectHeads: pendingHeads }, 2)).error.code, 'tests_pending');
+const observedRun = { sourceSha: isolatedSha, treeSha: isolatedCandidate.treeSha, installExitCode: 0, testExitCode: 0, output: '# pass 14\n# fail 0\n', durationMs: 50 };
+assert.equal((await mutate('tests.record', { task: 'unreviewed-code', agent: 'unreviewed', sourceSha: unknown.results[0].candidate.sourceSha, run: { ...observedRun, sourceSha: unknown.results[0].candidate.sourceSha } })).ignored, true);
+const observed = await mutate('tests.record', { task: 'unreviewed-code', agent: 'unreviewed', sourceSha: isolatedSha, run: observedRun });
+assert.equal(observed.candidate.tests.status, 'pass');
+assert.equal(verifyAttestation(observed.candidate.tests.observation, observed.candidate.tests.observation.publicKey), observed.candidate.tests.observation.publicKey);
+assert.match((await call('why', { sha: isolatedSha })).narrative, /isolated sandbox/);
+const isolatedDecision = await mutate('decide', { task: 'unreviewed-code', decider: 'luke', pick: 'unreviewed', rationale: 'Observed isolated tests pass', expectHeads: pendingHeads });
+await mutate('publish', { canonical: { remote: canonical } });
+assert.match(await git(canonical, ['notes', '--ref=heddle-why', 'show', isolatedDecision.mainSha]), /isolated sandbox/);
+assert.match(await git(canonical, ['notes', '--ref=heddle-why', 'show', isolatedSha]), /Test proof:/);
+assert.equal(await readFile(sentinel, 'utf8'), 'PUBLIC-SYNTHETIC-CUSTODY-MARKER\n');
+await assert.rejects(access(attemptedRead), { code: 'ENOENT' });
+console.log('Isolated observations PASS: real native Capture stays key-safe; pending decision rejected; old SHA ignored; ed25519 proof verified; sandbox provenance and proof survive publication in Git notes');
 console.log(`Evidence scratch: ${root}`);

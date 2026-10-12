@@ -8,7 +8,7 @@ export class HeddleEngine extends Container {
   entrypoint = ['sleep', 'infinity'];
   async fetch(request: Request): Promise<Response> {
     const command = new URL(request.url).pathname.slice(1);
-    if (!['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'].includes(command)) return new Response(null, { status: 404 });
+    if (!['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'tests.record', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'].includes(command)) return new Response(null, { status: 404 });
     if (!this.ctx.container) throw new Error('container_unavailable');
     // Custom exec bypasses Container.fetch, so renew the SDK's separate idle deadline.
     this.renewActivityTimeout();
