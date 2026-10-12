@@ -1,13 +1,15 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Agent runner: coding agents in Cloudflare Sandboxes
 
-Each live Heddle lane can run its coding agent (Codex or Claude Code) in its own Cloudflare
+Each live Heddle lane can run its coding agent (Codex, OpenCode or Claude Code) in its own Cloudflare
 Sandbox instead of on an operator's machine. The control plane enrolls the lane and issues a
 fork write token and a canonical read token. The harness hands that grant to this Worker, which:
 
 1. starts a Container for the lane with **no direct Internet** (`enableInternet: false`);
 2. routes all of the sandbox's HTTP/HTTPS through `Outbound` ([`src/policy.ts`](src/policy.ts)), which allows only
-   - this account's AI Gateway, adding the gateway token (Unified Billing supplies the provider credentials),
+   - this account's Workers AI inference (`api.cloudflare.com/client/v4/accounts/<id>/ai/v1/…`), adding the token and
+     `cf-aig-gateway-id` so requests are logged by the gateway and billed as Workers AI (standard billing),
+   - this account's AI Gateway provider routes, for third-party models on Unified Billing (Claude Code lanes),
    - this lane's own Artifacts fork (write token added) and the canonical repo (read token added, pushes refused),
    - the npm registry, read-only and without credentials;
 3. clones the fork, then runs the agent on the task brief. The agent tests, commits and runs `git push origin HEAD:main`.

@@ -93,7 +93,7 @@ function quote(value) { return "'" + value.replaceAll("'", "'\\''") + "'"; }
 // DEMO_LIVE_PROVIDERS / DEMO_LIVE_MODELS ("alice=codex,bob=claude") override the
 // shared DEMO_LIVE_PROVIDER / DEMO_LIVE_MODEL per agent, so lanes can mix vendors.
 // cf-* lanes run their agent in a Cloudflare Sandbox through agent-runner/ (DEMO_RUNNER_URL).
-export const LIVE_PROVIDERS = ['codex', 'claude', 'cf-codex', 'cf-claude'];
+export const LIVE_PROVIDERS = ['codex', 'claude', 'cf-codex', 'cf-claude', 'cf-opencode'];
 export function liveAgents(env = process.env) {
   const pairs = (value, name) => {
     const map = new Map();
@@ -133,7 +133,7 @@ async function launchLive(opts, state) {
       // tmux panes inherit the tmux server's environment, not ours: pass the runner origin and token path explicitly.
       const runner = process.env.DEMO_RUNNER_URL, tokenFile = process.env.DEMO_RUNNER_TOKEN_FILE;
       if (!runner || !tokenFile) throw new Error('cf-* lanes need DEMO_RUNNER_URL and DEMO_RUNNER_TOKEN_FILE');
-      await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexport DEMO_RUNNER_URL=${quote(runner)} DEMO_RUNNER_TOKEN_FILE=${quote(tokenFile)}\nexec node ${quote(script)} ${quote(provider.slice(3))} ${quote(`${opts.project}-${agent}-${state.generation}`)} ${quote(state.grants[agent])} ${quote(brief)} ${quote(marker)}\n`, { mode: 0o700 });
+      await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexport DEMO_RUNNER_URL=${quote(runner)} DEMO_RUNNER_TOKEN_FILE=${quote(tokenFile)}${model ? ` DEMO_LANE_MODEL=${quote(model)}` : ''}\nexec node ${quote(script)} ${quote(provider.slice(3))} ${quote(`${opts.project}-${agent}-${state.generation}`)} ${quote(state.grants[agent])} ${quote(brief)} ${quote(marker)}\n`, { mode: 0o700 });
     } else {
     const modelFlag = model ? ` --model ${quote(model)}` : '';
     const invocation = provider === 'codex' ? `${quote(executable)} exec --sandbox workspace-write --ephemeral -c sandbox_workspace_write.network_access=true${modelFlag} - < ${quote(brief)}` :

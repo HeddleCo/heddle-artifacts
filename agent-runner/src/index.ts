@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Heddle agent runner: runs a coding agent per lane in a Cloudflare Sandbox.
-//   POST   /lanes/:agent/:name       { grant, prompt, author }  start the lane (operator only)
+//   POST   /lanes/:agent/:name       { grant, prompt, author, model? }  start the lane (operator only)
 //   GET    /lanes/:agent/:name       outcome: none | running | succeeded | failed | lost
 //   GET    /lanes/:agent/:name/log   last bytes of the agent's JSON event stream
 //   DELETE /lanes/:agent/:name       destroy the sandbox
 import { validGrant } from "./policy";
 import type { LaneSandbox, RunnerEnv } from "./lane";
 
-export { CodexLane, ClaudeLane } from "./agents";
+export { CodexLane, ClaudeLane, OpencodeLane } from "./agents";
 export { Outbound } from "./outbound";
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -33,10 +33,10 @@ function author(value: unknown): value is { name: string; email: string } {
 export default {
   async fetch(request, env): Promise<Response> {
     if (!(await authorized(request, env.RUNNER_TOKEN))) return new Response("Forbidden\n", { status: 403 });
-    const match = /^\/lanes\/(codex|claude)\/([^/]+)(\/log)?$/.exec(new URL(request.url).pathname);
+    const match = /^\/lanes\/(codex|claude|opencode)\/([^/]+)(\/log)?$/.exec(new URL(request.url).pathname);
     if (!match || !NAME.test(match[2])) return new Response("Not found\n", { status: 404 });
     const [, agent, name, log] = match;
-    const lane = (agent === "codex" ? env.CODEX : env.CLAUDE).getByName(name) as unknown as DurableObjectStub<LaneSandbox>;
+    const lane = (agent === "codex" ? env.CODEX : agent === "claude" ? env.CLAUDE : env.OPENCODE).getByName(name) as unknown as DurableObjectStub<LaneSandbox>;
     try {
       if (log) return request.method === "GET" ? new Response(await lane.tail(16 * 1024), { headers: { "content-type": "application/x-ndjson" } }) : new Response(null, { status: 405 });
       if (request.method === "GET") return Response.json(await lane.status());
@@ -47,7 +47,11 @@ export default {
           typeof body.prompt !== "string" || !body.prompt.trim() || new TextEncoder().encode(body.prompt).byteLength > MAX_PROMPT_BYTES) {
         return new Response("Body must be { grant, prompt, author } for this Artifacts namespace\n", { status: 400 });
       }
-      const started = await lane.start(name, { grant: body.grant, prompt: body.prompt, author: body.author });
+      // A per-lane model is limited to Workers AI models, which the outbound policy can reach.
+      if (body.model !== undefined && (agent !== "opencode" || typeof body.model !== "string" || !/^cloudflare-workers-ai\/@cf\/[\w.-]+\/[\w.-]+$/.test(body.model))) {
+        return new Response("model must be a cloudflare-workers-ai/@cf/... id on an opencode lane\n", { status: 400 });
+      }
+      const started = await lane.start(name, { grant: body.grant, prompt: body.prompt, author: body.author, ...(body.model ? { model: body.model as string } : {}) });
       if (started === "busy") return new Response("Lane already ran\n", { status: 409 });
       if (started !== "started") return Response.json(started, { status: 502 });
       return Response.json({ state: "running" }, { status: 202 });

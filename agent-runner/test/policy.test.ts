@@ -58,3 +58,16 @@ test("grants must name this namespace over HTTPS with clean single-line tokens",
     { ...grant, upstreamToken: "" },
   ]) assert.equal(validGrant(bad, host, "heddle-demo"), false, JSON.stringify(bad));
 });
+
+test("Workers AI inference for this account gets the token and gateway; the rest of the Cloudflare API is denied", () => {
+  const d = at("https://api.cloudflare.com/client/v4/accounts/acct/ai/v1/chat/completions", "POST");
+  assert.equal(d.kind, "forward");
+  assert.equal(d.kind === "forward" && d.set.authorization, "Bearer gw-token");
+  assert.equal(d.kind === "forward" && d.set["cf-aig-gateway-id"], "heddle-artifacts");
+  assert.equal(at("https://api.cloudflare.com/client/v4/accounts/acct/ai/v1/responses", "POST").kind, "forward");
+  assert.equal(at("https://api.cloudflare.com/client/v4/accounts/other/ai/v1/responses", "POST").kind, "deny");
+  assert.equal(at("https://api.cloudflare.com/client/v4/accounts/acct/workers/scripts", "GET").kind, "deny");
+  assert.equal(at("https://api.cloudflare.com/client/v4/accounts/acct/ai/v1-evil/x", "POST").kind, "deny");
+  assert.equal(at("https://api.cloudflare.com/client/v4/user/tokens", "GET").kind, "deny");
+  assert.equal(at("https://api.cloudflare.com/client/v4/accounts/acct/ai/v1/chat/completions", "DELETE").kind, "deny");
+});

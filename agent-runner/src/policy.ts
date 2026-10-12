@@ -22,6 +22,9 @@ export type Decision =
   | { kind: "forward"; set: Record<string, string>; remove: string[] };
 
 export const GATEWAY_HOST = "gateway.ai.cloudflare.com";
+export const CLOUDFLARE_API_HOST = "api.cloudflare.com";
+/** Cloudflare's unified AI API (OpenAI Responses and Chat Completions) for Workers AI models. */
+export const workersAiBase = (accountId: string) => `https://${CLOUDFLARE_API_HOST}/client/v4/accounts/${accountId}/ai/v1`;
 export const NPM_REGISTRY_HOST = "registry.npmjs.org";
 
 const deny = (reason: string, status = 403): Decision => ({ kind: "deny", status, reason });
@@ -49,6 +52,19 @@ export function decide(url: URL, method: string, grant: LaneGrant | undefined, g
       kind: "forward",
       set: { "cf-aig-authorization": `Bearer ${gateway.token}`, ...(gateway.metadata ? { "cf-aig-metadata": gateway.metadata } : {}) },
       remove: ["x-api-key", "authorization"],
+    };
+  }
+
+  if (url.hostname === CLOUDFLARE_API_HOST) {
+    // Only this account's Workers AI inference, routed through its gateway; never the wider Cloudflare API.
+    const prefix = new URL(workersAiBase(gateway.accountId)).pathname;
+    if (!url.pathname.startsWith(`${prefix}/`)) return deny("only this account's Workers AI inference is reachable");
+    if (method !== "POST" && method !== "GET") return deny("Workers AI inference accepts GET and POST only");
+    return {
+      kind: "forward",
+      set: { authorization: `Bearer ${gateway.token}`, "cf-aig-authorization": `Bearer ${gateway.token}`, "cf-aig-gateway-id": gateway.gatewayId,
+        ...(gateway.metadata ? { "cf-aig-metadata": gateway.metadata } : {}) },
+      remove: ["x-api-key"],
     };
   }
 

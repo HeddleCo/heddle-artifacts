@@ -40,6 +40,7 @@ printf '%s\\n' "$?" >${EXIT_CODE_PATH}.tmp && mv ${EXIT_CODE_PATH}.tmp ${EXIT_CO
 export interface RunnerEnv {
   CODEX: DurableObjectNamespace<LaneSandbox>;
   CLAUDE: DurableObjectNamespace<LaneSandbox>;
+  OPENCODE: DurableObjectNamespace<LaneSandbox>;
   RUNNER_TOKEN: string;
   AI_GATEWAY_ACCOUNT_ID: string;
   AI_GATEWAY_ID: string;
@@ -49,6 +50,7 @@ export interface RunnerEnv {
   ARTIFACTS_NAMESPACE: string;
   CODEX_MODEL: string;
   CLAUDE_MODEL: string;
+  OPENCODE_MODEL: string;
 }
 
 interface LaneState extends DurableObjectState {
@@ -59,7 +61,7 @@ export interface AgentCommand { argv: string[]; env: Record<string, string> }
 export type TaskOutcome = { state: "succeeded"; result: string } | { state: "failed"; error: string };
 export type TaskStatus = { state: "none" } | { state: "running" } | { state: "lost" } | TaskOutcome;
 export interface CommandResult { exitCode: number; stdout: string; stderr: string }
-export interface LaneStart { grant: LaneGrant; prompt: string; author: { name: string; email: string } }
+export interface LaneStart { grant: LaneGrant; prompt: string; author: { name: string; email: string }; model?: string }
 
 export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
   protected abstract readonly agent: string;
@@ -80,7 +82,7 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
     }
   }
 
-  protected abstract command(prompt: string): AgentCommand;
+  protected abstract command(prompt: string, model?: string): AgentCommand;
   protected abstract outcome(exitCode: number): Promise<TaskOutcome>;
 
   /** Clone the fork, wire the read-only upstream, then start the agent. One lane runs once. */
@@ -103,7 +105,7 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
       }
       await this.#files.remove(TASK_DIRECTORY, { recursive: true, force: true });
       await this.#files.mkdir(TASK_DIRECTORY);
-      const { argv, env } = this.command(lane.prompt);
+      const { argv, env } = this.command(lane.prompt, lane.model);
       const task = await this.#container.exec(["/bin/sh", "-c", TASK_SCRIPT, "agent", ...argv], {
         cwd: REPOSITORY_DIRECTORY, env: { ...TRUST_ENV, ...env }, stdout: "ignore", stderr: "ignore",
       });
@@ -173,7 +175,7 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
       this.#container.start({
         image: this.#container.images.sandbox,
         instance: "standard-1",
-        // No direct Internet: every request goes through Outbound, which allows only the gateway,
+        // No direct Internet: every request goes through Outbound, which allows only the gateway and Workers AI,
         // this lane's Artifacts repositories and the read-only npm registry.
         enableInternet: false,
         labels: { app: "heddle-agent-runner", agent: this.agent, lane: name },
