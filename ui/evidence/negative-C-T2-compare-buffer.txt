@@ -10,7 +10,7 @@ Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:325:1 › C-T8 compare review buffers discussion and landing while its snapshot is delayed (6.7s)
+  ✘  1 test/acceptance.spec.ts:325:1 › C-T8 compare review buffers discussion and landing while its snapshot is delayed (6.9s)
 
 
   1) test/acceptance.spec.ts:325:1 › C-T8 compare review buffers discussion and landing while its snapshot is delayed 

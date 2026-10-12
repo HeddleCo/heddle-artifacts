@@ -10,7 +10,7 @@ Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:39:1 › C-T2 WebSocket replay updates board without reload (8.4s)
+  ✘  1 test/acceptance.spec.ts:39:1 › C-T2 WebSocket replay updates board without reload (8.7s)
 
 
   1) test/acceptance.spec.ts:39:1 › C-T2 WebSocket replay updates board without reload ─────────────

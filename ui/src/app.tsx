@@ -78,7 +78,7 @@ function Board({ p }: { p: string }) {
   }, () => { if (loading.current) reloadRequested.current = true; else void load(); });
   const agents = new Map(view?.agents.map(a => [a.id, a]));
   const ready = view?.tasks.reduce((n, t) => n + t.candidates.length, 0) || 0;
-  return <><Header p={p} live={live}/><main><PageTitle eyebrow={`PROJECT / ${p}`} title="Work in parallel. Decide together."><p>Every agent has a lane. Every alternative stays with the code.</p></PageTitle>
+  return <><Header p={p} live={live}/><main><PageTitle eyebrow={`PROJECT / ${p}`} title="Tasks"><p>Each agent pushes to its own fork. Its latest push shows here as a candidate.</p></PageTitle>
     {error && <ErrorNotice text={error}/>}
     <div class="toolbar"><span>{view?.tasks.length || 0} tasks <span class="separator">/</span> {view?.agents.filter(a => a.kind === 'agent').length || 0} agents <span class="separator">/</span> {ready} candidates</span><button class="quiet" disabled={refreshing} onClick={load}>{refreshing ? 'Refreshing…' : 'Refresh board'}</button></div>
     {!view ? <p role="status">Loading project…</p> : <div class="board">{view.tasks.map(task => <section class="task-column" key={task.slug} aria-label={task.slug}>
@@ -198,7 +198,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
     </div>
     {view && <aside class="rail" aria-label="Decision">
-      <section class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">The rationale and every alternative travel with the code.</p>
+      <section class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">Your reason is saved with the decision on main.</p>
         <form onSubmit={submit}><fieldset disabled={busy || !!view.decision || changed || reviewing}><legend>Candidate to land</legend>{view.candidates.map(c => <label class="radio-choice"><input type="radio" name="pick" value={c.agent} required checked={(view.decision?.pick ?? pick) === c.agent} onChange={() => setPick(c.agent)}/><span>{c.agent}</span><Badge candidate={c}/></label>)}
           <label>Decide as<select required value={view.decision?.decider ?? who} onChange={e => setDecider(e.currentTarget.value)}><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
           <label>Why this candidate?<textarea required maxLength={10000} value={view.decision?.rationale ?? rationale} onInput={e => setRationale(e.currentTarget.value)} placeholder="Explain the tradeoff. This becomes part of the Git history."/></label>
