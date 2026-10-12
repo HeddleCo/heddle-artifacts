@@ -28,11 +28,13 @@ export function remoteURL(value, api) {
   }
   return value;
 }
+// A project's first engine call boots its Container; live cold starts measured 10-57 s.
+export const API_TIMEOUT_MS = 150000;
 export async function request(url, token, body, method = body === undefined ? 'GET' : 'POST') {
   if (token && /[\r\n]/.test(token)) throw new Error('Invalid credential');
   let response;
   try {
-    response = await fetch(url, { method, redirect: 'error', signal: AbortSignal.timeout(20000),
+    response = await fetch(url, { method, redirect: 'error', signal: AbortSignal.timeout(API_TIMEOUT_MS),
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),

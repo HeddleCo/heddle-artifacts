@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { projectURL, remoteURL, gitAuth, joinProject, request, redact, command } from './ha.mjs';
+import { projectURL, remoteURL, gitAuth, joinProject, request, redact, command, API_TIMEOUT_MS } from './ha.mjs';
 import { startMock } from '../demo/test/mock-platform.mjs';
 test('CLI URL guards reject credentials, nonlocal HTTP and invalid identifiers', () => {
   for (const url of ['http://example.com/p/demo', 'https://x:token@example.com/p/demo', 'https://example.com/p/demo?token=abc', 'https://example.com/p/demo/extra']) assert.throws(() => projectURL(url));
@@ -47,3 +47,6 @@ for (const setupMode of ['none', 'child', 'track-A']) {
     assert.equal(await readFile(join(parent, '.git/config'), 'utf8'), parentConfig);
   });
 }
+test('API timeout outlasts a measured Container cold start', () => {
+  assert.ok(API_TIMEOUT_MS >= 60000, 'first engine calls boot a Container and took up to 57 s live');
+});
