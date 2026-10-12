@@ -9,6 +9,7 @@ import type { z } from "zod";
 
 import type { Outbound } from "./outbound";
 import type { DiscussionTarget, LaneGrant } from "./policy";
+import { cleanAnnouncement } from "./announce";
 
 const REPOSITORY_DIRECTORY = "/workspace/repo";
 const TASK_DIRECTORY = "/workspace/task";
@@ -23,8 +24,6 @@ const TASK_KEY = "task";
 const GRANT_KEY = "grant";
 const DISCUSSION_KEY = "discussion";
 const ANNOUNCED_KEY = "announced";
-// The agent's closing message, posted once to its task discussion; long transcripts are not.
-const MAX_ANNOUNCEMENT = 4000;
 const CA_PATH = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
 
 // exec() does not inherit start() env. Pass these on every command that makes HTTPS requests.
@@ -149,17 +148,25 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
   async #announce(status: TaskStatus): Promise<void> {
     const target = this.ctx.storage.kv.get<DiscussionTarget>(DISCUSSION_KEY);
     if (status.state !== "succeeded" || !target || this.ctx.storage.kv.get(ANNOUNCED_KEY)) return;
-    const body = status.result.trim().slice(0, MAX_ANNOUNCEMENT);
+    const body = cleanAnnouncement(status.result);
     // Claim before the first await: the status poll and the alarm can both see the finished task,
     // and only the claimant may post. A failed post releases the claim for a later retry.
     this.ctx.storage.kv.put(ANNOUNCED_KEY, body ? "posting" : "empty");
     if (!body) return;
+    let response: Response;
     try {
-      const response = await fetch(target.url, { method: "POST", signal: AbortSignal.timeout(20_000),
+      // The control plane signs the turn in its engine before replying, which can take a cold start.
+      response = await fetch(target.url, { method: "POST", signal: AbortSignal.timeout(150_000),
         headers: { authorization: `Bearer ${target.token}`, "content-type": "application/json" }, body: JSON.stringify({ body }) });
-      if (response.ok) { this.ctx.storage.kv.put(ANNOUNCED_KEY, "posted"); this.ctx.storage.kv.delete(DISCUSSION_KEY); return; }
-      console.error({ event: "lane.announce.rejected", status: response.status });
-    } catch (cause) { console.error({ event: "lane.announce.failed", error: cause instanceof Error ? cause.name : "unknown" }); }
+    } catch (cause) {
+      // Timeout or transport failure: the turn may already be posted. Keep the claim; never post twice.
+      this.ctx.storage.kv.put(ANNOUNCED_KEY, "uncertain");
+      console.error({ event: "lane.announce.uncertain", error: cause instanceof Error ? cause.name : "unknown" });
+      return;
+    }
+    if (response.ok) { this.ctx.storage.kv.put(ANNOUNCED_KEY, "posted"); this.ctx.storage.kv.delete(DISCUSSION_KEY); return; }
+    // A definite rejection posted nothing: release the claim so a later status check can retry.
+    console.error({ event: "lane.announce.rejected", status: response.status });
     this.ctx.storage.kv.delete(ANNOUNCED_KEY);
   }
 
