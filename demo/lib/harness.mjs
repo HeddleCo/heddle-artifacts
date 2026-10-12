@@ -50,7 +50,7 @@ async function initialize(opts) {
   for (const task of tasks) await request(`${opts.api}/tasks`, token, task);
   await request(`${opts.api}/humans`, token, { id: 'luke', displayName: 'Luke' });
   await request(`${opts.api}/tasks/parser-escapes/agents`, token,
-    { id: 'reviewer', kind: 'reviewer', displayName: 'Reviewer', provider: 'workers-ai', model: '@cf/qwen/qwen2.5-coder-32b-instruct' });
+    { id: 'reviewer', kind: 'reviewer', displayName: 'Reviewer', provider: 'workers-ai', model: '@cf/zai-org/glm-5.2' });
   return state;
 }
 async function reset(opts) {

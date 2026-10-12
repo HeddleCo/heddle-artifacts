@@ -12,6 +12,8 @@ import { sandboxId, type SandboxRun, type TestRunner } from './isolated-tests';
 import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
 
 type Task = { slug: string; intent: string; thread: string; baseSha: string; status: 'open' | 'decided' };
+// A lane that never pushes must not hold up review of the others forever.
+export const REVIEW_WAIT_MS = 5 * 60 * 1000;
 type SandboxJob = { id: string; task: string; agent: string; sourceSha: string; treeSha: string; status: 'queued'|'running'|'observed'|'done'; startedAt?: number; run?: SandboxRun };
 export class ProjectDO extends DurableObject<Env> {
   store: Store;
@@ -93,6 +95,13 @@ export class ProjectDO extends DurableObject<Env> {
   }
   private pendingPush(task: string): boolean { return this.store.rows<any>("SELECT id FROM pushes WHERE status='pending' AND json_extract(data, '$.task')=? LIMIT 1", task).length > 0; }
   private candidates(task: string): Candidate[] { return this.store.all<Candidate>('candidates').filter(c => c.task === task); }
+  private awaitingLanes(task: string, candidates: Candidate[]): boolean {
+    const agents = new Set(this.store.all<Agent>('agents').filter(a => a.kind === 'agent').map(a => a.id));
+    const lanes = this.store.all<Lane>('lanes').filter(l => l.task === task && l.status === 'active' && agents.has(l.agent));
+    if (lanes.every(l => candidates.some(c => c.agent === l.agent))) return false;
+    const first = Math.min(...candidates.map(c => Date.parse(c.capturedAt)).filter(Number.isFinite));
+    return !(Number.isFinite(first) && Date.now() - first >= REVIEW_WAIT_MS);
+  }
   private testsPending(task: string): boolean { return this.candidates(task).some(c => c.tests?.status === 'pending'); }
   private heads(task: string): string[] { return this.candidates(task).map(c => c.state).sort(); }
   private task(task: string): Task { const value = this.store.get<Task>('tasks', task); if (!value) throw new HttpError(404, 'task_not_found'); return value; }
@@ -278,6 +287,9 @@ export class ProjectDO extends DurableObject<Env> {
       if (this.testsPending(task.slug)) { this.store.put('meta', `reviewDue:${task.slug}`, Date.now() + 5000); continue; }
       const candidates = this.candidates(task.slug);
       if (task.status === 'decided' || !(candidates.length >= 2 || candidates.some(c => !c.conflicts.length && c.tests?.status === 'pass'))) { this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`); continue; }
+      // Review the whole field, not the first arrival: wait until every active agent lane has a
+      // candidate, or REVIEW_WAIT_MS after the first one so a lane that never delivers cannot block review.
+      if (this.awaitingLanes(task.slug, candidates)) { this.store.put('meta', `reviewDue:${task.slug}`, Date.now() + 5000); continue; }
       const reviewer = this.store.all<Agent>('agents').find(a => a.kind === 'reviewer');
       if (!reviewer || !this.env.REVIEW) { this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`); continue; }
       const heads = this.heads(task.slug), headKey = await digest(heads.join(':'));
