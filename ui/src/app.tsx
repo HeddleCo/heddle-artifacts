@@ -17,7 +17,7 @@ const message = (e: unknown) => e instanceof ApiError ? e.message : 'Could not r
 function ErrorNotice({ text }: { text: string }) { return <p class="notice error" role="alert">{text} <a href="/login">Sign in</a></p>; }
 function Badge({ candidate }: { candidate?: Candidate }) {
   const tests = candidate?.tests;
-  return <span class={`badge ${tests?.status || 'pending'}`}>{tests ? `${tests.status === 'pass' ? '✓' : tests.status === 'fail' ? '✕' : '○'} ${tests.status} · ${tests.passed}/${tests.passed + tests.failed}` : '○ Tests pending'}</span>;
+  return <span class={`badge ${tests?.status || 'pending'}`}>{tests ? `${tests.status === 'pass' ? '✓' : tests.status === 'fail' ? '✕' : '○'} ${tests.status} · ${tests.passed}/${tests.passed + tests.failed}${tests.provenance ? ` · ${tests.provenance}` : ''}` : '○ Tests pending'}</span>;
 }
 function Signature({ signedBy, agent }: { signedBy: string; agent?: Agent }) {
   const matches = agent?.publicKey === signedBy;

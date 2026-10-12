@@ -2,6 +2,8 @@
 import type { ReviewOptions } from '../reviewer/reviewer';
 import type { ProjectDO } from './project-do';
 import type { Review, Turn, Candidate } from '../contracts/types';
+import type { CandidateTestSandbox } from './test-sandbox';
+import type { TestRunner } from './isolated-tests';
 export interface RepoInfo { name: string; remote: string; defaultBranch: string; }
 export interface RepoToken { id: string; plaintext: string; expiresAt: string; }
 export interface ArtifactsRepo extends Disposable {
@@ -26,6 +28,9 @@ export interface EngineExecutor { fetch(request: Request): Promise<Response>; }
 export interface Env {
   PROJECT: DurableObjectNamespace<ProjectDO>;
   ENGINE: DurableObjectNamespace;
+  TEST_SANDBOX?: DurableObjectNamespace<CandidateTestSandbox>;
+  // Explicit local/test seam. Never execute unreviewed code in the dev engine.
+  TEST_RUNNER?: { get(id: string): TestRunner };
   ARTIFACTS?: ArtifactsBinding;
   STATE: R2Bucket;
   EVENTS?: Queue;

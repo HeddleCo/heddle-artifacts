@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+// Local-only: no account bindings, credentials or production engine image.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "heddle-sandbox-smoke",
+  "main": "dev/sandbox-smoke.ts",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": { "bindings": [{ "name": "SMOKE", "class_name": "SandboxSmoke" }] },
+  "migrations": [{ "tag": "smoke-v1", "new_sqlite_classes": ["SandboxSmoke"] }],
+  "containers": [{ "class_name": "SandboxSmoke", "image": "./sandbox/Dockerfile", "image_build_context": "./sandbox", "instance_type": "lite", "max_instances": 1 }]
+}

@@ -9,7 +9,8 @@ import { verifyCapture } from './signatures.mjs';
 import { testCandidate } from './tests.mjs';
 import { narrative } from './why.mjs';
 import { exportProjection } from './projection.mjs';
-import { attestOperation } from './attestations.mjs';
+import { attestOperation, attestTests } from './attestations.mjs';
+import { isolatedTestResult } from './isolated-tests.mjs';
 import { freezePublicationInput } from './publication-input.mjs';
 
 /** @typedef {import('../../contracts/types.ts').Candidate} Candidate */
@@ -156,6 +157,9 @@ export async function ingest(state, request) {
       subject, diffstat: await diffstat(state.tasks[item.task].baseSha, item.sha),
       tests: request.runTests ? await testCandidate(lane.path) : { status: 'skipped', passed: 0, failed: 0, summary: 'Tests not requested', durationMs: 0 },
       conflicts: [], signedBy, capturedAt: shown.created_at };
+    if (request.runTests && request.isolateUnreviewed && candidate.tests.status === 'skipped') {
+      candidate.tests = { status: 'pending', passed: 0, failed: 0, summary: 'Isolated sandbox tests pending', durationMs: 0, provenance: 'isolated sandbox', sourceSha: item.sha };
+    } else if (candidate.tests.status !== 'skipped') candidate.tests.provenance = 'reviewed fixture';
     lane.candidate = candidate; lane.seen[item.sha] = candidate;
     await git(exportRoot, ['update-ref', `refs/heads/candidates/${item.task}/${item.agent}`, item.sha]);
     results.push({ agent: item.agent, task: item.task, status: 'captured', candidate });
@@ -179,6 +183,22 @@ export async function ingest(state, request) {
   const refs = [...new Set(pending.map(({ item }) => `refs/heads/candidates/${item.task}/${item.agent}`))];
   if (refs.length) await git(exportRoot, ['push', state.canonical, ...refs.map(ref => `${ref}:${ref}`)], { env: gitAuth(state.canonical, true) });
   return { results, conflicts };
+}
+
+export async function recordTests(state, request) {
+  const lane = state.lanes[`${request.task}/${request.agent}`], candidate = lane?.candidate;
+  // A late result is consumed but never applied to a newer Capture or a decision.
+  if (!candidate || candidate.sourceSha !== request.sourceSha || state.decisions[request.task] || lane.status !== 'active') return { ignored: true };
+  if (candidate.tests?.status !== 'pending' || candidate.tests.provenance !== 'isolated sandbox') return { ignored: true };
+  const run = request.run;
+  if (run?.sourceSha !== request.sourceSha || run?.treeSha !== candidate.treeSha) throw new Rejection('test_binding_mismatch', 'Test observation must match the captured SHA and tree');
+  const tests = isolatedTestResult(run);
+  const observation = await attestTests({ project: state.project, task: request.task, agent: request.agent,
+    sourceSha: candidate.sourceSha, treeSha: candidate.treeSha, state: candidate.state, tests, observedAt: new Date().toISOString() });
+  candidate.tests = { ...tests, observation };
+  lane.seen[candidate.sourceSha] = candidate;
+  state.narratives[candidate.sourceSha] = narrative(state, request.task);
+  return { ignored: false, candidate };
 }
 
 export async function diff(state, request) {
@@ -219,6 +239,7 @@ export async function decide(state, request) {
   const task = taskFor(state, request.task), decider = agentFor(state, request.decider);
   const current = candidates(state, request.task);
   if (!Array.isArray(request.expectHeads) || JSON.stringify([...request.expectHeads].sort()) !== JSON.stringify(current.heads)) throw new Rejection('stale', 'Candidates changed; review the current heads');
+  if (current.candidates.some(c => c.tests?.status === 'pending')) throw new Rejection('tests_pending', 'Wait for isolated candidate tests before deciding');
   if (state.decisions[request.task]) throw new Rejection('already_decided', 'Task already has a decision');
   const lane = state.lanes[`${request.task}/${request.pick}`];
   if (!lane?.candidate) throw new Rejection('unknown_candidate', 'Chosen candidate is unavailable');

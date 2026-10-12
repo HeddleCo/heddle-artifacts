@@ -9,15 +9,35 @@ test('demo Container build context and compute defaults are bounded', async () =
   const text = await readFile(new URL('wrangler.jsonc', root), 'utf8');
   const parsed = ts.parseConfigFileTextToJson('wrangler.jsonc', text);
   assert.equal(parsed.error, undefined);
-  assert.equal(parsed.config.containers.length, 1);
+  assert.equal(parsed.config.containers.length, 2);
   const container = parsed.config.containers[0];
-  assert.equal(container.image, './engine/Dockerfile');
+  assert.equal(container.image, './engine/Dockerfile.layer');
   assert.equal(container.image_build_context, '.');
   assert.equal(container.max_instances, 1);
+  const sandbox = parsed.config.containers[1];
+  assert.equal(sandbox.class_name, 'CandidateTestSandbox');
+  assert.equal(sandbox.max_instances, 3);
+  assert.equal(sandbox.instance_type, 'lite');
+  assert.equal(sandbox.image, './sandbox/Dockerfile');
+  assert.equal(sandbox.image_build_context, './sandbox');
+  assert.deepEqual(parsed.config.migrations[0], { tag: 'v1', new_sqlite_classes: ['ProjectDO', 'HeddleEngine'] });
+  assert.deepEqual(parsed.config.migrations[1], { tag: 'v2-isolated-candidate-tests', new_sqlite_classes: ['CandidateTestSandbox'] });
+  const pkg = JSON.parse(await readFile(new URL('package.json', root)));
+  const dockerfile = await readFile(new URL('sandbox/Dockerfile', root), 'utf8');
+  assert.equal(pkg.dependencies['@cloudflare/sandbox'], '1.0.0');
+  assert.match(dockerfile, /cloudflare\/sandbox:1\.0\.0/);
+  const layer = await readFile(new URL('engine/Dockerfile.layer', root), 'utf8');
+  assert.match(layer, /@sha256:085fc19e7bc673d97204ca07e636c95cb51054658e1b0282f349549004e97445/);
+  // The base has no shell: files are copied and normalized (root-owned, not group/other-writable) in a builder stage.
+  for (const dir of ['engine', 'contracts', 'demo']) assert.match(layer, new RegExp(`COPY ${dir}/ /out/opt/${dir}/`));
+  assert.match(layer, /chown -R 0:0 \/out && chmod -R go-w \/out/); assert.match(layer, /COPY --from=files \/out\/opt\/ \/opt\//);
+  assert.match(layer, /USER 65532:65532/); assert.doesNotMatch(layer.split('FROM registry')[1], /\bRUN\b/);
   const source = await readFile(new URL('worker/engine-container.ts', root), 'utf8');
   assert.match(source, /sleepAfter = '5m'/);
   assert.match(source, /setInactivityTimeout\(5 \* 60 \* 1000\)/);
-  assert.match(source, /AbortSignal\.timeout\(180000\)/);
+  assert.match(source, /ENGINE_COMMAND_MS = 180000;/);
+  assert.match(source, /AbortSignal\.timeout\(ENGINE_COMMAND_MS\)/);
+  assert.match(source, /deadline\(Promise\.all\(\[stdout/);
 });
 test('root Docker context is an exact runtime-source allowlist, excluding private state', async () => {
   const rules = (await readFile(new URL('.dockerignore', root), 'utf8')).split(/\r?\n/).filter(line => line && !line.startsWith('#'));

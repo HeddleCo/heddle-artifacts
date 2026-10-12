@@ -8,14 +8,18 @@ import { bodyText, checkOrigin, credential, digest, HttpError, jsonBody, operato
 import { Store } from './store';
 import { EngineClient } from './engine-client';
 import { DemoCredentials } from './credentials';
+import { sandboxId, type SandboxRun, type TestRunner } from './isolated-tests';
+import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
 
 type Task = { slug: string; intent: string; thread: string; baseSha: string; status: 'open' | 'decided' };
+type SandboxJob = { id: string; task: string; agent: string; sourceSha: string; treeSha: string; status: 'queued'|'running'|'observed'|'done'; startedAt?: number; run?: SandboxRun };
 export class ProjectDO extends DurableObject<Env> {
   store: Store;
   engine: EngineClient;
   credentials: DemoCredentials;
   private credentialRecovery = true;
   private draining: Promise<void> | undefined;
+  private isolated = new Map<string, Promise<void>>();
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, { ...env, REVIEW: env.REVIEW ?? { review: createReviewer(env) } }); this.store = new Store(ctx.storage);
     this.credentials = new DemoCredentials(env, this.store);
@@ -57,9 +61,10 @@ export class ProjectDO extends DurableObject<Env> {
       }
       for (const item of result.results) this.store.put('meta', `candidateSync:${item.task}`, true);
     }
+    if (command === 'tests.record' && !result.ignored) this.store.put('meta', `candidateSync:${input.task}`, true);
     if (command === 'discuss') {
       this.store.put('turns', result.id, result);
-      const reviewCurrent = !context.reviewHeads || (JSON.stringify(context.reviewHeads) === JSON.stringify(this.heads(input.task)) && !this.store.get('meta', `candidateSync:${input.task}`) && !this.store.get('decisions', input.task) && this.task(input.task).status === 'open' && !this.pendingPush(input.task));
+      const reviewCurrent = !context.reviewHeads || (JSON.stringify(context.reviewHeads) === JSON.stringify(this.heads(input.task)) && !this.store.get('meta', `candidateSync:${input.task}`) && !this.store.get('decisions', input.task) && this.task(input.task).status === 'open' && !this.pendingPush(input.task) && !this.testsPending(input.task));
       if (context.review && reviewCurrent) { this.store.put('meta', `review:${input.task}`, context.review); events.push({ type: 'review.posted', turn: result, review: context.review }); }
       else events.push({ type: 'discussion.posted', turn: result });
     }
@@ -88,6 +93,7 @@ export class ProjectDO extends DurableObject<Env> {
   }
   private pendingPush(task: string): boolean { return this.store.rows<any>("SELECT id FROM pushes WHERE status='pending' AND json_extract(data, '$.task')=? LIMIT 1", task).length > 0; }
   private candidates(task: string): Candidate[] { return this.store.all<Candidate>('candidates').filter(c => c.task === task); }
+  private testsPending(task: string): boolean { return this.candidates(task).some(c => c.tests?.status === 'pending'); }
   private heads(task: string): string[] { return this.candidates(task).map(c => c.state).sort(); }
   private task(task: string): Task { const value = this.store.get<Task>('tasks', task); if (!value) throw new HttpError(404, 'task_not_found'); return value; }
   private expireAccess(): boolean {
@@ -111,6 +117,7 @@ export class ProjectDO extends DurableObject<Env> {
     if (!open || !this.expireAccess()) return;
     await this.engine.replay();
     await this.syncCandidates();
+    await this.recoverSandboxJobs();
     await this.revokeReleased();
     for (const decision of this.store.all<Decision>('decisions').filter(d => !d.mainSha)) {
       const opId = `publish:${decision.landState}`, previous = this.store.rows<{ status: string }>('SELECT status FROM ops WHERE id=?', opId)[0];
@@ -129,7 +136,8 @@ export class ProjectDO extends DurableObject<Env> {
     const active = open && this.store.all<Lane>('lanes').some(l => l.status === 'active');
     const reviews = open ? this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'reviewDue:%'").map(r => JSON.parse(r.data) as number) : [];
     const pending = open && this.store.rows<any>("SELECT id FROM pushes WHERE status='pending' LIMIT 1").length > 0;
-    const when = Math.min(credentialCheck ?? Infinity, active || pending ? Date.now() + 3000 : Infinity, ...reviews);
+    const jobs = open && this.sandboxJobs().some(j => j.status !== 'done');
+    const when = Math.min(credentialCheck ?? Infinity, active || pending || jobs ? Date.now() + 3000 : Infinity, ...reviews);
     if (Number.isFinite(when)) await this.ctx.storage.setAlarm(Math.max(Date.now() + 100, when));
     else await this.ctx.storage.deleteAlarm();
   }
@@ -166,9 +174,77 @@ export class ProjectDO extends DurableObject<Env> {
       });
       for (const candidate of result.candidates as Candidate[]) {
         this.emit({ type: 'candidate.ready', candidate });
-        if (candidate.tests) this.emit({ type: 'tests.done', task: candidate.task, agent: candidate.agent, tests: candidate.tests });
+        if (candidate.tests) this.emit({ type: 'tests.done', task: candidate.task, agent: candidate.agent, sourceSha: candidate.sourceSha, tests: candidate.tests });
+        if (candidate.tests?.status === 'pending' && candidate.tests.provenance === 'isolated sandbox') {
+          const id = await sandboxId(this.store.get('meta', 'project').id, candidate);
+          if (!this.store.get('meta', `isolated:${id}`)) this.store.put('meta', `isolated:${id}`, { id, task: candidate.task, agent: candidate.agent, sourceSha: candidate.sourceSha, treeSha: candidate.treeSha, status: 'queued' } satisfies SandboxJob);
+        }
       }
     }
+    this.scheduleSandboxJobs();
+  }
+  private sandboxJobs(): SandboxJob[] { return this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'isolated:%'").map(r => JSON.parse(r.data)); }
+  private runner(id: string): TestRunner | undefined { return this.env.TEST_RUNNER?.get(id) ?? this.env.TEST_SANDBOX?.getByName(id); }
+  private sandboxError(job: SandboxJob, failure: SandboxRun['failure'] = 'sandbox'): SandboxRun {
+    return { sourceSha: job.sourceSha, treeSha: job.treeSha, output: '', durationMs: Math.min(TEST_BUDGET_MS, Date.now() - (job.startedAt ?? Date.now())), failure, ...(this.env.DEV === '1' ? { fixture: true } : {}) };
+  }
+  private async finishSandboxJob(job: SandboxJob) {
+    if (!job.run) return;
+    await this.engine.mutate('tests.record', { opId: `tests:${job.id}`, task: job.task, agent: job.agent, sourceSha: job.sourceSha, run: job.run });
+    job.status = 'done'; this.store.put('meta', `isolated:${job.id}`, job);
+    await this.syncCandidates();
+  }
+  private async recoverSandboxJobs() {
+    for (const job of this.sandboxJobs()) {
+      if (this.isolated.has(job.id) || job.status === 'done' || job.status === 'queued') continue;
+      if (job.status === 'running') {
+        // The original outcome is unknown after eviction. Destroy the instance
+        // and record error; never reuse it or infer a successful run.
+        try { await this.runner(job.id)?.destroy(); } catch {}
+        job.run = this.sandboxError(job); job.status = 'observed';
+        this.store.put('meta', `isolated:${job.id}`, job);
+      }
+      await this.finishSandboxJob(job);
+    }
+    this.scheduleSandboxJobs();
+  }
+  private scheduleSandboxJobs() {
+    if (!this.credentials.isOpen()) return;
+    for (const job of this.sandboxJobs()) {
+      if (this.isolated.size >= 3) break;
+      if (job.status !== 'queued' || this.isolated.has(job.id)) continue;
+      job.status = 'running'; job.startedAt = Date.now(); this.store.put('meta', `isolated:${job.id}`, job);
+      const promise = this.runSandboxJob(job).catch(() => {}).finally(() => { this.isolated.delete(job.id); this.scheduleSandboxJobs(); });
+      this.isolated.set(job.id, promise); this.ctx.waitUntil(promise);
+    }
+  }
+  private async runSandboxJob(job: SandboxJob) {
+    const lane = this.store.get<Lane>('lanes', `${job.task}/${job.agent}`), runner = this.runner(job.id);
+    let token: { id: string; plaintext: string } | undefined, run = this.sandboxError(job);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await this.ctx.storage.sync();
+      if (!runner || !lane || lane.status !== 'active') throw new Error('sandbox_unavailable');
+      token = await this.credentials.issue(lane.forkRepo, 'read', 'sandbox-read', job.agent, 240);
+      this.credentials.assertOpen();
+      const result = await Promise.race([runner.run({ project: this.store.get('meta', 'project').id, task: job.task, agent: job.agent,
+        sourceSha: job.sourceSha, treeSha: job.treeSha, remote: lane.forkRemote, readCredential: token.plaintext }),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('sandbox_timeout')), Math.max(1, TEST_BUDGET_MS - (Date.now() - job.startedAt!))); })]);
+      if (result.sourceSha !== job.sourceSha || result.treeSha !== job.treeSha) throw new Error('sandbox_binding');
+      // Copy only observation fields; candidate output cannot supply test counts.
+      run = { sourceSha: job.sourceSha, treeSha: job.treeSha, output: result.output, durationMs: result.durationMs,
+        installExitCode: result.installExitCode, testExitCode: result.testExitCode, ...(result.failure ? { failure: result.failure } : {}), ...(this.env.DEV === '1' ? { fixture: true } : {}) };
+      if (typeof run.output !== 'string' || new TextEncoder().encode(run.output).length > TEST_OUTPUT_BYTES) run = this.sandboxError(job, 'output');
+    } catch (error) { run = this.sandboxError(job, error instanceof Error && error.message === 'sandbox_timeout' ? 'timeout' : 'sandbox'); }
+    finally {
+      if (timer) clearTimeout(timer);
+      try { await runner?.destroy(); } catch { run = this.sandboxError(job); }
+      if (token && lane) await this.credentials.revoke(lane.forkRepo, token.id);
+    }
+    await this.engine.serial(async () => {
+      job.run = run; job.status = 'observed'; this.store.put('meta', `isolated:${job.id}`, job); await this.ctx.storage.sync();
+      if (this.expireAccess()) { await this.finishSandboxJob(job); await this.nextAlarm(); }
+    });
   }
   private async drain() {
     if (!this.expireAccess()) return;
@@ -176,7 +252,7 @@ export class ProjectDO extends DurableObject<Env> {
     const rows = this.store.rows<{ id: string; data: string }>("SELECT id,data FROM pushes WHERE status='pending' ORDER BY rowid LIMIT 100");
     if (!rows.length) return;
     const opId = `ingest:${await digest(rows.map(r => r.id).join('\n'))}`;
-    try { await this.engine.mutate('ingest', { opId, items: rows.map(r => JSON.parse(r.data)), runTests: true }); }
+    try { await this.engine.mutate('ingest', { opId, items: rows.map(r => JSON.parse(r.data)), runTests: true, isolateUnreviewed: true }); }
     catch (error) {
       const terminal = this.store.rows<{ status: string }>('SELECT status FROM ops WHERE id=?', opId)[0];
       if (terminal && ['failed', 'rejected'].includes(terminal.status)) for (const row of rows) this.store.storage.sql.exec("UPDATE pushes SET status='failed' WHERE id=?", row.id);
@@ -199,6 +275,7 @@ export class ProjectDO extends DurableObject<Env> {
     if (!this.expireAccess()) return;
     for (const task of this.store.all<Task>('tasks')) {
       const due = this.store.get<number>('meta', `reviewDue:${task.slug}`); if (!due || due > Date.now()) continue;
+      if (this.testsPending(task.slug)) { this.store.put('meta', `reviewDue:${task.slug}`, Date.now() + 5000); continue; }
       const candidates = this.candidates(task.slug);
       if (task.status === 'decided' || !(candidates.length >= 2 || candidates.some(c => !c.conflicts.length && c.tests?.status === 'pass'))) { this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`); continue; }
       const reviewer = this.store.all<Agent>('agents').find(a => a.kind === 'reviewer');
@@ -208,7 +285,7 @@ export class ProjectDO extends DurableObject<Env> {
       let attempt = this.store.get<any>('meta', key);
       const current = () => this.credentials.isOpen() && this.task(task.slug).status === 'open' &&
         !this.store.get('decisions', task.slug) && !this.store.get('meta', `candidateSync:${task.slug}`) &&
-        !this.pendingPush(task.slug) &&
+        !this.pendingPush(task.slug) && !this.testsPending(task.slug) &&
         JSON.stringify(this.heads(task.slug)) === JSON.stringify(heads);
       try {
         if (!attempt) {
@@ -261,7 +338,7 @@ export class ProjectDO extends DurableObject<Env> {
     if (!reviewer || !this.env.REVIEW || turns.length !== 1 || prior.id !== body.priorTurn || prior.author !== reviewer.id ||
         current?.model !== 'fallback' || prior.body !== JSON.stringify(current)) throw new HttpError(409, 'retry_requires_fallback');
     const busy = () => this.store.get('meta', `candidateSync:${task.slug}`) || this.store.get('meta', `reviewDue:${task.slug}`) ||
-      this.pendingPush(task.slug);
+      this.pendingPush(task.slug) || this.testsPending(task.slug);
     if (busy()) throw new HttpError(409, 'review_work_pending');
     const reservation: any = { priorTurn: prior.id, heads, status: 'reserved', createdAt: new Date().toISOString(), diagnostics: [] };
     this.store.put('meta', key, reservation); await this.ctx.storage.sync();
@@ -325,6 +402,16 @@ export class ProjectDO extends DurableObject<Env> {
         } else await this.credentials.importDebt();
         const status = this.credentials.status();
         return Response.json(status, { status: parts[3] === 'cleanup' && !status.complete ? 202 : 200, headers: { 'cache-control': 'no-store' } });
+      }
+      if (parts[3] === 'diagnostics' && parts.length === 4 && request.method === 'GET') {
+        // Operator-only queue state for a live session: ids, states and error codes only, never payloads.
+        if (!actor.op) throw new HttpError(403, 'forbidden');
+        const error = (result: string | null) => { try { const r = JSON.parse(result ?? 'null'); return r?.error ?? r?.reason ?? r?.code; } catch { return undefined; } };
+        return Response.json({ open: this.credentials.isOpen(), alarm: await this.ctx.storage.getAlarm(), draining: !!this.draining,
+          lanes: this.store.all<Lane>('lanes').map(l => ({ task: l.task, agent: l.agent, status: l.status, lastSeenSha: l.lastSeenSha })),
+          pushes: this.store.rows<{ id: string; status: string }>('SELECT id,status FROM pushes ORDER BY rowid').map(r => ({ id: r.id, status: r.status })),
+          ops: this.store.rows<{ id: string; command: string; status: string; attempts: number; result: string | null }>('SELECT id,command,status,attempts,result FROM ops ORDER BY rowid DESC LIMIT 40')
+            .map(o => ({ id: o.id.slice(0, 48), command: o.command, status: o.status, attempts: o.attempts, error: error(o.result) })) }, { headers: { 'cache-control': 'no-store' } });
       }
       if (parts[3] === 'ws' && request.method === 'GET') {
         if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, 'websocket_required');
@@ -453,6 +540,7 @@ export class ProjectDO extends DurableObject<Env> {
         if (parts[5] === 'decision' && request.method === 'POST') {
           await this.drain(); const body = await jsonBody(request), heads = this.heads(taskId);
           if (!Array.isArray(body.expectHeads) || body.expectHeads.length !== heads.length || [...body.expectHeads].sort().some((h, i) => h !== heads[i])) throw new HttpError(409, 'stale', { heads });
+          if (this.testsPending(taskId)) throw new HttpError(409, 'tests_pending');
           if (task.status === 'decided') throw new HttpError(409, 'task_decided');
           const decider = slug(body.decider); if (this.store.get<Agent>('agents', decider)?.kind !== 'human') throw new HttpError(403, 'human_decider_required');
           const pick = slug(body.pick); if (!this.candidates(taskId).some(c => c.agent === pick)) throw new HttpError(400, 'candidate_not_found');

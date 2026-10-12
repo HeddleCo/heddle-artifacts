@@ -38,3 +38,17 @@ export function verifyAttestation(record, expectedKey) {
   if (record.publicKey !== expectedKey || !verify(null, Buffer.from(record.payload), key, Buffer.from(record.signature, 'hex'))) throw new Rejection('identity_mismatch', 'Collaboration attestation does not match the enrolled identity');
   return record.publicKey;
 }
+
+// A detached engine observation does not rewrite the agent's native Capture.
+// Its signature binds the measured tests to that Capture, source SHA and tree.
+export async function attestTests(context) {
+  const { identity } = await import('./state.mjs');
+  const publicKey = await identity('_engine');
+  const file = await readFile(join(stateRoot, 'agents', '_engine', 'home', 'device-identity.toml'), 'utf8');
+  const pem = /private_key_pem = '''([\s\S]*?)'''/.exec(file)?.[1];
+  if (!pem) throw new Error('Missing engine identity');
+  const payload = JSON.stringify({ domain: 'heddle-artifacts-tests-v1', ...context });
+  const proof = { publicKey, payload, signature: sign(null, Buffer.from(payload), pem).toString('hex') };
+  verifyAttestation(proof, publicKey);
+  return proof;
+}

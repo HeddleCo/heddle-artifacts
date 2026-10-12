@@ -228,6 +228,22 @@
         "input"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "tests.record"
+        },
+        "input": {
+          "$ref": "#/$defs/tests.record.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
     }
   ],
   "$defs": {
@@ -306,7 +322,8 @@
             "pass",
             "fail",
             "error",
-            "skipped"
+            "skipped",
+            "pending"
           ]
         },
         "passed": {
@@ -323,6 +340,37 @@
         "durationMs": {
           "type": "integer",
           "minimum": 0
+        },
+        "provenance": {
+          "enum": [
+            "reviewed fixture",
+            "isolated sandbox",
+            "isolated sandbox (local fixture)"
+          ]
+        },
+        "sourceSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "observation": {
+          "type": "object",
+          "properties": {
+            "publicKey": {
+              "type": "string"
+            },
+            "payload": {
+              "type": "string"
+            },
+            "signature": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "publicKey",
+            "payload",
+            "signature"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -840,6 +888,9 @@
         },
         "runTests": {
           "type": "boolean"
+        },
+        "isolateUnreviewed": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -1180,6 +1231,112 @@
       "type": "string",
       "contentMediaType": "application/zstd",
       "description": "Raw tar.zst bytes on stdout, NOT JSON or base64."
+    },
+    "SandboxRun": {
+      "type": "object",
+      "properties": {
+        "sourceSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "treeSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "output": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "durationMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "installExitCode": {
+          "type": "integer"
+        },
+        "testExitCode": {
+          "type": "integer"
+        },
+        "failure": {
+          "enum": [
+            "timeout",
+            "sandbox",
+            "checkout",
+            "output"
+          ]
+        },
+        "fixture": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sourceSha",
+        "treeSha",
+        "output",
+        "durationMs"
+      ],
+      "additionalProperties": false
+    },
+    "tests.record.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "sourceSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "run": {
+          "$ref": "#/$defs/SandboxRun"
+        }
+      },
+      "required": [
+        "opId",
+        "task",
+        "agent",
+        "sourceSha",
+        "run"
+      ],
+      "additionalProperties": false
+    },
+    "tests.record.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "ignored": {
+              "const": true
+            }
+          },
+          "required": [
+            "ignored"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ignored": {
+              "const": false
+            },
+            "candidate": {
+              "$ref": "#/$defs/Candidate"
+            }
+          },
+          "required": [
+            "ignored",
+            "candidate"
+          ],
+          "additionalProperties": false
+        }
+      ]
     }
   }
 }

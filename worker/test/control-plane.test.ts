@@ -260,6 +260,19 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     expect((await SELF.fetch(`https://heddle.test${base}/ws`, { headers: { upgrade: 'websocket' } })).status).toBe(403);
     const { base: other } = await setup(); expect((await api(other, undefined, null)).status).toBe(403);
   });
+  it('operator diagnostics expose queue states without credentials or payloads', async () => {
+    const { p, base, joins } = await setup(); const fork = `${p}--parser-escapes--agent-0`;
+    memoryArtifacts.repos.get(fork)!.tip = sha(30);
+    await routeEvent({ type: 'cf.artifacts.repo.pushed', source: { namespace: 'heddle-demo', repoName: fork }, payload: { ref: 'refs/heads/main', after: sha(30) } }, env);
+    await waitCandidates(base, 1);
+    const response = await api(`${base}/diagnostics`); expect(response.status).toBe(200);
+    const text = await response.text(), d = JSON.parse(text);
+    expect(d.open).toBe(true); expect(d.pushes.map((x: any) => x.status)).toContain('done');
+    expect(d.ops.some((o: any) => o.command === 'ingest' && o.status === 'done')).toBe(true);
+    for (const secret of [joins[0].agentKey, joins[0].fork.token, joins[0].upstream.readToken, op]) expect(text).not.toContain(secret);
+    expect((await api(`${base}/diagnostics`, undefined, null)).status).toBe(403);
+    expect((await api(`${base}/diagnostics`, undefined, joins[0].agentKey)).status).toBe(403);
+  });
   it('HTTP JSON and login bodies are bounded before parsing', async () => {
     const response = await api('/api/projects', { id: 'bounded', seed: { template: 'demo' }, extra: 'x'.repeat(65536) }); expect(response.status).toBe(413);
     const login = await SELF.fetch('https://heddle.test/login', { method: 'POST', body: 'token=' + 'x'.repeat(4096) }); expect(login.status).toBe(413);

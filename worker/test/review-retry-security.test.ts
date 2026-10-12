@@ -45,7 +45,8 @@ describe('independent bounded review retry security', () => {
     await runInDurableObject(f.project, instance => {
       (instance as any).env.REVIEW = { review: async () => {
         (instance as any).retrySecurityStarted = true;
-        await new Promise<void>(resolve => { (instance as any).retrySecurityRelease = resolve; });
+        // A push can start a second, background review; release every pending call, not just the latest.
+        await new Promise<void>(resolve => { const waiting = (instance as any).retrySecurityWaiting ??= []; waiting.push(resolve); (instance as any).retrySecurityRelease = () => waiting.splice(0).forEach((r: () => void) => r()); });
         return { ...f.fallback, model: REVIEW_MODEL };
       } };
     });

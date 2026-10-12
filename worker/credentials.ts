@@ -10,7 +10,7 @@ export const CLEANUP_BATCH = 100;
 type Lifetime = { createdAt: string; expiresAt: string; closedAt?: string; reason?: string };
 export type CredentialRecord = {
   receipt: string; id: string | null; repo: string; owner: string;
-  type: 'canonical-read' | 'fork-write' | 'engine-read' | 'engine-write' | 'bootstrap' | 'legacy-fork';
+  type: 'canonical-read' | 'fork-write' | 'engine-read' | 'engine-write' | 'sandbox-read' | 'bootstrap' | 'legacy-fork';
   createdAt: string; expiresAt: string | null; status: 'issuing' | 'active' | 'revoke-pending' | 'revoked' | 'expired' | 'unknown';
   attempts: number; uncertainty?: 'create-response' | 'bootstrap-id-unavailable' | 'tracking-failed' | 'legacy-expiry-unavailable';
 };
@@ -150,7 +150,7 @@ export class DemoCredentials {
     for (const row of this.records().sort((a, b) => a.attempts - b.attempts)) {
       if (['revoked', 'expired'].includes(row.status)) continue;
       if (row.expiresAt && Date.parse(row.expiresAt) <= Date.now()) { row.status = 'expired'; await this.durable(row); continue; }
-      if (row.id && (all || row.status === 'revoke-pending' || orphanedLeases && row.type.startsWith('engine-'))) {
+      if (row.id && (all || row.status === 'revoke-pending' || orphanedLeases && (row.type.startsWith('engine-') || row.type === 'sandbox-read'))) {
         if (attempts++ >= CLEANUP_BATCH) continue;
         await this.revoke(row.repo, row.id);
       }

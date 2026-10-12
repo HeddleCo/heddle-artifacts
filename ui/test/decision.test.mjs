@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import renderToString from 'preact-render-to-string';
 import { isPublished, decisionRequest, conflictMessage } from '../src/decision.ts';
+import { updateBoard, updateTask } from '../src/feed.ts';
 const pending = { task: 'parser-escapes', pick: 'bob', decider: 'luke', rationale: '  Keep exact signed rationale.\n', mainSha: '', alternatives: ['alice'], resolutionState: 'resolution', landState: 'land', at: '2026-10-10T20:00:00Z' };
 const view = { task: { slug: 'parser-escapes' }, candidates: [], turns: [], decision: pending, heads: ['alice-state', 'bob-state'] };
 const draft = { pick: 'alice', decider: 'different-person', rationale: 'Replace the choice' };
@@ -25,6 +26,16 @@ test('published decisions cannot submit again and new choices require rationale'
   assert.equal(decisionRequest({ ...view, decision: { ...pending, mainSha: 'f'.repeat(40) } }, draft), undefined);
   assert.equal(decisionRequest({ ...view, decision: undefined }, { ...draft, rationale: ' ' }), undefined);
   assert.equal(decisionRequest({ ...view, decision: undefined }, { ...draft, rationale: '  New rationale.  ' }).rationale, 'New rationale.');
+});
+test('pending isolated tests block decision submission', () => {
+  assert.equal(decisionRequest({ ...view, decision: undefined, candidates: [{ tests: { status: 'pending', provenance: 'isolated sandbox' } }] }, draft), undefined);
+  assert.match(conflictMessage('tests_pending'), /still pending/);
+});
+test('a tests.done event for an old SHA cannot update board or compare tests for a newer SHA', () => {
+  const current = { ...view, candidates: [{ agent: 'alice', sourceSha: 'b'.repeat(40), tests: { status: 'pending' } }] };
+  const event = { type: 'tests.done', task: 'parser-escapes', agent: 'alice', sourceSha: 'a'.repeat(40), tests: { status: 'pass' } };
+  assert.equal(updateTask(current, event).candidates[0].tests.status, 'pending');
+  assert.equal(updateBoard({ tasks: [{ ...current, slug: 'parser-escapes' }] }, event).tasks[0].candidates[0].tests.status, 'pending');
 });
 test('publication conflicts are not reported as changed candidate heads', () => {
   assert.match(conflictMessage('decision_in_progress'), /signed decision/);
