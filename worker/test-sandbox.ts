@@ -1,13 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
-import { DurableObject } from 'cloudflare:workers';
+import { DurableObject, WorkerEntrypoint } from 'cloudflare:workers';
+import { decideTestEgress, type TestGrant } from './test-egress';
 import { Files } from '@cloudflare/sandbox';
 import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
 import type { SandboxInput, SandboxRun, TestRunner } from './isolated-tests';
 
+const CA_PATH = '/etc/cloudflare/certs/cloudflare-containers-ca.crt';
+// Intercepted HTTPS is re-signed by the platform CA; git and npm must trust it.
+export const TRUST_ENV = { GIT_SSL_CAINFO: CA_PATH, NODE_EXTRA_CA_CERTS: CA_PATH, SSL_CERT_FILE: CA_PATH, npm_config_cafile: CA_PATH, GIT_TERMINAL_PROMPT: '0' };
+
 export function startTestContainer(container: Container): void {
   // With the default policy, image and size come from Wrangler. The image has
   // no secrets and sleeps indefinitely; no Worker environment enters start().
-  container.start();
+  // No direct Internet: all egress goes through TestOutbound.
+  container.start({ enableInternet: false });
+}
+
+/** Runs in the trusted Worker: attaches the fork read credential outside the sandbox. */
+export class TestOutbound extends WorkerEntrypoint<unknown, { grant?: TestGrant }> {
+  async fetch(request: Request): Promise<Response> {
+    const decision = decideTestEgress(new URL(request.url), request.method, this.ctx.props.grant);
+    if (decision.kind === 'deny') return new Response(`${decision.reason}\n`, { status: 403 });
+    const headers = new Headers(request.headers); headers.delete('authorization');
+    if (decision.authorization) headers.set('authorization', decision.authorization);
+    return fetch(new Request(request, { headers }));
+  }
 }
 
 // This DO lives in the trusted Worker. Only the explicit argv/env below enter
@@ -50,27 +67,33 @@ export class CandidateTestSandbox extends DurableObject implements TestRunner {
         const remote = new URL(input.remote);
         if (remote.protocol !== 'https:' || remote.username || remote.password || remote.search || remote.hash) throw new Error('remote');
         startTestContainer(container);
+        const outbound = (this.ctx as unknown as { exports: { TestOutbound(o: { props: { grant: TestGrant } }): Fetcher } }).exports
+          .TestOutbound({ props: { grant: { remote: input.remote, token: input.readCredential } } });
+        await container.interceptAllOutboundHttp(outbound);
+        await container.interceptOutboundHttps('*', outbound);
         await container.setInactivityTimeout(30000);
         await new Files(container).mkdir('/workspace/candidate', { recursive: true });
         const cwd = '/workspace/candidate';
         if ((await exec(['git', 'init', cwd])).code !== 0) throw new Error('init');
-        // Fetch only the recorded commit, with one fork read credential. The
-        // credential is process-local, never saved in .git/config or a URL.
-        const auth = { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.${input.remote}.extraHeader`,
-          GIT_CONFIG_VALUE_0: `Authorization: Bearer ${input.readCredential}`, GIT_TERMINAL_PROMPT: '0' };
-        if ((await exec(['git', 'fetch', '--no-tags', '--depth=1', '--', input.remote, input.sourceSha], { cwd, env: auth })).code !== 0) throw new Error('fetch');
+        // Fetch only the recorded commit. TestOutbound adds the fork read credential outside the
+        // container, so no credential is ever visible to the candidate code that runs next.
+        if ((await exec(['git', 'fetch', '--no-tags', '--depth=1', '--', input.remote, input.sourceSha], { cwd, env: TRUST_ENV })).code !== 0) throw new Error('fetch');
         if ((await exec(['git', 'checkout', '--detach', input.sourceSha], { cwd })).code !== 0) throw new Error('checkout');
         const sha = await exec(['git', 'rev-parse', 'HEAD'], { cwd });
         const tree = await exec(['git', 'rev-parse', 'HEAD^{tree}'], { cwd });
         if (sha.code || tree.code || sha.output.trim() !== input.sourceSha || tree.output.trim() !== input.treeSha) { result.failure = 'checkout'; throw new Error('tree'); }
-        const env = { CI: '1', NO_COLOR: '1', HOME: '/tmp', NPM_CONFIG_UPDATE_NOTIFIER: 'false' };
+        const env = { CI: '1', NO_COLOR: '1', HOME: '/tmp', NPM_CONFIG_UPDATE_NOTIFIER: 'false', ...TRUST_ENV };
         result.installExitCode = (await exec(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd, env })).code;
         if (result.installExitCode !== 0) return;
         const test = await exec(['npm', 'test'], { cwd, env });
         result.testExitCode = test.code; result.output = test.output;
       };
       await Promise.race([work(), new Promise<never>((_, reject) => { timer = setTimeout(() => { result.failure = 'timeout'; void container.destroy().catch(() => {}); reject(new Error('timeout')); }, Math.max(1, TEST_BUDGET_MS - (Date.now() - start))); })]);
-    } catch { result.failure ||= 'sandbox'; }
+    } catch (error) {
+      result.failure ||= 'sandbox';
+      // Step codes only (init/fetch/checkout/tree/remote/sha/timeout/output or a runtime error name); no output, URLs or credentials.
+      console.error({ event: 'candidate_test.failed', step: error instanceof Error ? (/^[a-z]{2,10}$/.test(error.message) ? error.message : error.name) : 'unknown', failure: result.failure });
+    }
     finally {
       if (timer) clearTimeout(timer);
       try { await container.destroy(); await this.ctx.storage.deleteAlarm(); }
