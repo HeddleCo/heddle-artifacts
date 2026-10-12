@@ -193,9 +193,22 @@ async function run(opts) {
     const data = await views(opts);
     return data[0].candidates.some(c => c.agent === 'alice') && data[0].candidates.some(c => c.agent === 'bob') &&
       data[1].candidates.some(c => c.agent === 'carol') &&
-      data[0].candidates.filter(c => ['alice', 'bob'].includes(c.agent)).every(c => c.tests) &&
-      data[1].candidates.find(c => c.agent === 'carol')?.tests ? data : undefined;
+      [...data[0].candidates, ...data[1].candidates].every(c => c.tests && c.tests.status !== 'pending') ? data : undefined;
   }, 'three tested candidates');
+  if (live) {
+    // Live agents write their own code: require signed, tested candidates, not the scripted outcome.
+    for (const c of [...parser.candidates, ...docs.candidates]) if (!c.sourceSha || !c.signedBy) throw new Error(`Missing signed candidate: ${c.agent}`);
+    parser = await waitFor(opts, async () => {
+      const view = await request(`${opts.api}/tasks/parser-escapes`, process.env.OPERATOR_TOKEN);
+      return view.review && view.turns.some(t => t.kind === 'reviewer' && t.signedBy) ? view : undefined;
+    }, 'signed reviewer discussion');
+    const lines = parser.candidates.map(c => `  ${c.agent}: ${c.tests.status} ${c.tests.passed}/${c.tests.passed + c.tests.failed} (${c.tests.provenance ?? 'reviewed fixture'}), ${c.conflicts.length} conflict region(s)`);
+    console.log(`Live candidates ready for a human decision.\n${lines.join('\n')}\n  reviewer (${parser.review.model}) recommends: ${parser.review.recommendation?.pick ?? 'no recommendation'}`);
+    console.log(`Decide at ${new URL(opts.url).origin}/p/${opts.project}/t/parser-escapes, then run: demo/run.sh verify --url ${new URL(opts.url).origin} --project ${opts.project} --dir ${opts.directory}`);
+    await writeFile(join(runDir, 'result.json'), JSON.stringify({ mode: 'live', seconds: (Date.now() - start) / 1000, live,
+      candidates: [...parser.candidates, ...docs.candidates].map(c => ({ agent: c.agent, sourceSha: c.sourceSha, tests: c.tests.status })), reviewModel: parser.review.model }, null, 2) + '\n');
+    return;
+  }
   assertCandidates(parser, docs);
   const pushed = {};
   for (const agent of ['alice', 'bob', 'carol']) pushed[agent] = await command('git', ['rev-parse', 'HEAD'], { cwd: state.clones[agent] });
@@ -215,18 +228,28 @@ async function run(opts) {
     { pick: 'bob', rationale: 'Bob preserves string[] and handles escaped pipes and backslash parity; Alice remains a recorded alternative.',
       decider: 'luke', expectHeads: parser.heads });
   if (!/^[a-f0-9]{40,64}$/.test(decision.mainSha ?? '')) throw new Error('Decision has no published main SHA');
-  const proof = join(runDir, 'proof');
+  await verifyPublication(opts, state, runDir, decision.mainSha, 'bob', pushed);
+  const seconds = (Date.now() - start) / 1000;
+  // The 4-minute budget is for the local storyline; a live deploy adds Container cold starts.
+  if (opts.mode === 'scripted' && ['localhost', '127.0.0.1'].includes(new URL(opts.url).hostname) && seconds >= 240) throw new Error(`Storyline exceeded 4 minutes (${seconds.toFixed(1)}s)`);
+  await writeFile(join(runDir, 'result.json'), JSON.stringify({ mode: opts.mode, seconds, main: decision.mainSha, pushed,
+    reviewModel: parser.review.model, live, checks: ['exact candidates', 'tree equality', 'fsck', 'index-pack', 'notes/trailers', 'why'] }, null, 2) + '\n');
+  console.log(`PASS ${opts.mode}: full storyline in ${seconds.toFixed(1)}s; candidates exact; tree match; fsck/index-pack strict; why retained.`);
+}
+/** Prove a published decision from a fresh clone: exact candidates, chosen tree on main, notes, strict objects, Why. */
+async function verifyPublication(opts, state, runDir, mainSha, pick, pushed) {
+  const proof = join(runDir, `proof-${Date.now()}`);
   const env = gitAuth([[state.canonicalRemote, state.readToken]]);
   await command('git', ['clone', '--quiet', state.canonicalRemote, proof], { env });
   await command('git', ['fetch', '--quiet', 'origin', '+refs/notes/*:refs/notes/*'], { cwd: proof, env });
   const main = await command('git', ['rev-parse', 'main'], { cwd: proof });
-  if (main !== decision.mainSha) throw new Error('Canonical main differs from the decision SHA');
+  if (main !== mainSha) throw new Error('Canonical main differs from the decision SHA');
   for (const [agent, task] of [['alice', 'parser-escapes'], ['bob', 'parser-escapes'], ['carol', 'docs-readme']]) {
     const sha = await command('git', ['rev-parse', `origin/candidates/${task}/${agent}`], { cwd: proof });
     if (sha !== pushed[agent]) throw new Error(`Original candidate SHA changed: ${agent}`);
   }
   const mainTree = await command('git', ['rev-parse', 'main^{tree}'], { cwd: proof });
-  const chosenTree = await command('git', ['rev-parse', 'origin/candidates/parser-escapes/bob^{tree}'], { cwd: proof });
+  const chosenTree = await command('git', ['rev-parse', `origin/candidates/parser-escapes/${pick}^{tree}`], { cwd: proof });
   if (mainTree !== chosenTree) throw new Error('Landed tree differs from chosen candidate');
   await command('git', ['fsck', '--strict'], { cwd: proof });
   await command('git', ['repack', '-ad'], { cwd: proof });
@@ -235,20 +258,31 @@ async function run(opts) {
     if (file.endsWith('.pack')) await command('git', ['index-pack', '--strict', join(proof, '.git/objects/pack', file)], { cwd: proof });
   }
   const log = await command('git', ['log', "--notes=heddle*", '-1', 'main'], { cwd: proof });
-  if (!/Chosen:\s*bob/.test(log) || !/Rejected:\s*alice/.test(log)) throw new Error('Git log lost chosen/rejected narrative');
+  const other = pick === 'bob' ? 'alice' : 'bob';
+  if (!new RegExp(`Chosen:\\s*${pick}`).test(log) || !new RegExp(`Rejected:\\s*${other}`).test(log)) throw new Error('Git log lost chosen/rejected narrative');
   if (!/Heddle-State:/.test(log) || !/Heddle-Change:/.test(log)) throw new Error('Git log lost Heddle trailers');
   console.log(log);
-  const why = await request(`${opts.api}/why/${main}`);
+  // Operator read: the demo project's Why is also public, but rehearsal projects are not.
+  const why = await request(`${opts.api}/why/${main}`, process.env.OPERATOR_TOKEN);
   if (!why.narrative.includes('bob') || !why.narrative.includes('alice')) throw new Error('Why API lost alternatives');
-  const seconds = (Date.now() - start) / 1000;
-  if (opts.mode === 'scripted' && seconds >= 240) throw new Error(`Storyline exceeded 4 minutes (${seconds.toFixed(1)}s)`);
-  await writeFile(join(runDir, 'result.json'), JSON.stringify({ mode: opts.mode, seconds, main, mainTree, chosenTree, pushed,
-    reviewModel: parser.review.model, live, checks: ['exact candidates', 'tree equality', 'fsck', 'index-pack', 'notes/trailers', 'why'] }, null, 2) + '\n');
-  console.log(`PASS ${opts.mode}: full storyline in ${seconds.toFixed(1)}s; candidates exact; tree match; fsck/index-pack strict; why retained.`);
+  return { main, mainTree, chosenTree };
+}
+/** After a human decides in the UI: verify the published result against the live candidates. */
+async function verify(opts) {
+  const state = await saved(opts);
+  if (!state) throw new Error('No demo state in --dir; run the storyline first');
+  const parser = await request(`${opts.api}/tasks/parser-escapes`, process.env.OPERATOR_TOKEN);
+  const docs = await request(`${opts.api}/tasks/docs-readme`, process.env.OPERATOR_TOKEN);
+  if (!parser.decision?.mainSha) throw new Error('No published decision yet for parser-escapes');
+  const pushed = Object.fromEntries([...parser.candidates, ...docs.candidates].map(c => [c.agent, c.sourceSha]));
+  const runDir = join(opts.directory, String(state.generation));
+  const proof = await verifyPublication(opts, state, runDir, parser.decision.mainSha, parser.decision.pick, pushed);
+  console.log(`PASS verify: ${parser.decision.decider} chose ${parser.decision.pick}; main ${proof.main}; chosen tree on main; candidates exact; fsck/index-pack strict; notes and Why retained.`);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [action, ...args] = process.argv.slice(2);
   Promise.resolve().then(() => { const opts = options(args);
-    if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); throw new Error('Expected run or reset');
+    if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); if (action === 'verify') return verify(opts);
+    throw new Error('Expected run, verify or reset');
   }).catch(error => { console.error(`demo: ${error.message}`); process.exitCode = 1; });
 }
