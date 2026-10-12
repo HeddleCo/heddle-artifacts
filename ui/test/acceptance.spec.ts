@@ -243,3 +243,99 @@ test('C-T7 publish failure re-reads recorded decision before retry', async ({ pa
   expect(attempts).toHaveLength(2);
   expect(attempts[1].body).toEqual(attempts[0].body);
 });
+
+test('C-T8 board double-click keeps one refresh and retains the live candidate', async ({ page, request }) => {
+  await reset(request);
+  let socket!: import('@playwright/test').WebSocketRoute;
+  await page.routeWebSocket('**/api/projects/demo/ws', ws => { socket = ws; });
+  await page.goto('/p/demo');
+  await expect(page.locator('.live')).toHaveText('Live');
+  await expect(page.getByRole('button', { name: 'Refresh board' })).toBeEnabled();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; }); let reads = 0;
+  await page.route('**/api/projects/demo', async route => { const response = await route.fetch(); reads++; await held; await route.fulfill({ response }); });
+  await page.getByRole('button', { name: 'Refresh board' }).evaluate(button => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await expect(page.getByRole('button', { name: 'Refreshing…' })).toBeDisabled();
+  await expect.poll(() => reads).toBe(1);
+  const current = await (await request.get('/api/projects/demo/tasks/parser-escapes')).json();
+  socket.send(JSON.stringify({ type: 'candidate.ready', candidate: { ...current.candidates[1], subject: 'Latest buffered candidate' } }));
+  await expect(page.getByTestId('lane-bob')).toContainText('Latest buffered candidate');
+  release(); await expect(page.getByRole('button', { name: 'Refresh board' })).toBeEnabled();
+  await expect(page.getByTestId('lane-bob')).toContainText('Latest buffered candidate'); expect(reads).toBe(1);
+});
+
+test('C-T8 repeated discussion submit is single-flight and freezes the pending draft', async ({ page, request }) => {
+  await reset(request); await page.goto('/p/demo/t/parser-escapes');
+  await page.getByLabel('Your reply').fill('Keep the public API stable.');
+  let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; }); let attempts = 0;
+  await page.route('**/turns', async route => { attempts++; await held; await route.continue(); });
+  await page.getByLabel('Your reply').evaluate(element => {
+    const form = element.closest('form')!;
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await expect(page.getByLabel('Your reply')).toBeDisabled(); await expect(page.getByLabel('Speak as')).toBeDisabled();
+  await expect.poll(() => attempts).toBe(1); release();
+  await expect(page.locator('.discussion .turn').filter({ hasText: 'Keep the public API stable.' })).toHaveCount(1);
+  const posted = await (await request.get('/__mock/requests')).json();
+  expect(posted.filter((r: { path: string }) => r.path.endsWith('/turns'))).toHaveLength(1);
+});
+
+test('C-T8 disconnect and reconnect keep the choice stale until an explicit review', async ({ page, request }) => {
+  await reset(request);
+  const sockets: import('@playwright/test').WebSocketRoute[] = [];
+  await page.routeWebSocket('**/api/projects/demo/ws', socket => { sockets.push(socket); });
+  await choose(page); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled();
+  await sockets[0].close(); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+  await expect.poll(() => sockets.length).toBe(2); await expect(page.locator('.live')).toHaveText('Live');
+  await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Review current candidates' }).click();
+  await expect(page.getByRole('radio', { name: /bob/ })).not.toBeChecked();
+  await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+  await page.getByRole('radio', { name: /bob/ }).check();
+  await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled();
+  const posted = await (await request.get('/__mock/requests')).json(); expect(posted).toHaveLength(0);
+});
+
+test('C-T8 lost publication response and failed recovery read require immutable retry', async ({ page, request }) => {
+  await reset(request, 'conflict', 502); await choose(page); let failNextRead = false;
+  await page.route('**/api/projects/demo/tasks/parser-escapes', async route => {
+    if (failNextRead) { failNextRead = false; await route.fulfill({ status: 503, json: { error: 'unavailable' } }); } else await route.continue();
+  });
+  await page.route('**/decision', async route => { await route.fetch(); failNextRead = true; await route.abort('failed'); });
+  await page.getByRole('button', { name: 'Land candidate →' }).click();
+  await expect(page.getByRole('button', { name: 'Review current candidates' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Review current candidates' }).click();
+  await expect(page.getByText('Decision recorded. Publication pending.')).toBeVisible();
+  await expect(page.getByLabel('Why this candidate?')).toBeDisabled();
+  await page.unroute('**/decision'); await request.post('/__mock/decision-status', { data: { decisionStatus: 200 } });
+  await page.getByRole('button', { name: 'Retry publication' }).click();
+  await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+  const posted = await (await request.get('/__mock/requests')).json();
+  const attempts = posted.filter((r: { path: string }) => r.path.endsWith('/decision'));
+  expect(attempts).toHaveLength(2); expect(attempts[1].body).toEqual(attempts[0].body);
+});
+
+test('C-T8 compare review buffers discussion and landing while its snapshot is delayed', async ({ page, request }) => {
+  await reset(request); const current = await (await request.get('/api/projects/demo/tasks/parser-escapes')).json();
+  let socket!: import('@playwright/test').WebSocketRoute;
+  await page.routeWebSocket('**/api/projects/demo/ws', ws => { socket = ws; });
+  await choose(page); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled();
+  socket.send(JSON.stringify({ type: 'candidate.ready', candidate: current.candidates[1] }));
+  await expect(page.getByRole('button', { name: 'Review current candidates' })).toBeVisible();
+  let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; }); let reads = 0;
+  await page.route('**/api/projects/demo/tasks/parser-escapes', async route => { const response = await route.fetch(); reads++; await held; await route.fulfill({ response }); });
+  await page.getByRole('button', { name: 'Review current candidates' }).click(); await expect.poll(() => reads).toBe(1);
+  const decision = { task: 'parser-escapes', pick: 'bob', decider: 'luke', rationale: 'Preserve the API.', mainSha: 'f'.repeat(40), at: '2026-10-12T00:00:00Z' };
+  socket.send(JSON.stringify({ type: 'discussion.posted', turn: { ...current.turns[0], id: 'buffered-turn', body: 'Context arrived during review.' } }));
+  socket.send(JSON.stringify({ type: 'decision.landed', decision }));
+  await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Refresh recorded decision' })).toBeDisabled();
+  release(); await expect(page.getByRole('button', { name: 'Refresh recorded decision' })).toHaveCount(0);
+  await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+  await expect(page.locator('.discussion')).toContainText('Context arrived during review.');
+});

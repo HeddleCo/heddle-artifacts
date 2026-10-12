@@ -55,7 +55,7 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm test
 
 Playwright uses `wrangler dev --local` with the mock Worker above, covering real static-assets routing and WebSockets.
 It checks fixture screens, replay without navigation, exact decisions (200/403/409), keyboard access, and light/dark screenshots at 1280×720.
-It also covers recorded verification pass/fail/mismatched/malformed data, repeated submit prevention, reply cancellation, Back/Forward navigation, and recovery from failed or pending publication.
+The browser specifications also cover recorded verification pass/fail/mismatched/malformed data, repeated decision/discussion submit prevention, single-flight board refresh, reply cancellation, Back/Forward navigation, disconnect/reconnect invalidation, and recovery from failed or pending publication.
 Six decision-state and server-rendered notice checks cover immutable retries and correct published/pending wording.
 Seven unit tests independently reject missing, mismatched, malformed and failed verification evidence;
 seven in-process fixture contract/reducer tests cover board shape, exact heads, discussion and live-event updates.
@@ -79,7 +79,15 @@ captures for the compare and Why pages. Browser evidence covers the local mock, 
 
 Assets use a restrictive same-origin CSP and do not load remote scripts or fonts. Diff and narrative
 content are rendered as text. The directory-match badge compares public keys; it is not a cryptographic
-signature verification claim. Reconnection marks compare data stale; refresh explicitly before landing.
+signature verification claim. Disconnects immediately mark compare data stale; refresh explicitly after reconnecting before landing. Initial decisions also wait for a post-subscription snapshot. Malformed live messages close the socket and recover through the same reconnect path.
 
 Cloudflare routing references: [Workers SPA assets](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/)
 and [Wrangler local development](https://developers.cloudflare.com/workers/wrangler/commands/#dev).
+
+## Failure-path hardening check (2026-10-12)
+
+- Passed: UI typecheck and build; all 42 Node tests (20 existing unit/SSR/fixture API tests plus 22 component-handler/effect regressions); all six isolated decision/verification mutation checks.
+- The new handler regressions exercise the actual component code using controlled hooks and deferred responses. They cover double submits/refreshes, stale selections before rerender, initial subscription races, reconnects during reads, interrupted publication with failed recovery, immutable retry, route changes, late responses after navigation, and malformed-event recovery. They do not execute a DOM or browser.
+- Twelve targeted regression assertions were observed failing before their corresponding repairs and passing afterward.
+- All 22 Playwright browser specifications are discoverable and separately typechecked, including five new failure-path cases. The installed Chromium launch remains blocked before opening a page by `socket() failed: Operation not permitted`. No browser assertions, screenshots, browser mutation suite, or real-login flow were verified in this run. Run the full acceptance and browser mutation suites in a supported browser environment before calling browser QA complete.
+- These checks use local fixtures only; they do not call a live model, use production credentials, deploy resources, or establish live Artifacts behavior.

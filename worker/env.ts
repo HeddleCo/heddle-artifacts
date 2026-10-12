@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import type { ReviewOptions } from '../reviewer/reviewer';
 import type { ProjectDO } from './project-do';
 import type { Review, Turn, Candidate } from '../contracts/types';
 export interface RepoInfo { name: string; remote: string; defaultBranch: string; }
@@ -41,5 +42,5 @@ export interface Env {
   FAKE_ARTIFACTS_URL?: string;
   ENGINE_DEV_URL?: string;
   // Track D can bind its pure review(input) through this adapter.
-  REVIEW?: { review(input: ReviewInput): Promise<Review> };
+  REVIEW?: { review(input: ReviewInput, options?: ReviewOptions): Promise<Review> };
 }

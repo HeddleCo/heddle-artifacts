@@ -1,12 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-# One approved cloud recovery job: a tiny prebuild admission probe, then tested image artifacts.
-# Both are private with one-day retention; no additional job or rerun is authorized.
+# Manual-only historical image recovery. Source remains pinned below; this does
+# not validate later application commits. Each paid dispatch needs owner approval.
 name: Container build and native fixture tests
 
 'on':
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -23,11 +20,9 @@ concurrency:
 
 jobs:
   container:
-    # No fork code, unrelated PRs, pull_request_target, environments or secrets.
+    # No automatic PR jobs: updating source must not spend another image budget.
+    # No fork code, pull_request_target, environments or secrets.
     if: >-
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       github.head_ref == 'integration/demo-hardening') ||
       (github.event_name == 'workflow_dispatch' &&
        (github.ref == 'refs/heads/integration/demo-hardening' || github.ref == 'refs/heads/main'))
     runs-on: ubuntu-24.04
@@ -135,7 +130,7 @@ jobs:
           printf '\nArtifact admission probe passed: %s. One-byte synthetic payload; ZIP overhead applies. This is not a storage reservation or proof the full image will upload.\n' \
             "$ADMISSION_ID" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Build current production image without publishing
+      - name: Build frozen production image without publishing
         timeout-minutes: 40
         run: |
           set -euo pipefail

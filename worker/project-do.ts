@@ -59,7 +59,8 @@ export class ProjectDO extends DurableObject<Env> {
     }
     if (command === 'discuss') {
       this.store.put('turns', result.id, result);
-      if (context.review) { this.store.put('meta', `review:${input.task}`, context.review); events.push({ type: 'review.posted', turn: result, review: context.review }); }
+      const reviewCurrent = !context.reviewHeads || (JSON.stringify(context.reviewHeads) === JSON.stringify(this.heads(input.task)) && !this.store.get('meta', `candidateSync:${input.task}`) && !this.store.get('decisions', input.task) && this.task(input.task).status === 'open' && !this.pendingPush(input.task));
+      if (context.review && reviewCurrent) { this.store.put('meta', `review:${input.task}`, context.review); events.push({ type: 'review.posted', turn: result, review: context.review }); }
       else events.push({ type: 'discussion.posted', turn: result });
     }
     if (command === 'decide') {
@@ -85,6 +86,7 @@ export class ProjectDO extends DurableObject<Env> {
     }
     return events;
   }
+  private pendingPush(task: string): boolean { return this.store.rows<any>("SELECT id FROM pushes WHERE status='pending' AND json_extract(data, '$.task')=? LIMIT 1", task).length > 0; }
   private candidates(task: string): Candidate[] { return this.store.all<Candidate>('candidates').filter(c => c.task === task); }
   private heads(task: string): string[] { return this.candidates(task).map(c => c.state).sort(); }
   private task(task: string): Task { const value = this.store.get<Task>('tasks', task); if (!value) throw new HttpError(404, 'task_not_found'); return value; }
@@ -201,14 +203,90 @@ export class ProjectDO extends DurableObject<Env> {
       if (task.status === 'decided' || !(candidates.length >= 2 || candidates.some(c => !c.conflicts.length && c.tests?.status === 'pass'))) { this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`); continue; }
       const reviewer = this.store.all<Agent>('agents').find(a => a.kind === 'reviewer');
       if (!reviewer || !this.env.REVIEW) { this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`); continue; }
+      const heads = this.heads(task.slug), headKey = await digest(heads.join(':'));
+      const key = `reviewAttempt:${task.slug}:${headKey}`, opId = `review:${headKey}`;
+      let attempt = this.store.get<any>('meta', key);
+      const current = () => this.credentials.isOpen() && this.task(task.slug).status === 'open' &&
+        !this.store.get('decisions', task.slug) && !this.store.get('meta', `candidateSync:${task.slug}`) &&
+        !this.pendingPush(task.slug) &&
+        JSON.stringify(this.heads(task.slug)) === JSON.stringify(heads);
       try {
-        const diffs = [];
-        for (const c of candidates) diffs.push({ agent: c.agent, tests: c.tests, diff: (await this.engine.read('diff', { task: task.slug, agent: c.agent, maxBytes: 524288 })).diff });
-        const input = { intent: task.intent, base: task.baseSha, candidates: diffs, turns: this.store.all<Turn>('turns').filter(t => t.task === task.slug) };
-        const review: Review = await this.env.REVIEW.review(input);
-        await this.engine.mutate('discuss', { opId: `review:${await digest(this.heads(task.slug).join(':'))}`, task: task.slug, author: reviewer.id, body: JSON.stringify(review) }, { review });
+        if (!attempt) {
+          const diffs = [];
+          for (const c of candidates) diffs.push({ agent: c.agent, tests: c.tests, diff: (await this.engine.read('diff', { task: task.slug, agent: c.agent, maxBytes: 524288 })).diff });
+          if (!current()) throw new HttpError(409, 'review_inputs_changed');
+          attempt = { status: 'reserved', heads, createdAt: new Date().toISOString(), diagnostics: [] };
+          this.store.put('meta', key, attempt); this.store.put('meta', `lastReviewAttempt:${task.slug}`, key);
+          await this.ctx.storage.sync();
+          if (!current()) throw new HttpError(409, 'review_inputs_changed');
+          attempt.review = await this.env.REVIEW.review({ intent: task.intent, base: task.baseSha, candidates: diffs, turns: this.store.all<Turn>('turns').filter(t => t.task === task.slug) }, {
+            timeoutMs: 90000, maxAttempts: 1,
+            onDiagnostic: diagnostic => { attempt.diagnostics.push(diagnostic); this.store.put('meta', key, attempt); },
+          });
+          attempt.status = 'prepared'; this.store.put('meta', key, attempt); await this.ctx.storage.sync();
+        } else if (!attempt.review) {
+          // A crash after reservation makes the provider outcome uncertain.
+          // Preserve that fact and do not silently submit another inference.
+          attempt.review = { summary: 'Automated review was interrupted. No replacement model call was made; inspect the evidence before deciding.', perCandidate: candidates.map(c => ({ agent: c.agent, verdict: 'concerns', notes: 'Review outcome unavailable after interruption. Human review required.' })), model: 'fallback' };
+          attempt.status = 'interrupted'; this.store.put('meta', key, attempt); await this.ctx.storage.sync();
+        }
+        if (!current()) throw new HttpError(409, 'review_inputs_changed');
+        const review = attempt.review as Review;
+        const turn = await this.engine.mutate('discuss', { opId, task: task.slug, author: reviewer.id, body: JSON.stringify(review) }, { review, reviewHeads: heads });
+        attempt.status = current() ? 'completed' : 'stale'; attempt.turnId = turn.id;
+        this.store.put('meta', key, attempt);
         this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`);
-      } catch { this.store.put('meta', `reviewDue:${task.slug}`, Date.now() + 5000); }
+      } catch {
+        const op = this.store.rows<{ status: string }>('SELECT status FROM ops WHERE id=?', opId)[0];
+        if (!current() || op && ['failed', 'rejected'].includes(op.status)) this.store.storage.sql.exec('DELETE FROM meta WHERE key=?', `reviewDue:${task.slug}`);
+        else this.store.put('meta', `reviewDue:${task.slug}`, Date.now() + 5000);
+      }
+    }
+  }
+  // Explicit operator recovery for a failed model call. Reservation survives
+  // eviction before inference; retrying an uncertain request cannot bill again.
+  private async retryReview(task: Task, body: any): Promise<Response> {
+    const heads = this.heads(task.slug), key = `reviewRetry:${task.slug}`;
+    if (!Array.isArray(body.expectHeads) || body.expectHeads.length !== heads.length ||
+        [...body.expectHeads].sort().some((h, i) => h !== heads[i])) throw new HttpError(409, 'stale', { heads });
+    const existing = this.store.get<any>('meta', key);
+    if (existing) {
+      if (existing.priorTurn !== body.priorTurn || JSON.stringify(existing.heads) !== JSON.stringify(heads)) throw new HttpError(409, 'retry_mismatch');
+      return Response.json({ retry: existing, review: this.store.get('meta', `review:${task.slug}`) });
+    }
+    if (task.status !== 'open' || this.store.get('decisions', task.slug)) throw new HttpError(409, 'task_decided');
+    const turns = this.store.all<Turn>('turns').filter(t => t.task === task.slug && t.kind === 'reviewer');
+    const reviewer = this.store.all<Agent>('agents').find(a => a.kind === 'reviewer');
+    const prior = turns[0], current = this.store.get<Review>('meta', `review:${task.slug}`);
+    if (!reviewer || !this.env.REVIEW || turns.length !== 1 || prior.id !== body.priorTurn || prior.author !== reviewer.id ||
+        current?.model !== 'fallback' || prior.body !== JSON.stringify(current)) throw new HttpError(409, 'retry_requires_fallback');
+    const busy = () => this.store.get('meta', `candidateSync:${task.slug}`) || this.store.get('meta', `reviewDue:${task.slug}`) ||
+      this.pendingPush(task.slug);
+    if (busy()) throw new HttpError(409, 'review_work_pending');
+    const reservation: any = { priorTurn: prior.id, heads, status: 'reserved', createdAt: new Date().toISOString(), diagnostics: [] };
+    this.store.put('meta', key, reservation); await this.ctx.storage.sync();
+    const unchanged = () => {
+      this.credentials.assertOpen();
+      if (this.task(task.slug).status !== 'open' || this.store.get('decisions', task.slug) || busy() || JSON.stringify(this.heads(task.slug)) !== JSON.stringify(heads)) throw new HttpError(409, 'review_inputs_changed');
+    };
+    try {
+      unchanged();
+      const diffs = [];
+      for (const c of this.candidates(task.slug)) diffs.push({ agent: c.agent, tests: c.tests, diff: (await this.engine.read('diff', { task: task.slug, agent: c.agent, maxBytes: 524288 })).diff });
+      unchanged();
+      const review = await this.env.REVIEW.review({ intent: task.intent, base: task.baseSha, candidates: diffs, turns: this.store.all<Turn>('turns').filter(t => t.task === task.slug) }, {
+        timeoutMs: 90000, maxAttempts: 1,
+        onDiagnostic: diagnostic => { reservation.diagnostics.push(diagnostic); this.store.put('meta', key, reservation); },
+      });
+      unchanged();
+      const opId = `review-retry:${task.slug}:${await digest(heads.join(':'))}:1`;
+      const turn = await this.engine.mutate('discuss', { opId, task: task.slug, author: reviewer.id, body: JSON.stringify(review) }, { review, reviewHeads: heads });
+      unchanged();
+      reservation.status = 'completed'; reservation.turnId = turn.id; reservation.model = review.model;
+      reservation.completedAt = new Date().toISOString(); this.store.put('meta', key, reservation); await this.ctx.storage.sync();
+      return Response.json({ retry: reservation, review, turn });
+    } catch (error) {
+      reservation.status = 'consumed'; this.store.put('meta', key, reservation); await this.ctx.storage.sync(); throw error;
     }
   }
   async alarm() {
@@ -264,7 +342,7 @@ export class ProjectDO extends DurableObject<Env> {
         this.scheduleDrain();
         if (parts.length === 3) return Response.json({ project: this.store.get('meta', 'project'), agents: this.store.all('agents'), tasks: this.store.all<Task>('tasks').map(task => ({ ...task, lanes: this.store.all<Lane>('lanes').filter(l => l.task === task.slug), candidates: this.candidates(task.slug), decision: this.store.get('decisions', task.slug) })) });
         const taskId = slug(parts[4]), task = this.task(taskId);
-        return Response.json({ task, candidates: this.candidates(taskId), turns: this.store.all<Turn>('turns').filter(t => t.task === taskId), review: this.store.get('meta', `review:${taskId}`), decision: this.store.get('decisions', taskId), heads: this.heads(taskId) });
+        return Response.json({ task, candidates: this.candidates(taskId), turns: this.store.all<Turn>('turns').filter(t => t.task === taskId), review: this.store.get('meta', `review:${taskId}`), reviewAttempt: this.store.get('meta', this.store.get<string>('meta', `lastReviewAttempt:${taskId}`) ?? ''), decision: this.store.get('decisions', taskId), heads: this.heads(taskId) });
       }
       const response = await this.engine.serial(async () => {
         if (!publicWhy) await this.recover();
@@ -321,6 +399,10 @@ export class ProjectDO extends DurableObject<Env> {
           const result = await this.engine.mutate('task.create', { opId: `task:${task}`, task, intent }); return Response.json({ slug: task, thread: result.thread, baseSha: result.baseSha });
         }
         const taskId = slug(parts[4]), task = this.task(taskId);
+        if (parts[5] === 'review' && parts[6] === 'retry' && parts.length === 7 && request.method === 'POST') {
+          if (!actor.op) throw new HttpError(403, 'forbidden');
+          return this.retryReview(task, await jsonBody(request));
+        }
         if (parts[5] === 'agents' && request.method === 'POST') {
           if (task.status === 'decided' || this.store.get('decisions', taskId)) throw new HttpError(409, 'task_decided');
           const body = await jsonBody(request), id = slug(body.id), kind = body.kind;

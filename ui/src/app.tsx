@@ -23,20 +23,22 @@ function Signature({ signedBy, agent }: { signedBy: string; agent?: Agent }) {
   const matches = agent?.publicKey === signedBy;
   return <span class={`signature ${agent && !matches ? 'error-text' : ''}`} title={signedBy}>{fingerprint(signedBy)}{agent ? matches ? ' · directory match' : ' · key mismatch' : ''}</span>;
 }
-function useFeed(p: string, onEvent: (event: FeedEvent) => void, onConnect: (reconnected: boolean) => void) {
-  const callbacks = useRef({ onEvent, onConnect }); callbacks.current = { onEvent, onConnect };
+function useFeed(p: string, onEvent: (event: FeedEvent) => void, onConnect: (reconnected: boolean) => void, onDisconnect: () => void = () => {}) {
+  const callbacks = useRef({ onEvent, onConnect, onDisconnect }); callbacks.current = { onEvent, onConnect, onDisconnect };
   const [status, setStatus] = useState('Connecting');
   useEffect(() => {
     let stopped = false, socket: WebSocket, timer: ReturnType<typeof setTimeout>, attempt = 0, opened = false;
     const connect = () => {
-      socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${projectPath(p)}/ws`);
-      socket.onopen = () => { attempt = 0; setStatus('Live'); callbacks.current.onConnect(opened); opened = true; };
-      socket.onmessage = e => {
+      const current = socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${projectPath(p)}/ws`);
+      const active = () => !stopped && socket === current;
+      current.onopen = () => { if (!active()) return; attempt = 0; setStatus('Live'); callbacks.current.onConnect(opened); opened = true; };
+      current.onmessage = e => {
+        if (!active()) return;
         try { const event = JSON.parse(e.data) as FeedEvent; if (event && typeof event.type === 'string') callbacks.current.onEvent(event); }
-        catch { setStatus('Invalid live event'); }
+        catch { setStatus('Invalid live event'); callbacks.current.onDisconnect(); current.close(); }
       };
-      socket.onclose = () => { if (!stopped) { setStatus('Reconnecting'); timer = setTimeout(connect, Math.min(1000 * 2 ** attempt++, 15000)); } };
-      socket.onerror = () => { setStatus('Live feed unavailable'); };
+      current.onclose = () => { if (active()) { setStatus('Reconnecting'); callbacks.current.onDisconnect(); timer = setTimeout(connect, Math.min(1000 * 2 ** attempt++, 15000)); } };
+      current.onerror = () => { if (active()) { setStatus('Live feed unavailable'); callbacks.current.onDisconnect(); } };
     };
     connect();
     return () => { stopped = true; clearTimeout(timer); socket?.close(); };
@@ -54,26 +56,29 @@ function PageTitle({ eyebrow, title, children }: { eyebrow: string; title: strin
   return <div class="page-title"><p class="eyebrow">{eyebrow}</p><h1>{title}</h1>{children}</div>;
 }
 function Board({ p }: { p: string }) {
-  const [view, setView] = useState<ProjectView>(), [error, setError] = useState(''), [pulse, setPulse] = useState<Record<string, number>>({});
-  const version = useRef(0), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
+  const [view, setView] = useState<ProjectView>(), [error, setError] = useState(''), [pulse, setPulse] = useState<Record<string, number>>({}), [refreshing, setRefreshing] = useState(false);
+  const version = useRef(0), loading = useRef(false), reloadRequested = useRef(false), pending = useRef<FeedEvent[]>([]);
   const load = async () => {
-    const n = ++version.current; loading.current = true; pending.current = [];
+    if (loading.current) return;
+    const n = ++version.current; loading.current = true; setRefreshing(true); pending.current = [];
     try { const data = await request<ProjectView>(projectPath(p)); if (n === version.current) { setView(pending.current.reduce(updateBoard, data)); setError(''); } }
     catch(e) { if (n === version.current) setError(message(e)); }
-    finally { if (n === version.current) { loading.current = false; pending.current = []; } }
+    finally { if (n === version.current) { loading.current = false; setRefreshing(false); pending.current = []; if (reloadRequested.current) { reloadRequested.current = false; void load(); } } }
   };
-  useEffect(() => { void load(); return () => { version.current++; }; }, [p]);
+  useEffect(() => { setView(undefined); setError(''); setPulse({}); void load();
+    return () => { version.current++; loading.current = false; reloadRequested.current = false; pending.current = []; };
+  }, [p]);
   const live = useFeed(p, event => {
     if (loading.current) pending.current.push(event); // Replay events that arrived after the snapshot request began.
     setView(v => v && updateBoard(v, event));
     if (event.type === 'push.received') setPulse(v => ({ ...v, [`${event.task}/${event.agent}`]: Date.now() }));
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Refresh to check progress.`);
-  }, () => { void load(); });
+  }, () => { if (loading.current) reloadRequested.current = true; else void load(); });
   const agents = new Map(view?.agents.map(a => [a.id, a]));
   const ready = view?.tasks.reduce((n, t) => n + t.candidates.length, 0) || 0;
   return <><Header p={p} live={live}/><main><PageTitle eyebrow={`PROJECT / ${p}`} title="Work in parallel. Decide together."><p>Every agent has a lane. Every alternative stays with the code.</p></PageTitle>
     {error && <ErrorNotice text={error}/>}
-    <div class="toolbar"><span>{view?.tasks.length || 0} tasks <span class="separator">/</span> {view?.agents.filter(a => a.kind === 'agent').length || 0} agents <span class="separator">/</span> {ready} candidates</span><button class="quiet" onClick={load}>Refresh board</button></div>
+    <div class="toolbar"><span>{view?.tasks.length || 0} tasks <span class="separator">/</span> {view?.agents.filter(a => a.kind === 'agent').length || 0} agents <span class="separator">/</span> {ready} candidates</span><button class="quiet" disabled={refreshing} onClick={load}>{refreshing ? 'Refreshing…' : 'Refresh board'}</button></div>
     {!view ? <p role="status">Loading project…</p> : <div class="board">{view.tasks.map(task => <section class="task-column" key={task.slug} aria-label={task.slug}>
       <div class="column-heading"><span class="eyebrow">{isPublished(task.decision) ? 'LANDED' : task.decision ? 'PUBLICATION PENDING' : task.candidates.some(c => c.conflicts.length) ? 'NEEDS A DECISION' : 'IN PROGRESS'}</span><span>{task.lanes.length} lanes</span></div>
       <h2><a href={link(p, task.slug)}>{task.slug}</a></h2><p class="intent">{task.intent}</p>
@@ -102,16 +107,20 @@ function Diff({ p, t, candidate }: { p: string; t: string; candidate: Candidate 
 }
 function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; turns: Turn[]; humans: Agent[]; onTurn: (turn: Turn) => void }) {
   const [body, setBody] = useState(''), [as, setAs] = useState(''), [replyTo, setReplyTo] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const sending = useRef(false), lifecycle = useRef(0);
+  useEffect(() => { setBody(''); setAs(''); setReplyTo(''); setError(''); setBusy(false); sending.current = false;
+    return () => { lifecycle.current++; };
+  }, [p, t]);
   const author = as || humans[0]?.id || '';
-  const submit = async (e: Event) => { e.preventDefault(); if (!author || !body.trim() || busy) return; setBusy(true); setError('');
-    try { const turn = await request<Turn>(`${taskPath(p, t)}/turns`, { body: body.trim(), as: author, ...(replyTo ? { replyTo } : {}) }); onTurn(turn); setBody(''); setReplyTo(''); }
-    catch(e) { setError(message(e)); } finally { setBusy(false); }
+  const submit = async (e: Event) => { e.preventDefault(); if (!author || !body.trim() || busy || sending.current) return; const n = lifecycle.current; sending.current = true; setBusy(true); setError('');
+    try { const turn = await request<Turn>(`${taskPath(p, t)}/turns`, { body: body.trim(), as: author, ...(replyTo ? { replyTo } : {}) }); if (n === lifecycle.current) { onTurn(turn); setBody(''); setReplyTo(''); } }
+    catch(e) { if (n === lifecycle.current) setError(message(e)); } finally { if (n === lifecycle.current) { sending.current = false; setBusy(false); } }
   };
   return <section class="panel discussion"><h2>Discussion <span class="count">{turns.length}</span></h2>
-    {turns.length ? turns.map(turn => <article class="turn" key={turn.id}><div class="turn-heading"><strong>{turn.author}</strong><span class="muted">{turn.kind} · <time dateTime={turn.at}>{new Date(turn.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></span></div><p>{turn.body}</p><Signature signedBy={turn.signedBy}/>{turn.replyTo && <p class="muted">Reply to {turn.replyTo}</p>}<button class="quiet small" onClick={() => setReplyTo(turn.id)}>Reply to {turn.author}</button></article>) : <p class="muted">No discussion yet. Add the context that should travel with the code.</p>}
-    <form onSubmit={submit}><label>Speak as<select value={author} onChange={e => setAs(e.currentTarget.value)} required><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
-      <label>Your reply<textarea required maxLength={10000} value={body} onInput={e => setBody(e.currentTarget.value)} placeholder="What should the team consider?"/></label>
-      {replyTo && <p>Replying to {replyTo} <button type="button" class="quiet" onClick={() => setReplyTo('')}>Cancel reply</button></p>}
+    {turns.length ? turns.map(turn => <article class="turn" key={turn.id}><div class="turn-heading"><strong>{turn.author}</strong><span class="muted">{turn.kind} · <time dateTime={turn.at}>{new Date(turn.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></span></div><p>{turn.body}</p><Signature signedBy={turn.signedBy}/>{turn.replyTo && <p class="muted">Reply to {turn.replyTo}</p>}<button class="quiet small" disabled={busy} onClick={() => setReplyTo(turn.id)}>Reply to {turn.author}</button></article>) : <p class="muted">No discussion yet. Add the context that should travel with the code.</p>}
+    <form onSubmit={submit}><label>Speak as<select disabled={busy} value={author} onChange={e => setAs(e.currentTarget.value)} required><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
+      <label>Your reply<textarea disabled={busy} required maxLength={10000} value={body} onInput={e => setBody(e.currentTarget.value)} placeholder="What should the team consider?"/></label>
+      {replyTo && <p>Replying to {replyTo} <button type="button" class="quiet" disabled={busy} onClick={() => setReplyTo('')}>Cancel reply</button></p>}
       {error && <ErrorNotice text={error}/>}<button disabled={busy || !author || !body.trim()}>{busy ? 'Posting…' : 'Post signed reply'}</button>
       {!humans.length && <p class="muted">Enroll a human identity through the project API to discuss or decide.</p>}
     </form></section>;
@@ -120,33 +129,51 @@ function Compare({ p, t }: { p: string; t: string }) {
   const [view, setView] = useState<TaskView>(), [agents, setAgents] = useState<Agent[]>([]), [error, setError] = useState('');
   const [pick, setPick] = useState(''), [rationale, setRationale] = useState(''), [decider, setDecider] = useState(''), [busy, setBusy] = useState(false), [changed, setChanged] = useState(false), [reviewing, setReviewing] = useState(false);
   const sending = useRef(false), version = useRef(0), hydrated = useRef(false), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
-  const load = async (reviewAgain = false) => { const n = ++version.current; setReviewing(true); loading.current = true; pending.current = [];
+  const stale = useRef(false), feedAvailable = useRef(false), connectionEpoch = useRef(0), reloadRequested = useRef(false), previousProject = useRef(p), lifecycle = useRef(0);
+  const invalidate = () => { stale.current = true; setChanged(true); };
+  const load = async (reviewAgain = false) => {
+    if (loading.current) return;
+    const n = ++version.current, epoch = connectionEpoch.current; setReviewing(true); loading.current = true; pending.current = [];
     try { const [task, project] = await Promise.all([request<TaskView>(taskPath(p, t)), request<ProjectView>(projectPath(p))]);
-      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setError(''); if (reviewAgain) { setChanged(pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t)); setPick(''); } hydrated.current = true; }
-    } catch(e) { if (n === version.current) setError(message(e)); } finally { if (n === version.current) { setReviewing(false); loading.current = false; pending.current = []; } }
+      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current); if (reviewAgain) setPick(''); } hydrated.current = true; }
+    } catch(e) { if (n === version.current) setError(message(e)); } finally { if (n === version.current) { setReviewing(false); loading.current = false; pending.current = []; if (reloadRequested.current) { reloadRequested.current = false; void load(true); } } }
   };
-  useEffect(() => { void load(); return () => { version.current++; }; }, [p, t]);
+  useEffect(() => {
+    if (previousProject.current !== p) { feedAvailable.current = false; previousProject.current = p; }
+    setView(undefined); setAgents([]); setError(''); setPick(''); setRationale(''); setDecider(''); setBusy(false); setChanged(false);
+    hydrated.current = false; sending.current = false; stale.current = true; void load();
+    return () => { version.current++; lifecycle.current++; loading.current = false; reloadRequested.current = false; pending.current = []; };
+  }, [p, t]);
   const live = useFeed(p, event => {
     if (loading.current) pending.current.push(event);
-    if (event.type === 'candidate.ready' && event.candidate.task === t) setChanged(true);
+    if (event.type === 'candidate.ready' && event.candidate.task === t) invalidate();
+    if (event.type === 'decision.landed' && event.decision.task === t) stale.current = true;
     setView(v => v && updateTask(v, event));
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Review current candidates before retrying.`);
-  }, reconnected => { if (reconnected && hydrated.current) setChanged(true); else void load(); });
+  }, reconnected => {
+    feedAvailable.current = true;
+    if (reconnected) { connectionEpoch.current++; invalidate(); if (!hydrated.current && !loading.current) void load(); }
+    else { // Re-read after subscribing so a snapshot taken before the socket opened cannot miss updates.
+      if (loading.current) reloadRequested.current = true; else { invalidate(); void load(true); }
+    }
+  },
+  () => { feedAvailable.current = false; connectionEpoch.current++; invalidate(); });
   const humans = agents.filter(a => a.kind === 'human'), who = decider || humans[0]?.id || '';
-  const submit = async (e: Event) => { e.preventDefault(); if (!view || sending.current || busy || changed || reviewing) return;
-    const body = decisionRequest(view, { pick, rationale, decider: who }); if (!body) return; sending.current = true; setBusy(true); setError('');
+  const submit = async (e: Event) => { e.preventDefault(); if (!view || sending.current || busy || stale.current || loading.current || changed || reviewing) return;
+    const body = decisionRequest(view, { pick, rationale, decider: who }); if (!body) return; const n = lifecycle.current; sending.current = true; setBusy(true); setError('');
     try {
       const decision = await request<Decision>(`${taskPath(p, t)}/decision`, body);
-      setView(v => v && { ...v, decision });
+      if (n === lifecycle.current) setView(v => v && { ...v, decision });
     } catch(e) {
-      if (e instanceof ApiError && e.status === 409) { setChanged(true); setError(conflictMessage(e.code)); }
+      if (n !== lifecycle.current) return;
+      if (e instanceof ApiError && e.status === 409) { invalidate(); setError(conflictMessage(e.code)); }
       else {
         // A failed response can follow a successful signed decision. Re-read before allowing another choice.
-        if (!(e instanceof ApiError && [401, 403].includes(e.status))) { setChanged(true); await load(true); }
-        setError(message(e));
+        if (!(e instanceof ApiError && [401, 403].includes(e.status))) { invalidate(); await load(true); }
+        if (n === lifecycle.current) setError(message(e));
       }
     }
-    finally { sending.current = false; setBusy(false); }
+    finally { if (n === lifecycle.current) { sending.current = false; setBusy(false); } }
   };
   const regions = new Map<string, Set<string>>();
   for (const c of view?.candidates || []) for (const region of c.conflicts) { const key = `${region.path}${region.region ? `:${region.region}` : ''}`; regions.set(key, new Set([...(regions.get(key) || []), c.agent, ...region.with])); }
@@ -164,7 +191,7 @@ function Compare({ p, t }: { p: string; t: string }) {
       <Diff p={p} t={t} candidate={candidate}/></section>; })}</div>
     {view && !view.candidates.length && <p class="notice">Waiting for candidate captures. This page updates live.</p>}
     {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p>{view.review.summary}</p>{view.review.recommendation && <p class="muted">{view.review.recommendation.why}</p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p>{c.notes}</p></li>)}</ul></section>}
-    {view && <div class="decision-layout"><Discussion p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>
+    {view && <div class="decision-layout"><Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>
       <section class="panel decision"><p class="eyebrow">A DECISION, WITH CONTEXT</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">The rationale and every alternative travel with the code.</p>
         <form onSubmit={submit}><fieldset disabled={busy || !!view.decision || changed || reviewing}><legend>Candidate to land</legend>{view.candidates.map(c => <label class="radio-choice"><input type="radio" name="pick" value={c.agent} required checked={(view.decision?.pick ?? pick) === c.agent} onChange={() => setPick(c.agent)}/><span>{c.agent}</span><Badge candidate={c}/></label>)}
           <label>Decide as<select required value={view.decision?.decider ?? who} onChange={e => setDecider(e.currentTarget.value)}><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>

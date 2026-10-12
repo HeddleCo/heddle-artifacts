@@ -8,6 +8,6 @@ export default defineConfig({
   webServer: process.env.UI_TEST_URL ? undefined : {
     command: 'npm run dev:worker', url: 'http://127.0.0.1:8788/p/demo',
     reuseExistingServer: !process.env.CI, timeout: 60000,
-    env: { XDG_CONFIG_HOME: '/tmp/heddle-c-config', WRANGLER_SEND_METRICS: 'false' }
+    env: { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME || '/tmp/heddle-c-config', WRANGLER_SEND_METRICS: 'false' }
   }
 });

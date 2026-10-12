@@ -10,6 +10,8 @@ export class HeddleEngine extends Container {
     const command = new URL(request.url).pathname.slice(1);
     if (!['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'].includes(command)) return new Response(null, { status: 404 });
     if (!this.ctx.container) throw new Error('container_unavailable');
+    // Custom exec bypasses Container.fetch, so renew the SDK's separate idle deadline.
+    this.renewActivityTimeout();
     if (!this.ctx.container.running) await this.start();
     await this.ctx.container.setInactivityTimeout(5 * 60 * 1000);
     const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}') as Record<string, string>;
