@@ -54,7 +54,12 @@ Install/authenticate Codex or Claude Code locally, plus tmux. Optional
 `DEMO_LIVE_MODEL` pins the actual CLI model and enrollment metadata;
 `DEMO_LIVE_PROVIDER=codex|claude` defaults to Codex. Mix vendors per lane with
 `DEMO_LIVE_PROVIDERS=alice=codex,bob=claude,carol=claude` and per-lane models with
-`DEMO_LIVE_MODELS=alice=gpt-6.1-sol,bob=claude-opus-5-5`. Reset, then:
+`DEMO_LIVE_MODELS=alice=gpt-6.1-sol,bob=claude-opus-5-5`.
+
+Providers `cf-codex` and `cf-claude` run that lane's agent in a Cloudflare Sandbox through
+[`agent-runner/`](../agent-runner/README.md) instead of on this machine. Set `DEMO_RUNNER_URL`
+to the runner's origin and `DEMO_RUNNER_TOKEN_FILE` to a 0600 file holding its bearer. The
+lane's fork credentials go only to the runner Worker, never into the sandbox. Reset, then:
 
 ```sh
 ./demo/run.sh --mode live --timeout 600

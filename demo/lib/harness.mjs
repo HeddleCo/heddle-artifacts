@@ -2,7 +2,7 @@
 import { mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { request, command, joinProject, projectURL, identifier, gitAuth, remoteURL } from '../../cli/ha.mjs';
+import { request, command, joinProject, enrollment, projectURL, identifier, gitAuth, remoteURL } from '../../cli/ha.mjs';
 const demoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pause = ms => new Promise(r => setTimeout(r, ms));
 const tasks = [
@@ -92,6 +92,8 @@ async function views(opts) {
 function quote(value) { return "'" + value.replaceAll("'", "'\\''") + "'"; }
 // DEMO_LIVE_PROVIDERS / DEMO_LIVE_MODELS ("alice=codex,bob=claude") override the
 // shared DEMO_LIVE_PROVIDER / DEMO_LIVE_MODEL per agent, so lanes can mix vendors.
+// cf-* lanes run their agent in a Cloudflare Sandbox through agent-runner/ (DEMO_RUNNER_URL).
+export const LIVE_PROVIDERS = ['codex', 'claude', 'cf-codex', 'cf-claude'];
 export function liveAgents(env = process.env) {
   const pairs = (value, name) => {
     const map = new Map();
@@ -105,13 +107,13 @@ export function liveAgents(env = process.env) {
   const providers = pairs(env.DEMO_LIVE_PROVIDERS, 'DEMO_LIVE_PROVIDERS'), models = pairs(env.DEMO_LIVE_MODELS, 'DEMO_LIVE_MODELS');
   return Object.fromEntries(['alice', 'bob', 'carol'].map(agent => {
     const provider = providers.get(agent) ?? env.DEMO_LIVE_PROVIDER ?? 'codex';
-    if (!['codex', 'claude'].includes(provider)) throw new Error('Live providers must be codex or claude');
+    if (!LIVE_PROVIDERS.includes(provider)) throw new Error(`Live providers must be one of ${LIVE_PROVIDERS.join(', ')}`);
     return [agent, { provider, model: models.get(agent) ?? env.DEMO_LIVE_MODEL }];
   }));
 }
 async function launchLive(opts, state) {
   const agents = liveAgents(), executables = {};
-  for (const provider of new Set(Object.values(agents).map(a => a.provider))) {
+  for (const provider of new Set(Object.values(agents).map(a => a.provider).filter(p => !p.startsWith('cf-')))) {
     await command(provider, ['--version']);
     executables[provider] = await command('sh', ['-c', `command -v ${provider}`]);
   }
@@ -125,10 +127,16 @@ async function launchLive(opts, state) {
     // The operator bearer is cleared. Git auth is only in this clone's scoped headers.
     // Raw agent output stays off the recording terminal. No token-bearing config dumps.
     const { provider, model } = agents[agent], executable = executables[provider];
+    if (provider.startsWith('cf-')) {
+      // The lane's Git grant sits in a 0600 file the pane script reads once and deletes; only paths appear here.
+      const script = join(demoRoot, 'lib', 'sandbox-lane.mjs');
+      await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexec node ${quote(script)} ${quote(provider.slice(3))} ${quote(`${opts.project}-${agent}-${state.generation}`)} ${quote(state.grants[agent])} ${quote(brief)} ${quote(marker)}\n`, { mode: 0o700 });
+    } else {
     const modelFlag = model ? ` --model ${quote(model)}` : '';
     const invocation = provider === 'codex' ? `${quote(executable)} exec --sandbox workspace-write --ephemeral -c sandbox_workspace_write.network_access=true${modelFlag} - < ${quote(brief)}` :
       `${quote(executable)} --print --permission-mode acceptEdits --allowedTools ${quote('Read,Edit,Write,Bash(git:*),Bash(npm:*)')}${modelFlag} < ${quote(brief)}`;
     await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\ncd ${quote(state.clones[agent])}\nexport npm_config_cache=${quote(join(state.clones[agent], '.git/npm-cache'))}\nunset OPERATOR_TOKEN\nprintf '%s\\n' ${quote(`${agent}: coding agent started`)}\n${invocation} >/dev/null 2>&1\nresult=$?\nprintf '%s' "$result" > ${quote(marker)}\nprintf '%s\\n' ${quote(`${agent}: coding agent finished; inspect the board`)}\nexit "$result"\n`, { mode: 0o700 });
+    }
     if (index === 0) await command('tmux', ['respawn-pane', '-k', '-t', `${session}:0.0`, '-c', state.clones[agent], 'bash', launcher]);
     else await command('tmux', ['split-window', '-t', session, '-c', state.clones[agent], 'bash', launcher]);
     await command('tmux', ['select-layout', '-t', session, 'even-horizontal']);
@@ -140,7 +148,20 @@ async function run(opts) {
   const start = Date.now();
   const state = await initialize(opts);
   const runDir = join(opts.directory, String(state.generation));
+  state.grants = {};
   for (const agent of ['alice', 'bob', 'carol']) {
+    const lane = opts.mode === 'scripted' ? undefined : liveAgents()[agent];
+    if (lane?.provider.startsWith('cf-')) {
+      // Sandbox lanes keep no local clone: the runner clones the fork inside the sandbox.
+      const directory = join(runDir, agent), grant = join(opts.directory, `${state.generation}-${agent}.grant.json`);
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const joined = await enrollment(opts.projectUrl, { task: agent === 'carol' ? 'docs-readme' : 'parser-escapes', as: agent,
+        provider: `cloudflare-sandbox/${lane.provider.slice(3)}`, model: lane.model ?? 'runner-default' });
+      await writeFile(grant, JSON.stringify({ forkRemote: joined.fork.remote, forkToken: joined.fork.token,
+        upstreamRemote: joined.upstream.remote, upstreamToken: joined.upstream.readToken }), { mode: 0o600 });
+      state.clones[agent] = directory; state.grants[agent] = grant;
+      continue;
+    }
     const joined = await joinProject(opts.projectUrl, {
       task: agent === 'carol' ? 'docs-readme' : 'parser-escapes', as: agent,
       directory: join(runDir, agent), provider: opts.mode === 'scripted' ? 'scripted-git' : liveAgents()[agent].provider,
