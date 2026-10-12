@@ -9,10 +9,10 @@ const tasks = [
   { slug: 'parser-escapes', intent: 'Support escaped pipes (\\|) inside table cells while preserving the string[] API and backslash parity.' },
   { slug: 'docs-readme', intent: 'Document the table parser API with runnable examples; change only README.md.' },
 ];
-export function options(args) {
+export function options(args, action = 'run') {
   const opts = { url: process.env.DEMO_URL ?? 'http://localhost:8787', project: process.env.DEMO_PROJECT ?? 'demo',
     directory: process.env.DEMO_DIR ?? join(process.env.TMPDIR ?? '/tmp', 'heddle-demo'), mode: 'scripted',
-    timeout: '180', delay: '8' };
+    timeout: undefined, delay: '8' };
   for (let i = 0; i < args.length; i += 2) {
     const key = args[i];
     if (!['--url', '--project', '--dir', '--mode', '--timeout', '--delay'].includes(key) || !args[i + 1]) throw new Error('Invalid harness options');
@@ -24,7 +24,8 @@ export function options(args) {
   opts.projectUrl = `${parsed.origin}/p/${opts.project}`;
   opts.api = projectURL(opts.projectUrl).api;
   opts.directory = resolve(opts.directory);
-  opts.timeout = Number(opts.timeout); opts.delay = Number(opts.delay);
+  // Live coding agents take minutes; scripted pushes take seconds.
+  opts.timeout = Number(opts.timeout ?? (opts.mode === 'live' || action === 'followup' ? 2700 : 180)); opts.delay = Number(opts.delay);
   if (!['scripted', 'live'].includes(opts.mode) || !Number.isFinite(opts.timeout) || opts.timeout < 1 ||
       !Number.isFinite(opts.delay) || opts.delay < 0) throw new Error('Invalid mode, timeout or delay');
   return opts;
@@ -319,7 +320,7 @@ async function verify(opts) {
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [action, ...args] = process.argv.slice(2);
-  Promise.resolve().then(() => { const opts = options(args);
+  Promise.resolve().then(() => { const opts = options(args, action);
     if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); if (action === 'verify') return verify(opts); if (action === 'followup') return followup(opts);
     throw new Error('Expected run, verify, followup or reset');
   }).catch(error => { console.error(`demo: ${error.message}`); process.exitCode = 1; });
