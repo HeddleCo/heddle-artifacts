@@ -2,6 +2,8 @@
 import { test, expect } from '@playwright/test';
 import type { Page, APIRequestContext } from '@playwright/test';
 const shots = process.env.UI_SCREENSHOT_DIR || 'evidence';
+// Pages refetch while a test's last assertion passes; drop in-flight route handlers instead of failing on them.
+test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: 'ignoreErrors' }); });
 const why = `/p/demo/why/${'f'.repeat(40)}`;
 async function reset(request: APIRequestContext, fixture = 'conflict', decisionStatus = 200) {
   const response = await request.post('/__mock/reset', { data: { fixture, decisionStatus } }); expect(response.status()).toBe(200);

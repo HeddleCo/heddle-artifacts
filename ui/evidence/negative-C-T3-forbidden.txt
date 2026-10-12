@@ -4,15 +4,16 @@ $ npm test -- --grep 'C-T3 decision exact body and 403'
 Exit: 1
 
 > test
-> playwright test --grep C-T3 decision exact body and 403
+> node build.mjs && playwright test --grep C-T3 decision exact body and 403
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 403 response (6.3s)
+  ✘  1 test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 403 response (6.4s)
 
 
-  1) test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 403 response ─────────────────────
+  1) test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 403 response ─────────────────────
 
     Error: expect(locator).toContainText(expected) failed
 
@@ -28,16 +29,16 @@ Running 1 test using 1 worker
            - unexpected value "Forbidden handling removed. Sign in"
 
 
-      57 |   expect(r.postDataJSON()).toEqual({ pick: 'bob', rationale: 'API stability matters more than the shorter regex.', decider: 'luke', expectHeads: ['state-alice-1', 'state-bob-1'] });
-      58 |   if (status === 200) await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
-    > 59 |   if (status === 403) { await expect(page.getByRole('alert')).toContainText('Access denied'); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled(); }
+      59 |   expect(r.postDataJSON()).toEqual({ pick: 'bob', rationale: 'API stability matters more than the shorter regex.', decider: 'luke', expectHeads: ['state-alice-1', 'state-bob-1'] });
+      60 |   if (status === 200) await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+    > 61 |   if (status === 403) { await expect(page.getByRole('alert')).toContainText('Access denied'); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled(); }
          |                                                               ^
-      60 |   if (status === 409) {
-      61 |     await expect(page.getByRole('alert')).toContainText('Candidates changed, review again');
-      62 |     await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:59:63
+      62 |   if (status === 409) {
+      63 |     await expect(page.getByRole('alert')).toContainText('Candidates changed, review again');
+      64 |     await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+        at test/acceptance.spec.ts:61:63
 
     Error Context: test-results/acceptance-C-T3-decision-exact-body-and-403-response/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 403 response ──────────────────────
+    test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 403 response ──────────────────────

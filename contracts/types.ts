@@ -3,7 +3,10 @@ export type AgentKind = "agent" | "human" | "reviewer";
 export interface Agent { id: string; kind: AgentKind; displayName: string; publicKey: string /*hex ed25519*/;
   provider?: string; model?: string; }
 export interface Lane { project: string; task: string; agent: string; forkRepo: string; forkRemote: string;
-  laneThread: string /* task/<t>/<a> */; lastSeenSha?: string; status: "active"|"released"|"abandoned"; }
+  laneThread: string /* task/<t>/<a> */; lastSeenSha?: string; status: "active"|"released"|"abandoned"; briefing?: Briefing; }
+/** Heddle's signed pre-turn briefing for a lane: earlier decisions' annotations its agent started from. */
+export interface Briefing { hash: string /* Heddle briefing_hash */; omitted: number;
+  annotations: Array<{ target: string; scope: string; annotationId: string; revisionId: string; kind: string; content: string; attribution: string }>; }
 export interface Candidate { task: string; agent: string; state: string /*Heddle State id*/;
   sourceSha: string /*agent's commit*/; treeSha: string; parentSha: string; subject: string;
   diffstat: { files: number; insertions: number; deletions: number };

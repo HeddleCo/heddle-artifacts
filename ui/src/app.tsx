@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { Agent, Candidate, Decision, FeedEvent, Turn } from '../../contracts/types';
+import type { Agent, Candidate, Decision, FeedEvent, Lane, Turn } from '../../contracts/types';
 import { ApiError, diff, projectPath, request, taskPath } from './api';
 import type { ProjectView, TaskView, WhyView } from './api';
 import { updateBoard, updateTask } from './feed';
@@ -90,6 +90,7 @@ function Board({ p }: { p: string }) {
         return <article class="lane-card" key={`${lane.agent}/${pulse[`${task.slug}/${lane.agent}`] || 0}`} data-testid={`lane-${lane.agent}`} data-push={pulse[`${task.slug}/${lane.agent}`] ? 'received' : 'idle'}>
           <div class={`push-pulse ${pulse[`${task.slug}/${lane.agent}`] ? 'pulsing' : ''}`}><span class="avatar">{lane.agent.slice(0, 1).toUpperCase()}</span><div><h3>{agent?.displayName || lane.agent}</h3><p class="muted">{agent?.provider || 'agent'} / {agent?.model || 'unspecified'}</p></div></div>
           <div class="card-status"><Badge candidate={candidate}/><span class="muted">{lane.status}</span></div>
+          {!!lane.briefing?.annotations.length && <p class="briefed"><span class="tag dashed" title={`Heddle briefing ${lane.briefing.hash}`}>◆ briefed · {lane.briefing.annotations.length} earlier decision{lane.briefing.annotations.length === 1 ? '' : 's'}</span></p>}
           <p class="sha">Last push <code>{lane.lastSeenSha ? short(lane.lastSeenSha) : 'Waiting for a push'}</code></p>
           {candidate && <><p class="subject">{candidate.subject}</p><div class="card-footer"><span class={candidate.conflicts.length ? 'conflict-text' : 'success-text'}>{candidate.conflicts.length ? `⚑ ${candidate.conflicts.length} conflict region` : '✓ Clean candidate'}</span><span>+{candidate.diffstat.insertions} −{candidate.diffstat.deletions}</span></div></>}
         </article>;
@@ -129,7 +130,7 @@ function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; tur
     </form></section>;
 }
 function Compare({ p, t }: { p: string; t: string }) {
-  const [view, setView] = useState<TaskView>(), [agents, setAgents] = useState<Agent[]>([]), [error, setError] = useState('');
+  const [view, setView] = useState<TaskView>(), [agents, setAgents] = useState<Agent[]>([]), [lanes, setLanes] = useState<Lane[]>([]), [error, setError] = useState('');
   const [pick, setPick] = useState(''), [rationale, setRationale] = useState(''), [decider, setDecider] = useState(''), [busy, setBusy] = useState(false), [changed, setChanged] = useState(false), [reviewing, setReviewing] = useState(false);
   const sending = useRef(false), version = useRef(0), hydrated = useRef(false), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
   const stale = useRef(false), feedAvailable = useRef(false), connectionEpoch = useRef(0), reloadRequested = useRef(false), previousProject = useRef(p), lifecycle = useRef(0);
@@ -138,7 +139,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     if (loading.current) return;
     const n = ++version.current, epoch = connectionEpoch.current; setReviewing(true); loading.current = true; pending.current = [];
     try { const [task, project] = await Promise.all([request<TaskView>(taskPath(p, t)), request<ProjectView>(projectPath(p))]);
-      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current); if (reviewAgain) setPick(''); } hydrated.current = true; }
+      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setLanes(project.tasks.find(x => x.slug === t)?.lanes ?? []); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current); if (reviewAgain) setPick(''); } hydrated.current = true; }
     } catch(e) { if (n === version.current) setError(message(e)); } finally { if (n === version.current) { setReviewing(false); loading.current = false; pending.current = []; if (reloadRequested.current) { reloadRequested.current = false; void load(true); } } }
   };
   useEffect(() => {
@@ -204,6 +205,11 @@ function Compare({ p, t }: { p: string; t: string }) {
         </fieldset><button class="land-button" disabled={!decisionRequest(view, { pick, rationale, decider: who }) || busy || changed || reviewing}>{busy ? view.decision ? 'Publishing…' : 'Landing…' : isPublished(view.decision) ? 'Decision landed' : view.decision ? 'Retry publication' : 'Land candidate →'}</button></form>
         {!humans.length && <p class="muted">Enroll a human identity through the project API to decide.</p>}
       </section>
+      {lanes.some(l => l.briefing?.annotations.length) && <section class="panel context-supplied" aria-label="Context supplied"><p class="eyebrow">CONTEXT SUPPLIED</p>
+        <p class="muted">Heddle briefed each agent with earlier decisions on this code before it started.</p>
+        {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
+          <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span><span class="verdict-notes">“{a.content}”</span><span class="muted">— {a.attribution}</span></li>)}</ul></div>)}
+      </section>}
       {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}</ul></section>}
   {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p>{view.review.summary}</p>{view.review.recommendation && <p class="muted">{view.review.recommendation.why}</p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p>{c.notes}</p></li>)}</ul></section>}
     </aside>}</div>

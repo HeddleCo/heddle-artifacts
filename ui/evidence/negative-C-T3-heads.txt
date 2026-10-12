@@ -4,15 +4,16 @@ $ npm test -- --grep 'C-T3 decision exact body and 200'
 Exit: 1
 
 > test
-> playwright test --grep C-T3 decision exact body and 200
+> node build.mjs && playwright test --grep C-T3 decision exact body and 200
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 200 response (301ms)
+  ✘  1 test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 200 response (342ms)
 
 
-  1) test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 200 response ─────────────────────
+  1) test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 200 response ─────────────────────
 
     Error: expect(received).toEqual(expected) // deep equality
 
@@ -30,16 +31,16 @@ Running 1 test using 1 worker
         "rationale": "API stability matters more than the shorter regex.",
       }
 
-      55 |   await page.getByRole('button', { name: 'Land candidate →' }).click();
-      56 |   const r = await posted;
-    > 57 |   expect(r.postDataJSON()).toEqual({ pick: 'bob', rationale: 'API stability matters more than the shorter regex.', decider: 'luke', expectHeads: ['state-alice-1', 'state-bob-1'] });
+      57 |   await page.getByRole('button', { name: 'Land candidate →' }).click();
+      58 |   const r = await posted;
+    > 59 |   expect(r.postDataJSON()).toEqual({ pick: 'bob', rationale: 'API stability matters more than the shorter regex.', decider: 'luke', expectHeads: ['state-alice-1', 'state-bob-1'] });
          |                            ^
-      58 |   if (status === 200) await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
-      59 |   if (status === 403) { await expect(page.getByRole('alert')).toContainText('Access denied'); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled(); }
-      60 |   if (status === 409) {
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:57:28
+      60 |   if (status === 200) await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+      61 |   if (status === 403) { await expect(page.getByRole('alert')).toContainText('Access denied'); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled(); }
+      62 |   if (status === 409) {
+        at test/acceptance.spec.ts:59:28
 
     Error Context: test-results/acceptance-C-T3-decision-exact-body-and-200-response/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 200 response ──────────────────────
+    test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 200 response ──────────────────────

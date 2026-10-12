@@ -1,18 +1,19 @@
 SPDX-License-Identifier: Apache-2.0
-Mutation: setChanged(true); setError('Candidates changed, review again'); → setError('Candidates changed, review again');
+Mutation: invalidate(); setError(conflictMessage(e.code)); → setError(conflictMessage(e.code));
 $ npm test -- --grep 'C-T3 decision exact body and 409'
 Exit: 1
 
 > test
-> playwright test --grep C-T3 decision exact body and 409
+> node build.mjs && playwright test --grep C-T3 decision exact body and 409
 
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
 
 Running 1 test using 1 worker
 
-  ✘  1 test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response (6.5s)
+  ✘  1 test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 409 response (6.5s)
 
 
-  1) test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response ─────────────────────
+  1) test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 409 response ─────────────────────
 
     Error: expect(locator).toBeDisabled() failed
 
@@ -28,16 +29,16 @@ Running 1 test using 1 worker
            - unexpected value "enabled"
 
 
-      60 |   if (status === 409) {
-      61 |     await expect(page.getByRole('alert')).toContainText('Candidates changed, review again');
-    > 62 |     await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+      62 |   if (status === 409) {
+      63 |     await expect(page.getByRole('alert')).toContainText('Candidates changed, review again');
+    > 64 |     await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
          |                                                                          ^
-      63 |     await page.getByRole('button', { name: 'Review current candidates' }).click();
-      64 |     await expect(page.getByRole('alert')).toHaveCount(0);
-      65 |     await expect(page.getByRole('radio', { name: /bob/ })).not.toBeChecked();
-        at <TRACK_C_WORKSPACE>/ui/test/acceptance.spec.ts:62:74
+      65 |     await page.getByRole('button', { name: 'Review current candidates' }).click();
+      66 |     await expect(page.getByRole('alert')).toHaveCount(0);
+      67 |     await expect(page.getByRole('radio', { name: /bob/ })).not.toBeChecked();
+        at test/acceptance.spec.ts:64:74
 
     Error Context: test-results/acceptance-C-T3-decision-exact-body-and-409-response/error-context.md
 
   1 failed
-    test/acceptance.spec.ts:52:39 › C-T3 decision exact body and 409 response ──────────────────────
+    test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 409 response ──────────────────────

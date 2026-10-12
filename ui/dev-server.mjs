@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Fixture mock server for Track C, bound to loopback and never deployed.
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 import { WebSocketServer } from 'ws';
+// Build the UI first on a fresh checkout so `npm run dev` works without a separate build step.
+await access(new URL('./dist/index.html', import.meta.url)).catch(() => import('./build.mjs'));
 await build({ entryPoints: ['mock-api.ts'], bundle: true, platform: 'node', format: 'esm', outfile: '.local/mock-api.mjs' });
 const { createMock } = await import('./.local/mock-api.mjs');
 const mock = createMock(process.env.UI_FIXTURE || 'conflict');
@@ -22,8 +24,10 @@ const server = createServer(async (req, res) => {
     const request = new Request(url, { method: req.method, headers: req.headers, ...(chunks.length ? { body: Buffer.concat(chunks) } : {}) });
     const response = await mock.handle(request);
     if (response) { res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer())); return; }
-    const file = ['/app.js', '/style.css'].includes(url.pathname) ? url.pathname.slice(1) : 'index.html';
-    res.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html', 'Cache-Control': 'no-store' });
+    const font = /^\/fonts\/[A-Za-z0-9-]+\.woff2$/.test(url.pathname);
+    const file = font || ['/app.js', '/style.css'].includes(url.pathname) ? url.pathname.slice(1) : 'index.html';
+    const type = font ? 'font/woff2' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html';
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' });
     res.end(await readFile(new URL(`./dist/${file}`, import.meta.url)));
   } catch { res.writeHead(500); res.end('Fixture server error'); }
 });

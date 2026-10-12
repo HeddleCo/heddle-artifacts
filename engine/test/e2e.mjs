@@ -77,7 +77,9 @@ const pushes = [];
 for (const [id, task] of [['alice', 'parser-escapes'], ['bob', 'parser-escapes'], ['carol', 'docs-readme']]) {
   const fork = join(root, `p--${task}--${id}.git`);
   await git(root, ['clone', '--bare', canonical, fork]);
-  await mutate('lane.open', { task, agent: id });
+  const opened = await mutate('lane.open', { task, agent: id });
+  // Before any decision there is nothing to brief, but every agent lane still gets a signed briefing.
+  assert.match(opened.briefing.hash, /^[0-9a-f]{64}$/); assert.deepEqual(opened.briefing.annotations, []);
   const checkout = join(root, `${id}-git`);
   await git(root, ['clone', fork, checkout]);
   await git(checkout, ['config', 'user.name', 'Forged author']);
@@ -196,7 +198,12 @@ await mutate('task.create', { task: 'unreviewed-code', intent: 'Prove unknown so
 const unreviewed = await mutate('agent.enroll', { agent: { id: 'unreviewed', kind: 'agent', displayName: 'Unreviewed fixture' } });
 const unknownFork = join(root, 'p--unreviewed-code--unreviewed.git');
 await git(root, ['clone', '--bare', canonical, unknownFork]);
-await mutate('lane.open', { task: 'unreviewed-code', agent: 'unreviewed' });
+const followUp = await mutate('lane.open', { task: 'unreviewed-code', agent: 'unreviewed' });
+// Context carries forward: a lane opened after the parser decision is briefed with the decider's rationale.
+const carried = followUp.briefing.annotations.find(a => a.content === 'Keep the API stable');
+assert.ok(carried, 'decision rationale reaches the next lane briefing');
+assert.equal(carried.kind, 'rationale'); assert.equal(carried.target, 'src/table.ts'); assert.match(carried.attribution, /Luke/i);
+assert.match(followUp.briefing.hash, /^[0-9a-f]{64}$/);
 const unknownCheckout = join(root, 'unknown-git'); await git(root, ['clone', unknownFork, unknownCheckout]);
 const sentinel = join(state, 'synthetic-custody-sentinel.txt'), attemptedRead = join(state, 'synthetic-attempted-read.txt');
 await writeFile(sentinel, 'PUBLIC-SYNTHETIC-CUSTODY-MARKER\n', { mode: 0o600 });

@@ -41,7 +41,7 @@ export class ProjectDO extends DurableObject<Env> {
     if (command === 'agent.enroll') this.store.put('agents', input.agent.id, { ...input.agent, publicKey: result.publicKey });
     if (command === 'lane.open') {
       const lane = this.store.get<Lane>('lanes', `${input.task}/${input.agent}`)!;
-      this.store.put('lanes', `${input.task}/${input.agent}`, { ...lane, laneThread: result.laneThread, status: 'active' });
+      this.store.put('lanes', `${input.task}/${input.agent}`, { ...lane, laneThread: result.laneThread, status: 'active', ...(result.briefing ? { briefing: result.briefing } : {}) });
     }
     if (command === 'ingest') {
       if (!Array.isArray(result.results) || result.results.length !== input.items.length) throw new Error('incomplete_ingest_result');
@@ -535,7 +535,7 @@ export class ProjectDO extends DurableObject<Env> {
           this.store.storage.sql.exec('UPDATE agents SET keyHash=?,keyExpiresAt=? WHERE id=?', await digest(agentKey), agentKeyExpiresAt, id);
           await this.ctx.storage.sync(); this.expireAccess();
           const fork = await this.forkToken(lane); const read = await this.credentials.issue(projectId, 'read', 'canonical-read', id);
-          await this.nextAlarm(); return Response.json({ agentKey, agentKeyExpiresAt, projectExpiresAt: this.credentials.lifetime()!.expiresAt, fork: { remote: lane.forkRemote, ...fork }, upstream: { remote: this.store.get('meta', 'project').canonicalRemote, readToken: read.plaintext, expiresAt: read.expiresAt }, setup: setupScript(lane.forkRemote, fork.token, this.store.get('meta', 'project').canonicalRemote, read.plaintext) }, { headers: { 'cache-control': 'no-store' } });
+          await this.nextAlarm(); return Response.json({ agentKey, agentKeyExpiresAt, projectExpiresAt: this.credentials.lifetime()!.expiresAt, briefing: this.store.get<Lane>('lanes', `${taskId}/${id}`)?.briefing, fork: { remote: lane.forkRemote, ...fork }, upstream: { remote: this.store.get('meta', 'project').canonicalRemote, readToken: read.plaintext, expiresAt: read.expiresAt }, setup: setupScript(lane.forkRemote, fork.token, this.store.get('meta', 'project').canonicalRemote, read.plaintext) }, { headers: { 'cache-control': 'no-store' } });
         }
         if (parts[5] === 'candidates' && parts[7] === 'diff' && request.method === 'GET') {
           const agent = slug(parts[6]); if (!this.candidates(taskId).some(c => c.agent === agent)) throw new HttpError(404, 'candidate_not_found');

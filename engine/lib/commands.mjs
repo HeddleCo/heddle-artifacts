@@ -95,8 +95,26 @@ export async function openLane(state, request) {
   const grant = await heddle(['agent', 'reserve', '--thread', thread, '--anchor', task.baseState], path, agent);
   const leaseId = grant.reservation.lease_id;
   await writeFile(join(path, '.heddle', 'engine-lease.json'), JSON.stringify({ leaseId, token: grant.token, expiresAt: grant.reservation.lease_expires_at }), { mode: 0o600 });
-  state.lanes[key] = { task: request.task, agent: request.agent, thread, path, leaseId, remote: forkRemote(state.canonical, state.project, request.task, request.agent), status: 'active', seen: {} };
-  return { laneThread: thread, leaseId };
+  // Brief the new lane before its agent starts: Heddle's bounded pre-turn briefing carries earlier
+  // decisions' annotations (for example a decider's rationale) and records a signed briefing for the
+  // lane. Reviewers judge candidates; they are not briefed as authors.
+  const briefing = agent.kind === 'agent' ? laneBriefing(await heddle(['context', '--for-thread', thread], path, agent)) : undefined;
+  state.lanes[key] = { task: request.task, agent: request.agent, thread, path, leaseId, remote: forkRemote(state.canonical, state.project, request.task, request.agent), status: 'active', seen: {}, ...(briefing ? { briefing } : {}) };
+  return { laneThread: thread, leaseId, ...(briefing ? { briefing } : {}) };
+}
+/** Keep only what the control plane shows and the agent reads: the latest revision of each annotation. */
+export function laneBriefing(output) {
+  if (!output || typeof output.briefing_hash !== 'string' || !Array.isArray(output.annotations)) throw new Rejection('briefing_unavailable', 'Heddle returned no lane briefing');
+  return {
+    hash: output.briefing_hash,
+    omitted: Number(output.omitted_annotations) || 0,
+    annotations: output.annotations.slice(0, 20).flatMap(a => {
+      const latest = Array.isArray(a.revisions) ? a.revisions[a.revisions.length - 1] : undefined;
+      if (!latest || typeof latest.content !== 'string') return [];
+      return [{ target: String(a.target), scope: String(a.scope ?? ''), annotationId: String(a.annotation_id), revisionId: String(latest.revision_id),
+        kind: String(latest.kind), content: latest.content.slice(0, 2000), attribution: String(latest.attribution ?? '') }];
+    }),
+  };
 }
 
 async function authenticatedLease(state, lane) {
