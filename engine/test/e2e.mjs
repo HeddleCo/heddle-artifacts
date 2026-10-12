@@ -413,3 +413,65 @@ console.log(`Evidence scratch: ${root}`);
   assert.match((await call2('why', { sha: decisionH.mainSha })).narrative, /merged with main .* by Heddle; tested as/);
   console.log(`Native merge PASS: git merge-tree conflicts on src/table.mjs; Heddle merged hana with main cleanly (${combinedH.heddle.mergeType}, 0 conflicts); merged result ${passedH.tests.passed}/${passedH.tests.passed} pass; landed tree is the tested combined tree; publication verified`);
 }
+
+// ── A clean Heddle merge of two correct edits that is wrong ────────────────────────────────────
+// A strips a leading pipe on line 2; B adds a line 3 that strips it too. Each is right alone. Git
+// conflicts on the adjacent lines; Heddle merges them cleanly and calls the result ready, but the
+// pipe is now stripped twice. Only tests on the merged state catch it, and landing is refused.
+{
+  const state3 = join(root, 'double-state'), canonical3 = join(root, 'double.git');
+  let ops = 0;
+  const call3 = (cmd, body = {}, expected = 0) => call(cmd, body, expected, state3);
+  const mutate3 = (cmd, body) => call3(cmd, { opId: `double-${++ops}`, ...body });
+  const seed3 = join(root, 'double-seed');
+  const parser = '// SPDX-License-Identifier: Apache-2.0\nexport function parseRow(row) {\n  let text = row.trim();\n  if (text.endsWith("|")) text = text.slice(0, -1);\n  return text.split("|").map(cell => cell.trim());\n}\n';
+  const files = { 'package.json': JSON.stringify({ type: 'module', scripts: { test: 'node --test' } }) + '\n', 'src/row.mjs': parser,
+    'test/row.test.mjs': '// SPDX-License-Identifier: Apache-2.0\nimport { test } from "node:test"; import assert from "node:assert/strict";\nimport { parseRow } from "../src/row.mjs";\ntest("splits cells", () => assert.deepEqual(parseRow("a | b |"), ["a", "b"]));\n' };
+  for (const [path, contents] of Object.entries(files)) { await mkdir(dirname(join(seed3, path)), { recursive: true }); await writeFile(join(seed3, path), contents); }
+  await git(seed3, ['init', '-b', 'main']); await git(seed3, ['add', '.']);
+  await git(seed3, ['-c', 'user.name=Seed', '-c', 'user.email=seed@example.invalid', 'commit', '-m', 'Row parser seed']);
+  await git(root, ['init', '--bare', '--initial-branch=main', canonical3]);
+  await mutate3('init', { project: 'd', canonical: { remote: canonical3 }, seed: { importUrl: seed3 } });
+  const lanes = { ana: 'leading-pipe-a', ben: 'leading-pipe-b' };
+  for (const task of Object.values(lanes)) await mutate3('task.create', { task, intent: 'Accept an optional leading pipe' });
+  for (const id of ['ana', 'ben', 'luke']) await mutate3('agent.enroll', { agent: { id, kind: id === 'luke' ? 'human' : 'agent', displayName: id } });
+  const ownTest = name => `// SPDX-License-Identifier: Apache-2.0\nimport { test } from "node:test"; import assert from "node:assert/strict";\nimport { parseRow } from "../src/row.mjs";\ntest("${name}: strips one leading pipe", () => assert.deepEqual(parseRow("| a | b |"), ["a", "b"]));\ntest("${name}: keeps an empty first cell", () => assert.deepEqual(parseRow("|| a | b |"), ["", "a", "b"]));\n`;
+  const changes = {
+    ana: { 'src/row.mjs': parser.replace('let text = row.trim();', 'let text = row.trim().replace(/^\\|/, "");'), 'test/ana.test.mjs': ownTest('ana') },
+    ben: { 'src/row.mjs': parser.replace('  let text = row.trim();\n', '  let text = row.trim();\n  if (text.startsWith("|")) text = text.slice(1);\n'), 'test/ben.test.mjs': ownTest('ben') },
+  };
+  const shas = {}, items = [];
+  for (const [id, task] of Object.entries(lanes)) {
+    const fork = join(root, `d--${task}--${id}.git`), co = join(root, `double-${id}`);
+    await git(root, ['clone', '--bare', canonical3, fork]); await mutate3('lane.open', { task, agent: id }); await git(root, ['clone', fork, co]);
+    for (const [path, contents] of Object.entries(changes[id])) await writeFile(join(co, path), contents);
+    await git(co, ['add', '.']); await git(co, ['-c', `user.name=${id}`, '-c', `user.email=${id}@example.invalid`, 'commit', '-m', `${id}: accept a leading pipe`]); await git(co, ['push', 'origin', 'HEAD:main']);
+    shas[id] = await git(co, ['rev-parse', 'HEAD']);
+    items.push({ task, agent: id, fork: { remote: fork }, ref: 'refs/heads/main', sha: shas[id] });
+  }
+  const sandbox = async (sha, treeSha) => {
+    const dir = await mkdtemp(join(root, 'sandbox-')), start = Date.now();
+    await git(dir, ['init', '-q']); await git(dir, ['fetch', '-q', '--no-tags', '--depth=1', canonical3, sha]); await git(dir, ['checkout', '-q', '--detach', sha]);
+    assert.equal(await git(dir, ['rev-parse', 'HEAD^{tree}']), treeSha);
+    const tested = await run(process.execPath, ['--test', '--test-reporter=tap'], { cwd: dir, allowFailure: true, env: { NO_COLOR: '1' } });
+    return { sourceSha: sha, treeSha, output: tested.stdout.toString() + tested.stderr.toString(), durationMs: Date.now() - start, installExitCode: 0, testExitCode: tested.code };
+  };
+  const captured = await mutate3('ingest', { items, runTests: true, isolateUnreviewed: true });
+  for (const { candidate } of captured.results) {
+    const tests = (await mutate3('tests.record', { task: candidate.task, agent: candidate.agent, sourceSha: candidate.sourceSha, run: await sandbox(candidate.sourceSha, candidate.treeSha) })).candidate.tests;
+    assert.equal(tests.status, 'pass', `${candidate.agent} is correct alone`); assert.equal(tests.passed, 3);
+  }
+  const decisionAna = await mutate3('decide', { task: 'leading-pipe-a', decider: 'luke', pick: 'ana', rationale: 'Strip the optional leading pipe.', expectHeads: (await call3('candidates', { task: 'leading-pipe-a' })).heads });
+  await mutate3('publish', { canonical: { remote: canonical3 } });
+  assert.equal((await run('git', ['--git-dir', canonical3, 'merge-tree', '--write-tree', 'main', shas.ben], { allowFailure: true })).code, 1, 'plain git merge conflicts on the adjacent lines');
+  const combined = (await mutate3('combine', { task: 'leading-pipe-b', isolate: true })).candidates[0].combined;
+  assert.equal(combined.heddle.conflictCount, 0); assert.equal(combined.heddle.status, 'ready'); assert.equal(combined.heddle.impact, 'none');
+  const merged = await git(canonical3, ['show', `${combined.sha}:src/row.mjs`]);
+  assert.match(merged, /replace\(\/\^\\\|\/, ""\);\n  if \(text\.startsWith\("\|"\)\) text = text\.slice\(1\);/, 'Heddle kept both edits: the pipe is stripped twice');
+  const failed = (await mutate3('tests.record', { task: 'leading-pipe-b', agent: 'ben', sourceSha: shas.ben, combined: { sha: combined.sha, mainSha: decisionAna.mainSha }, run: await sandbox(combined.sha, combined.treeSha) })).candidate.combined;
+  assert.equal(failed.status, 'fail'); assert.equal(failed.tests.failed, 2); assert.equal(failed.tests.passed, 3);
+  assert.deepEqual([...failed.tests.failures].sort(), ['ana: keeps an empty first cell', 'ben: keeps an empty first cell']);
+  const refused = await call3('decide', { opId: 'double-refused', task: 'leading-pipe-b', decider: 'luke', pick: 'ben', rationale: 'r', expectHeads: (await call3('candidates', { task: 'leading-pipe-b' })).heads }, 2);
+  assert.equal(refused.error.code, 'combined_failing');
+  console.log(`Silent merge break PASS: ana and ben each pass alone (3/3); git conflicts; Heddle merges cleanly and reports ${combined.heddle.status} (impact ${combined.heddle.impact}); the merged code strips the pipe twice and fails ${failed.tests.failed} tests (${failed.tests.failures.join('; ')}); landing ben is refused`);
+}
