@@ -305,8 +305,13 @@ export class ProjectDO extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     try {
       const url = new URL(request.url), parts = url.pathname.split('/').filter(Boolean), projectId = slug(parts[2]);
-      const publicWhy = request.method === 'GET' && parts[3] === 'why' && projectId === this.env.DEMO_PROJECT;
-      const actor = publicWhy ? { op: false, agent: undefined } : await this.authorize(request);
+      // The demo project is a public showcase: its board, task, diff and Why reads
+      // need no session. Writes, credentials and the live feed stay authenticated.
+      const publicRead = request.method === 'GET' && projectId === this.env.DEMO_PROJECT && (parts.length === 3 || parts[3] === 'why' ||
+        parts[3] === 'tasks' && (parts.length === 5 || parts.length === 8 && parts[5] === 'candidates' && parts[7] === 'diff'));
+      const anonymous = { op: false, agent: undefined };
+      const actor = publicRead ? await this.authorize(request).catch(() => anonymous) : await this.authorize(request);
+      const anonymousRead = publicRead && actor === anonymous;
       this.expireAccess();
       if (parts[3] === 'credentials' && (parts.length === 4 || parts[4] === 'status' && parts.length === 5) && request.method === 'GET' || parts[3] === 'cleanup' && parts.length === 4 && request.method === 'POST') {
         if (!actor.op) throw new HttpError(403, 'forbidden');
@@ -345,7 +350,7 @@ export class ProjectDO extends DurableObject<Env> {
         return Response.json({ task, candidates: this.candidates(taskId), turns: this.store.all<Turn>('turns').filter(t => t.task === taskId), review: this.store.get('meta', `review:${taskId}`), reviewAttempt: this.store.get('meta', this.store.get<string>('meta', `lastReviewAttempt:${taskId}`) ?? ''), decision: this.store.get('decisions', taskId), heads: this.heads(taskId) });
       }
       const response = await this.engine.serial(async () => {
-        if (!publicWhy) await this.recover();
+        if (!anonymousRead) await this.recover();
         if (actor.agent) await this.authorize(request);
         if (request.method !== 'GET' && !(parts.length === 3 && request.method === 'POST' && !this.store.get('meta', 'project'))) this.credentials.assertOpen();
         const pending = this.store.all<Decision>('decisions').find(d => !d.mainSha);

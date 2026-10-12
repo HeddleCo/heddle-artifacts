@@ -357,6 +357,7 @@ const invalidContracts: Array<[string, unknown, ReviewValidationFailure]> = [
   ["blank reason", { ...good, recommendation: { pick: "bob", why: " " } }, "recommendation_why"],
   ["oversized reason", { ...good, recommendation: { pick: "bob", why: "x".repeat(4001) } }, "recommendation_why"],
   ["failing pick", { ...good, recommendation: { pick: "alice", why: "private sentinel" } }, "recommendation_not_passing"],
+  ["approval of failing tests", { ...good, perCandidate: good.perCandidate.map(r => ({ ...r, verdict: "approve" })) }, "approve_not_passing"],
 ];
 for (const [name, value, group] of invalidContracts) {
   it(`diagnoses ${name} with a single fixed enum and no model text`, async () => {

@@ -244,6 +244,22 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     const login = await SELF.fetch('https://heddle.test/login', { method: 'POST', redirect: 'manual', body: new URLSearchParams({ token: op }).toString(), headers: { 'content-type': 'application/x-www-form-urlencoded' } }); expect(login.status).toBe(303); expect(login.headers.get('set-cookie')).toContain('HttpOnly'); expect(login.headers.get('set-cookie')).toContain('Secure');
     const cookie = login.headers.get('set-cookie')!.split(';')[0]; expect((await SELF.fetch(`https://heddle.test${base}`, { headers: { cookie } })).status).toBe(200);
   });
+  it('the demo project serves public board, task and Why reads but keeps writes, credentials and the feed private', async () => {
+    const base = '/api/projects/demo';
+    await ok('/api/projects', { id: 'demo', seed: { template: 'demo' } });
+    await ok(`${base}/tasks`, { slug: 'parser-escapes', intent: 'support escaped pipes' });
+    const joined = await ok(`${base}/tasks/parser-escapes/agents`, { id: 'agent-0', kind: 'agent', displayName: 'Agent 0' });
+    const board = await api(base, undefined, null); expect(board.status).toBe(200);
+    const text = await board.text(); expect(JSON.parse(text).agents).toHaveLength(1);
+    for (const secret of [joined.agentKey, joined.fork.token, joined.upstream.readToken, op]) expect(text).not.toContain(secret);
+    expect((await api(`${base}/tasks/parser-escapes`, undefined, null)).status).toBe(200);
+    expect((await api(base, undefined, 'stale-cookie-or-token')).status).toBe(200);
+    expect((await api(`${base}/tasks/parser-escapes/turns`, { body: 'anonymous' }, null)).status).toBe(403);
+    expect((await api(`${base}/humans`, { id: 'guest', displayName: 'Guest' }, null)).status).toBe(403);
+    expect((await api(`${base}/credentials`, undefined, null)).status).toBe(403);
+    expect((await SELF.fetch(`https://heddle.test${base}/ws`, { headers: { upgrade: 'websocket' } })).status).toBe(403);
+    const { base: other } = await setup(); expect((await api(other, undefined, null)).status).toBe(403);
+  });
   it('HTTP JSON and login bodies are bounded before parsing', async () => {
     const response = await api('/api/projects', { id: 'bounded', seed: { template: 'demo' }, extra: 'x'.repeat(65536) }); expect(response.status).toBe(413);
     const login = await SELF.fetch('https://heddle.test/login', { method: 'POST', body: 'token=' + 'x'.repeat(4096) }); expect(login.status).toBe(413);

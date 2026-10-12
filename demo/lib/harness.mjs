@@ -90,11 +90,31 @@ async function views(opts) {
   return Promise.all(tasks.map(t => request(`${opts.api}/tasks/${t.slug}`, process.env.OPERATOR_TOKEN)));
 }
 function quote(value) { return "'" + value.replaceAll("'", "'\\''") + "'"; }
+// DEMO_LIVE_PROVIDERS / DEMO_LIVE_MODELS ("alice=codex,bob=claude") override the
+// shared DEMO_LIVE_PROVIDER / DEMO_LIVE_MODEL per agent, so lanes can mix vendors.
+export function liveAgents(env = process.env) {
+  const pairs = (value, name) => {
+    const map = new Map();
+    for (const item of (value ?? '').split(',').map(s => s.trim()).filter(Boolean)) {
+      const [agent, setting, extra] = item.split('=');
+      if (!['alice', 'bob', 'carol'].includes(agent) || !setting || extra !== undefined || map.has(agent)) throw new Error(`${name} must be agent=value pairs for alice, bob or carol`);
+      map.set(agent, setting);
+    }
+    return map;
+  };
+  const providers = pairs(env.DEMO_LIVE_PROVIDERS, 'DEMO_LIVE_PROVIDERS'), models = pairs(env.DEMO_LIVE_MODELS, 'DEMO_LIVE_MODELS');
+  return Object.fromEntries(['alice', 'bob', 'carol'].map(agent => {
+    const provider = providers.get(agent) ?? env.DEMO_LIVE_PROVIDER ?? 'codex';
+    if (!['codex', 'claude'].includes(provider)) throw new Error('Live providers must be codex or claude');
+    return [agent, { provider, model: models.get(agent) ?? env.DEMO_LIVE_MODEL }];
+  }));
+}
 async function launchLive(opts, state) {
-  const provider = process.env.DEMO_LIVE_PROVIDER ?? 'codex';
-  if (!['codex', 'claude'].includes(provider)) throw new Error('DEMO_LIVE_PROVIDER must be codex or claude');
-  await command(provider, ['--version']);
-  const executable = await command('sh', ['-c', `command -v ${provider}`]);
+  const agents = liveAgents(), executables = {};
+  for (const provider of new Set(Object.values(agents).map(a => a.provider))) {
+    await command(provider, ['--version']);
+    executables[provider] = await command('sh', ['-c', `command -v ${provider}`]);
+  }
   const session = `heddle-${opts.project}-${state.generation}`;
   await command('tmux', ['new-session', '-d', '-s', session, '-x', '180', '-y', '40', '-c', state.clones.alice]);
   await command('tmux', ['set-option', '-t', session, 'remain-on-exit', 'on']);
@@ -104,7 +124,8 @@ async function launchLive(opts, state) {
     const launcher = join(opts.directory, `${state.generation}-${agent}.sh`);
     // The operator bearer is cleared. Git auth is only in this clone's scoped headers.
     // Raw agent output stays off the recording terminal. No token-bearing config dumps.
-    const modelFlag = process.env.DEMO_LIVE_MODEL ? ` --model ${quote(process.env.DEMO_LIVE_MODEL)}` : '';
+    const { provider, model } = agents[agent], executable = executables[provider];
+    const modelFlag = model ? ` --model ${quote(model)}` : '';
     const invocation = provider === 'codex' ? `${quote(executable)} exec --sandbox workspace-write --ephemeral -c sandbox_workspace_write.network_access=true${modelFlag} - < ${quote(brief)}` :
       `${quote(executable)} --print --permission-mode acceptEdits --allowedTools ${quote('Read,Edit,Write,Bash(git:*),Bash(npm:*)')}${modelFlag} < ${quote(brief)}`;
     await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\ncd ${quote(state.clones[agent])}\nexport npm_config_cache=${quote(join(state.clones[agent], '.git/npm-cache'))}\nunset OPERATOR_TOKEN\nprintf '%s\\n' ${quote(`${agent}: coding agent started`)}\n${invocation} >/dev/null 2>&1\nresult=$?\nprintf '%s' "$result" > ${quote(marker)}\nprintf '%s\\n' ${quote(`${agent}: coding agent finished; inspect the board`)}\nexit "$result"\n`, { mode: 0o700 });
@@ -113,7 +134,7 @@ async function launchLive(opts, state) {
     await command('tmux', ['select-layout', '-t', session, 'even-horizontal']);
   }
   console.log(`Live agents launched concurrently. Record with: tmux attach -t ${session}`);
-  return { session, provider };
+  return { session, providers: Object.fromEntries(Object.entries(agents).map(([agent, a]) => [agent, a.provider])) };
 }
 async function run(opts) {
   const start = Date.now();
@@ -122,8 +143,8 @@ async function run(opts) {
   for (const agent of ['alice', 'bob', 'carol']) {
     const joined = await joinProject(opts.projectUrl, {
       task: agent === 'carol' ? 'docs-readme' : 'parser-escapes', as: agent,
-      directory: join(runDir, agent), provider: opts.mode === 'scripted' ? 'scripted-git' : process.env.DEMO_LIVE_PROVIDER ?? 'codex',
-      model: opts.mode === 'scripted' ? 'prepared-v1' : process.env.DEMO_LIVE_MODEL ?? 'cli-default',
+      directory: join(runDir, agent), provider: opts.mode === 'scripted' ? 'scripted-git' : liveAgents()[agent].provider,
+      model: opts.mode === 'scripted' ? 'prepared-v1' : liveAgents()[agent].model ?? 'cli-default',
     });
     state.clones[agent] = joined.cwd;
   }

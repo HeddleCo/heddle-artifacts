@@ -37,8 +37,9 @@ function useFeed(p: string, onEvent: (event: FeedEvent) => void, onConnect: (rec
         try { const event = JSON.parse(e.data) as FeedEvent; if (event && typeof event.type === 'string') callbacks.current.onEvent(event); }
         catch { setStatus('Invalid live event'); callbacks.current.onDisconnect(); current.close(); }
       };
-      current.onclose = () => { if (active()) { setStatus('Reconnecting'); callbacks.current.onDisconnect(); timer = setTimeout(connect, Math.min(1000 * 2 ** attempt++, 15000)); } };
-      current.onerror = () => { if (active()) { setStatus('Live feed unavailable'); callbacks.current.onDisconnect(); } };
+      // A feed that never opened is a signed-out or archived view, not a lost connection.
+      current.onclose = () => { if (active()) { setStatus(opened ? 'Reconnecting' : 'Read-only'); callbacks.current.onDisconnect(); timer = setTimeout(connect, Math.min(1000 * 2 ** attempt++, 15000)); } };
+      current.onerror = () => { if (active()) { setStatus(opened ? 'Live feed unavailable' : 'Read-only'); callbacks.current.onDisconnect(); } };
     };
     connect();
     return () => { stopped = true; clearTimeout(timer); socket?.close(); };
