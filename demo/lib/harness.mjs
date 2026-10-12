@@ -25,7 +25,7 @@ export function options(args, action = 'run') {
   opts.api = projectURL(opts.projectUrl).api;
   opts.directory = resolve(opts.directory);
   // Live coding agents take minutes; scripted pushes take seconds.
-  opts.timeout = Number(opts.timeout ?? (opts.mode === 'live' || action === 'followup' ? 2700 : 180)); opts.delay = Number(opts.delay);
+  opts.timeout = Number(opts.timeout ?? (opts.mode === 'live' || ['followup', 'experiment'].includes(action) ? 2700 : 180)); opts.delay = Number(opts.delay);
   if (!['scripted', 'live'].includes(opts.mode) || !Number.isFinite(opts.timeout) || opts.timeout < 1 ||
       !Number.isFinite(opts.delay) || opts.delay < 0) throw new Error('Invalid mode, timeout or delay');
   return opts;
@@ -306,6 +306,64 @@ async function followup(opts) {
   for (const c of view.candidates) console.log(`  ${c.agent}: ${c.tests.status} ${c.tests.passed}/${c.tests.passed + c.tests.failed} (${c.tests.provenance ?? 'reviewed fixture'})`);
   console.log(`Follow-up ready: ${new URL(opts.url).origin}/p/${opts.project}/t/${FOLLOW_UP.slug}`);
 }
+/** Regexes a diff adds to src/table.ts: literals and RegExp constructors on added, non-comment lines. */
+export function regexAdditions(diff) {
+  const section = diff.split(/^diff --git /m).find(s => s.startsWith('a/src/table.ts ')) ?? '';
+  const literal = /(?:^|[=(,:[!&|?{};]|\breturn)\s*\/(?![/*])((?:\\.|\[(?:\\.|[^\]])*\]|[^/\\\n])+)\/[dgimsuyv]*/;
+  return section.split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1))
+    .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l) && (literal.test(l) || /\bRegExp\s*\(/.test(l))).map(l => l.trim());
+}
+/**
+ * The briefing experiment: the same follow-up task for several agents on one model with the same
+ * instructions. Half are briefed with earlier decisions; half open control lanes with no briefing.
+ * Reports, per candidate, the regexes it added to src/table.ts.
+ */
+async function experiment(opts) {
+  const state = await saved(opts);
+  if (!state) throw new Error('No demo state in --dir; run the storyline first');
+  const runner = process.env.DEMO_RUNNER_URL, tokenFile = process.env.DEMO_RUNNER_TOKEN_FILE, token = process.env.OPERATOR_TOKEN;
+  if (!runner || !tokenFile) throw new Error('experiment needs DEMO_RUNNER_URL and DEMO_RUNNER_TOKEN_FILE');
+  const model = process.env.DEMO_FOLLOWUP_MODEL ?? '@cf/moonshotai/kimi-k2.7-code', n = Number(process.env.DEMO_EXPERIMENT_PAIRS ?? 3);
+  const decided = await request(`${opts.api}/tasks/parser-escapes`, token);
+  if (!decided.decision?.mainSha) throw new Error('Decide parser-escapes before the experiment');
+  try { await request(`${opts.api}/tasks`, token, FOLLOW_UP); } catch (error) { if (error.status !== 409) throw error; }
+  const generation = Date.now(), session = `heddle-${opts.project}-experiment-${generation}`, lanes = [];
+  for (let i = 1; i <= n; i++) for (const arm of ['briefed', 'control']) lanes.push({ id: `${arm}-${i}`, arm });
+  for (const lane of lanes) {
+    const joined = await enrollment(opts.projectUrl, { task: FOLLOW_UP.slug, as: lane.id, provider: 'cloudflare-sandbox/opencode', model, briefing: lane.arm === 'briefed' ? undefined : false });
+    if ((lane.arm === 'briefed') !== Boolean(joined.briefing)) throw new Error(`${lane.id}: briefing does not match its arm`);
+    lane.grant = join(opts.directory, `${generation}-${lane.id}.grant.json`); lane.marker = join(opts.directory, `${generation}-${lane.id}.exit`);
+    await writeFile(lane.grant, JSON.stringify({ forkRemote: joined.fork.remote, forkToken: joined.fork.token, upstreamRemote: joined.upstream.remote,
+      upstreamToken: joined.upstream.readToken, discussion: { url: `${joined.api}/tasks/${FOLLOW_UP.slug}/turns`, token: joined.agentKey },
+      ...(joined.briefing ? { briefing: joined.briefing } : {}) }), { mode: 0o600 });
+    console.log(`${lane.id}: ${joined.briefing ? `briefed with ${joined.briefing.annotations.length} annotation(s) (${joined.briefing.hash.slice(0, 12)})` : 'no briefing (control)'}`);
+  }
+  for (const [index, lane] of lanes.entries()) {
+    const launcher = join(opts.directory, `${generation}-${lane.id}.sh`);
+    await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexport DEMO_RUNNER_URL=${quote(runner)} DEMO_RUNNER_TOKEN_FILE=${quote(tokenFile)} DEMO_LANE_MODEL=${quote(model)}\nexec node ${quote(join(demoRoot, 'lib', 'sandbox-lane.mjs'))} opencode ${quote(`${opts.project}-${lane.id}-${generation}`)} ${quote(lane.grant)} ${quote(join(demoRoot, 'briefs', 'dave.md'))} ${quote(lane.marker)}\n`, { mode: 0o700 });
+    if (index === 0) await command('tmux', ['new-session', '-d', '-s', session, '-x', '200', '-y', '50', 'bash', launcher]);
+    else await command('tmux', ['split-window', '-t', session, 'bash', launcher]);
+    await command('tmux', ['select-layout', '-t', session, 'tiled']);
+  }
+  await command('tmux', ['set-option', '-t', session, 'remain-on-exit', 'on']);
+  console.log(`${lanes.length} agents launched, same model (${model}) and same instructions. Watch with: tmux attach -t ${session}`);
+  const view = await waitFor(opts, async () => {
+    for (const lane of lanes) { try { await readFile(lane.marker, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return undefined; throw error; } }
+    const task = await request(`${opts.api}/tasks/${FOLLOW_UP.slug}`, token);
+    return task.candidates.every(c => c.tests && c.tests.status !== 'pending') ? task : undefined;
+  }, 'experiment candidates with tests');
+  const rows = [];
+  for (const lane of lanes) {
+    const candidate = view.candidates.find(c => c.agent === lane.id), exit = (await readFile(lane.marker, 'utf8')).trim();
+    const diff = candidate ? (await request(`${opts.api}/tasks/${FOLLOW_UP.slug}/candidates/${lane.id}/diff`, token)).diff : '';
+    const regexes = candidate ? regexAdditions(diff) : [];
+    rows.push({ agent: lane.id, arm: lane.arm, exit, candidate: Boolean(candidate), tests: candidate?.tests ? `${candidate.tests.status} ${candidate.tests.passed}/${candidate.tests.passed + candidate.tests.failed}` : 'none', regexAdded: regexes.length > 0, regexes });
+  }
+  await writeFile(join(opts.directory, `experiment-${generation}.json`), JSON.stringify({ model, task: FOLLOW_UP, rows }, null, 2) + '\n');
+  console.log('\nagent       arm      tests        regex added to src/table.ts');
+  for (const r of rows) console.log(`${r.agent.padEnd(11)} ${r.arm.padEnd(8)} ${r.tests.padEnd(12)} ${!r.candidate ? '(no candidate)' : r.regexAdded ? 'yes: ' + r.regexes.join(' | ') : 'no'}`);
+  for (const arm of ['briefed', 'control']) { const a = rows.filter(r => r.arm === arm && r.candidate); console.log(`${arm}: ${a.filter(r => r.regexAdded).length} of ${a.length} candidates added a regex`); }
+}
 /** After a human decides in the UI: verify the published result against the live candidates. */
 async function verify(opts) {
   const state = await saved(opts);
@@ -321,7 +379,7 @@ async function verify(opts) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [action, ...args] = process.argv.slice(2);
   Promise.resolve().then(() => { const opts = options(args, action);
-    if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); if (action === 'verify') return verify(opts); if (action === 'followup') return followup(opts);
+    if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); if (action === 'verify') return verify(opts); if (action === 'followup') return followup(opts); if (action === 'experiment') return experiment(opts);
     throw new Error('Expected run, verify, followup or reset');
   }).catch(error => { console.error(`demo: ${error.message}`); process.exitCode = 1; });
 }

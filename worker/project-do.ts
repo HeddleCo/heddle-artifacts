@@ -41,7 +41,7 @@ export class ProjectDO extends DurableObject<Env> {
     if (command === 'agent.enroll') this.store.put('agents', input.agent.id, { ...input.agent, publicKey: result.publicKey });
     if (command === 'lane.open') {
       const lane = this.store.get<Lane>('lanes', `${input.task}/${input.agent}`)!;
-      this.store.put('lanes', `${input.task}/${input.agent}`, { ...lane, laneThread: result.laneThread, status: 'active', ...(result.briefing ? { briefing: result.briefing } : {}) });
+      this.store.put('lanes', `${input.task}/${input.agent}`, { ...lane, laneThread: result.laneThread, status: 'active', ...(result.briefing ? { briefing: result.briefing } : {}), ...(input.brief === false ? { unbriefed: true } : {}) });
     }
     if (command === 'ingest') {
       if (!Array.isArray(result.results) || result.results.length !== input.items.length) throw new Error('incomplete_ingest_result');
@@ -530,7 +530,8 @@ export class ProjectDO extends DurableObject<Env> {
             this.store.storage.sql.exec('INSERT INTO lanes (id,forkRepo,data) VALUES (?,?,?)', laneId, name, JSON.stringify(lane));
           }
           await this.env.PROJECT.getByName('__routing__').registerFork(lane.forkRepo, projectId);
-          await this.engine.mutate('lane.open', { opId: `lane:${laneId}`, task: taskId, agent: id });
+          // briefing:false opens a control lane: no pre-turn briefing, recorded as such (for with/without comparisons).
+          await this.engine.mutate('lane.open', { opId: `lane:${laneId}`, task: taskId, agent: id, ...(body.briefing === false ? { brief: false } : {}) });
           const subscription = await subscribeFork(this.env, lane.forkRepo);
           this.store.storage.sql.exec('UPDATE lanes SET subscription=? WHERE id=?', subscription, laneId);
           const agentKey = randomKey(), agentKeyExpiresAt = this.credentials.lifetime()!.expiresAt;

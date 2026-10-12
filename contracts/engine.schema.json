@@ -815,6 +815,9 @@
         },
         "agent": {
           "type": "string"
+        },
+        "brief": {
+          "type": "boolean"
         }
       },
       "required": [

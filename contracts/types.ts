@@ -3,7 +3,7 @@ export type AgentKind = "agent" | "human" | "reviewer";
 export interface Agent { id: string; kind: AgentKind; displayName: string; publicKey: string /*hex ed25519*/;
   provider?: string; model?: string; }
 export interface Lane { project: string; task: string; agent: string; forkRepo: string; forkRemote: string;
-  laneThread: string /* task/<t>/<a> */; lastSeenSha?: string; status: "active"|"released"|"abandoned"; briefing?: Briefing; }
+  laneThread: string /* task/<t>/<a> */; lastSeenSha?: string; status: "active"|"released"|"abandoned"; briefing?: Briefing; /** Opened without a briefing, as a control. */ unbriefed?: boolean; }
 /** Heddle's signed pre-turn briefing for a lane: earlier decisions' annotations its agent started from. */
 export interface Briefing { hash: string /* Heddle briefing_hash */; omitted: number;
   annotations: Array<{ target: string; scope: string; annotationId: string; revisionId: string; kind: string; content: string; attribution: string }>; }

@@ -11,7 +11,7 @@ export function executeFixture(state, command, input) {
   else if (command === 'agent.enroll') { result = { publicKey: (sha(input.agent.id) + sha('key')).slice(0, 64) }; state.agents[input.agent.id] = { ...input.agent, ...result }; }
   else if (command === 'lane.open') result = { laneThread: `task/${input.task}/${input.agent}`, leaseId: sha(input.agent),
     // Mirror the engine: agent lanes are briefed with earlier decisions' rationale.
-    ...(state.agents?.[input.agent]?.kind === 'reviewer' ? {} : { briefing: { hash: sha(`brief:${input.task}:${input.agent}`).padEnd(64, '0').slice(0, 64), omitted: 0,
+    ...(state.agents?.[input.agent]?.kind === 'reviewer' || input.brief === false ? {} : { briefing: { hash: sha(`brief:${input.task}:${input.agent}`).padEnd(64, '0').slice(0, 64), omitted: 0,
       annotations: Object.values(state.decisions ?? {}).map((d, i) => ({ target: 'src/table.ts', scope: 'file', annotationId: `ann-${i}`, revisionId: `rev-${i}`, kind: 'rationale', content: d.rationale, attribution: d.decider })) } }) };
   else if (command === 'ingest') {
     const results = [];

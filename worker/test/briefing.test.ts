@@ -18,3 +18,14 @@ it('agent enrollment returns the lane briefing and the board shows it; reviewers
   expect(lanes.find((l: any) => l.agent === 'dave').briefing.hash).toBe(agent.briefing.hash);
   expect(lanes.find((l: any) => l.agent === 'reviewer').briefing).toBeUndefined();
 });
+it('briefing:false opens a control lane with no briefing, recorded on the lane', async () => {
+  const p = `ctl-${crypto.randomUUID().slice(0, 8)}`, base = `/api/projects/${p}`;
+  await ok('/api/projects', { id: p, seed: { template: 'demo' } });
+  await ok(`${base}/tasks`, { slug: 'escape', intent: 'escape test' });
+  const briefed = await ok(`${base}/tasks/escape/agents`, { id: 'briefed-1', kind: 'agent', displayName: 'Briefed 1' });
+  const control = await ok(`${base}/tasks/escape/agents`, { id: 'control-1', kind: 'agent', displayName: 'Control 1', briefing: false });
+  expect(briefed.briefing.hash).toMatch(/^[0-9a-f]{64}$/); expect(control.briefing).toBeUndefined();
+  const lanes = (await ok(base)).tasks[0].lanes;
+  expect(lanes.find((l: any) => l.agent === 'control-1')).toMatchObject({ unbriefed: true }); expect(lanes.find((l: any) => l.agent === 'control-1').briefing).toBeUndefined();
+  expect(lanes.find((l: any) => l.agent === 'briefed-1').unbriefed).toBeUndefined();
+});
