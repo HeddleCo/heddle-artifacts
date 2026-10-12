@@ -12,6 +12,7 @@ import { exportProjection } from './projection.mjs';
 import { attestOperation, attestTests } from './attestations.mjs';
 import { isolatedTestResult } from './isolated-tests.mjs';
 import { freezePublicationInput } from './publication-input.mjs';
+import { refreshCombined, combinedRejection, containsMain, integrateMain, descendsFrom, nativeTrees } from './combined.mjs';
 
 /** @typedef {import('../../contracts/types.ts').Candidate} Candidate */
 /** @typedef {import('../../contracts/types.ts').Turn} Turn */
@@ -172,7 +173,7 @@ export async function ingest(state, request) {
     /** @type {Candidate} */
     const candidate = { task: item.task, agent: item.agent, state: shown.state_id_full, sourceSha: item.sha,
       treeSha: await git(exportRoot, ['rev-parse', `${item.sha}^{tree}`]), parentSha: state.tasks[item.task].baseSha,
-      subject, diffstat: await diffstat(state.tasks[item.task].baseSha, item.sha),
+      subject, diffstat: await diffstat(await diffBase(state, state.tasks[item.task], item.sha), item.sha),
       tests: request.runTests ? await testCandidate(lane.path) : { status: 'skipped', passed: 0, failed: 0, summary: 'Tests not requested', durationMs: 0 },
       conflicts: [], signedBy, capturedAt: shown.created_at };
     if (request.runTests && request.isolateUnreviewed && candidate.tests.status === 'skipped') {
@@ -199,11 +200,14 @@ export async function ingest(state, request) {
     conflicts[id] = list.flatMap(c => c.conflicts);
   }
   const refs = [...new Set(pending.map(({ item }) => `refs/heads/candidates/${item.task}/${item.agent}`))];
+  // A capture on a task whose base is behind main is checked combined with main before it can land.
+  if (pending.length) for (const id of new Set(pending.map(({ item }) => item.task))) refs.push(...await refreshCombined(state, id, { isolate: !!(request.runTests && request.isolateUnreviewed) }));
   if (refs.length) await git(exportRoot, ['push', state.canonical, ...refs.map(ref => `${ref}:${ref}`)], { env: gitAuth(state.canonical, true) });
   return { results, conflicts };
 }
 
 export async function recordTests(state, request) {
+  if (request.combined !== undefined) return recordCombinedTests(state, request);
   const lane = state.lanes[`${request.task}/${request.agent}`], candidate = lane?.candidate;
   // A late result is consumed but never applied to a newer Capture or a decision.
   if (!candidate || candidate.sourceSha !== request.sourceSha || state.decisions[request.task] || lane.status !== 'active') return { ignored: true };
@@ -219,11 +223,43 @@ export async function recordTests(state, request) {
   return { ignored: false, candidate };
 }
 
+/** The isolated sandbox's run of a candidate merged with main: a separate signed observation of the combined commit. */
+async function recordCombinedTests(state, request) {
+  const lane = state.lanes[`${request.task}/${request.agent}`], candidate = lane?.candidate, combined = candidate?.combined;
+  if (!request.combined || typeof request.combined.sha !== 'string' || typeof request.combined.mainSha !== 'string') throw new Rejection('invalid_combined', 'Combined test results name the combined commit and main');
+  // A late result for an older main, an older push or a decided task is consumed, never applied.
+  if (!combined || candidate.sourceSha !== request.sourceSha || combined.sha !== request.combined.sha || combined.mainSha !== request.combined.mainSha ||
+      combined.mainSha !== state.mainSha || state.decisions[request.task] || lane.status !== 'active' || combined.tests?.status !== 'pending') return { ignored: true };
+  const run = request.run;
+  if (run?.sourceSha !== combined.sha || run?.treeSha !== combined.treeSha) throw new Rejection('test_binding_mismatch', 'Test observation must match the combined SHA and tree');
+  const tests = isolatedTestResult(run);
+  const observation = await attestTests({ project: state.project, task: request.task, agent: request.agent, check: 'combined-with-main',
+    sourceSha: combined.sha, treeSha: combined.treeSha, state: combined.state, candidateSha: candidate.sourceSha, candidateState: candidate.state,
+    mainSha: combined.mainSha, tests, observedAt: new Date().toISOString() });
+  combined.tests = { ...tests, observation };
+  combined.status = tests.status;
+  lane.seen[candidate.sourceSha] = candidate;
+  return { ignored: false, candidate };
+}
+
+/** Re-check a task's candidates against the current main (after another task lands). Idempotent per main. */
+export async function combine(state, request) {
+  taskFor(state, request.task);
+  const refs = await refreshCombined(state, request.task, { isolate: request.isolate === true });
+  if (refs.length) await git(exportRoot, ['push', state.canonical, ...refs.map(ref => `${ref}:${ref}`)], { env: gitAuth(state.canonical, true) });
+  return { task: request.task, candidates: candidates(state, request.task).candidates };
+}
+
+/** Diff a candidate against what it changes: main when it has merged main, otherwise the task base. */
+async function diffBase(state, task, sha) {
+  return task.baseSha !== state.mainSha && await containsMain(state, sha) ? state.mainSha : task.baseSha;
+}
+
 export async function diff(state, request) {
   const task = taskFor(state, request.task), lane = state.lanes[`${request.task}/${request.agent}`];
   if (!lane?.candidate) throw new Rejection('unknown_candidate', 'Candidate is unavailable');
   const maxBytes = Math.min(512 * 1024, Math.max(0, request.maxBytes === undefined ? 512 * 1024 : Number(request.maxBytes)));
-  const output = (await run('git', ['--git-dir', exportRoot, 'diff', '--no-ext-diff', task.baseSha, lane.candidate.sourceSha, '--'])).stdout;
+  const output = (await run('git', ['--git-dir', exportRoot, 'diff', '--no-ext-diff', await diffBase(state, task, lane.candidate.sourceSha), lane.candidate.sourceSha, '--'])).stdout;
   return { diff: output.subarray(0, maxBytes).toString() };
 }
 
@@ -262,24 +298,44 @@ export async function decide(state, request) {
   const lane = state.lanes[`${request.task}/${request.pick}`];
   if (!lane?.candidate) throw new Rejection('unknown_candidate', 'Chosen candidate is unavailable');
   if (typeof request.rationale !== 'string' || !request.rationale.trim()) throw new Rejection('invalid_rationale', 'Decision rationale is required');
-  if (task.baseSha !== state.mainSha) {
-    const containsMain = await run('git', ['--git-dir', exportRoot, 'merge-base', '--is-ancestor', state.mainSha, lane.candidate.sourceSha], { allowFailure: true });
-    if (containsMain.code !== 0) throw new Rejection('base_changed', 'Main advanced; merge upstream main into the chosen fork and push again');
-  }
+  // A pick from an older base lands as Heddle's merge with main only once that merge was tested and
+  // passed; until then the combined check says why (running, conflicting, or failing). A pick that
+  // already contains main is its own combined result.
+  const stale = task.baseSha !== state.mainSha, mergedWithMain = stale && !(await containsMain(state, lane.candidate.sourceSha));
+  if (mergedWithMain) { const refusal = combinedRejection(lane.candidate, state); if (refusal) throw refusal; }
+  const combined = mergedWithMain ? lane.candidate.combined : undefined;
+  const expectedTree = combined ? combined.treeSha : lane.candidate.treeSha;
   const alternatives = current.candidates.map(c => c.agent).filter(id => id !== request.pick);
   // G2 fallback b2: absorb only the selected native lane; other alternatives remain addressable.
-  const message = `${request.rationale}\n\nHeddle-Task: ${request.task}\nHeddle-Chosen: ${request.pick}\n${alternatives.map(id => `Heddle-Alternative: ${id}`).join('\n')}\nHeddle-Decided-by: ${request.decider}`;
-  await heddle(['thread', 'absorb', lane.thread, '--into', task.thread, '-m', message], task.path, decider);
+  const message = `${request.rationale}\n\nHeddle-Task: ${request.task}\nHeddle-Chosen: ${request.pick}\n${alternatives.map(id => `Heddle-Alternative: ${id}`).join('\n')}\n${combined ? `Heddle-Combined: ${combined.sha}\n` : ''}Heddle-Decided-by: ${request.decider}`;
+  if (stale) {
+    // Heddle integrates main natively. Absorb first records a preparation State on the task thread,
+    // which can leave a just-refreshed lane stale ("merge did not run"); refresh onto it and absorb again.
+    let merged = false;
+    for (let attempt = 0; attempt < 3 && !merged; attempt++) {
+      await integrateMain(task, lane, decider);
+      await heddle(['thread', 'absorb', lane.thread, '--into', task.thread, '-m', message], task.path, decider, { raw: true, allowFailure: true });
+      merged = await descendsFrom((await heddle(['show', task.thread], task.path, decider)).state_id_full, lane.candidate.state);
+    }
+    if (!merged) throw new Rejection('combined_conflict', 'Heddle could not absorb the chosen work on top of main');
+  } else await heddle(['thread', 'absorb', lane.thread, '--into', task.thread, '-m', message], task.path, decider);
   const decisionTurn = await discuss(state, { task: request.task, author: request.decider, body: request.rationale });
   const resolutionRecord = await heddle(['discuss', 'resolve', decisionTurn.heddleDiscussion, '--mode', 'into-annotation', '--kind', 'rationale', '--body', request.rationale], task.path, decider);
   // b2 can fast-forward: the selected State keeps its original agent signature.
   // The human's custodial attestation signs the exact native resolution envelope.
   const resolution = await heddle(['show', task.thread], task.path, decider);
-  await verifyCapture(join(repoRoot, '.heddle'), resolution, state.agents[request.pick].publicKey);
+  if (resolution.state_id_full === lane.candidate.state) await verifyCapture(join(repoRoot, '.heddle'), resolution, state.agents[request.pick].publicKey);
+  else {
+    // Integrating main makes a merge State on top of the agent's signed Capture. The Capture keeps the
+    // agent's signature; the merge must descend from it and hold exactly the tree that was tested.
+    await verifyCapture(join(repoRoot, '.heddle'), await heddle(['show', lane.candidate.state], task.path, decider), state.agents[request.pick].publicKey);
+    if (!stale || !(await descendsFrom(resolution.state_id_full, lane.candidate.state))) throw new Rejection('identity_mismatch', 'Resolution does not descend from the chosen signed Capture');
+    if ((await nativeTrees([task.thread]))[task.thread] !== expectedTree) throw new Rejection('tree_mismatch', 'Heddle merged result differs from the tested combined tree');
+  }
   await heddle(['land', '--thread', task.thread, '-m', message], task.path, decider);
   const landed = await heddle(['show', 'main'], repoRoot, decider);
   const native = await exportProjection({ ...state, projection: undefined });
-  if (native.tree !== lane.candidate.treeSha) throw new Rejection('tree_mismatch', 'Heddle landed content differs from the selected work');
+  if (native.tree !== expectedTree) throw new Rejection('tree_mismatch', 'Heddle landed content differs from the selected work');
   const change = /Heddle-Change: (\S+)/.exec(native.message)?.[1];
   if (!change) throw new Error('Native projection omitted change trailer');
   // A b2 fast-forward retains the candidate Capture's creation time. The
@@ -291,7 +347,9 @@ export async function decide(state, request) {
   const mainSha = (await exportProjection(state)).sha;
   /** @type {Decision} */
   const decision = { task: request.task, decider: request.decider, pick: request.pick, rationale: request.rationale, alternatives,
-    resolutionState: resolution.state_id_full, landState: landed.state_id_full, mainSha, at: decisionTurn.at };
+    resolutionState: resolution.state_id_full, landState: landed.state_id_full, mainSha, at: decisionTurn.at,
+    // Landed as Heddle's merge of the pick with main: the exact commit and tree the sandbox tested.
+    ...(combined ? { combined: { sha: combined.sha, treeSha: combined.treeSha, mainSha: combined.mainSha, state: combined.state } } : {}) };
   await attestOperation(state, decider, resolutionRecord.operation_id, { decision });
   state.decisionAttestations ||= {};
   state.decisionAttestations[request.task] = resolutionRecord.operation_id;

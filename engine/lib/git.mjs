@@ -30,10 +30,16 @@ export async function materialize(sha, checkout) {
 }
 
 export async function conflictPaths(base, a, b) {
-  const result = await run('git', ['--git-dir', exportRoot, 'merge-tree', '--write-tree', '--name-only', '--merge-base', base, a, b], { allowFailure: true });
-  if (result.code === 0) return [];
-  if (result.code !== 1) throw new Error('Conflict preview failed');
-  return result.stdout.toString().split('\n\n')[0].split('\n').slice(1).filter(Boolean);
+  return (await mergeTree(a, b, base)).conflicts;
+}
+
+/** Merge two commits in the engine's object store without a worktree or ref change. */
+export async function mergeTree(a, b, base) {
+  const result = await run('git', ['--git-dir', exportRoot, 'merge-tree', '--write-tree', '--name-only', ...(base ? ['--merge-base', base] : []), a, b], { allowFailure: true });
+  if (result.code !== 0 && result.code !== 1) throw new Error('Merge preview failed');
+  const [head] = result.stdout.toString().split('\n\n'), [tree, ...paths] = head.split('\n');
+  if (!/^[0-9a-f]{40}$/.test(tree)) throw new Error('Merge preview returned no tree');
+  return { tree, conflicts: result.code === 0 ? [] : [...new Set(paths.filter(Boolean))] };
 }
 
 export async function note(sha, narrative, at) {

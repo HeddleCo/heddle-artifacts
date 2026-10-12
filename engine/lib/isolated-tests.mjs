@@ -14,6 +14,23 @@ export function parseTestCounts(output) {
   return { passed, failed };
 }
 
+export const FAILURE_NAMES = 20, FAILURE_NAME_CHARS = 200, EXCERPT_CHARS = 4000;
+/**
+ * Name the failing tests and keep the part of the runner output that explains them, so a
+ * reader (or the agent that must fix them) sees what broke. Parsed from runner stdout only.
+ */
+export function failureDetails(output) {
+  const text = String(output ?? '').replace(/\x1b\[[0-9;]*m/g, '').replace(/\r/g, '');
+  const vitest = [...text.matchAll(/^\s*FAIL\s+(.+?)\s*$/gm)].map(m => m[1]);
+  const tap = [...text.matchAll(/^\s*not ok \d+ - (.+?)\s*$/gm)].map(m => m[1].replace(/\s+#.*$/, ''));
+  const spec = [...text.matchAll(/^\s*✖ (.+?)(?: \([\d.]+m?s\))?\s*$/gm)].map(m => m[1]).filter(name => name !== 'failing tests:');
+  const names = [...new Set(vitest.length ? vitest : tap.length ? tap : spec)].slice(0, FAILURE_NAMES).map(name => name.slice(0, FAILURE_NAME_CHARS));
+  const marks = [/^.*Failed Tests \d+.*$/m, /^\s*FAIL\s/m, /^.*✖ failing tests:.*$/m, /^\s*not ok \d+/m].map(re => re.exec(text)?.index).filter(i => i !== undefined);
+  const start = marks.length ? Math.min(...marks) : Math.max(0, text.length - EXCERPT_CHARS);
+  const excerpt = text.slice(start, start + EXCERPT_CHARS).trim();
+  return { failures: names, excerpt };
+}
+
 export function isolatedTestResult(run) {
   const provenance = run?.fixture ? 'isolated sandbox (local fixture)' : 'isolated sandbox';
   const durationMs = Number.isFinite(run?.durationMs) ? Math.min(TEST_BUDGET_MS, Math.max(0, Math.round(run.durationMs))) : 0;
@@ -25,6 +42,8 @@ export function isolatedTestResult(run) {
   if (!Number.isInteger(run.testExitCode) || run.testExitCode < 0) return error('Isolated sandbox failed');
   const counts = parseTestCounts(run.output);
   if (!counts || counts.passed + counts.failed === 0) return error('Isolated sandbox test counts unavailable');
-  return { status: run.testExitCode === 0 && counts.failed === 0 ? 'pass' : 'fail', ...counts,
-    summary: `${run.fixture ? 'Isolated sandbox (local fixture)' : 'Isolated sandbox'}: ${counts.passed} passed, ${counts.failed} failed`, durationMs, provenance, sourceSha: run.sourceSha };
+  const status = run.testExitCode === 0 && counts.failed === 0 ? 'pass' : 'fail';
+  return { status, ...counts,
+    summary: `${run.fixture ? 'Isolated sandbox (local fixture)' : 'Isolated sandbox'}: ${counts.passed} passed, ${counts.failed} failed`, durationMs, provenance, sourceSha: run.sourceSha,
+    ...(status === 'fail' ? failureDetails(run.output) : {}) };
 }
