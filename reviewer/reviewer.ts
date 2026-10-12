@@ -3,7 +3,8 @@ import type { Candidate, Review, Turn } from "../contracts/types";
 
 // Verified against Cloudflare's code-model catalog on 2026-10-10. Recheck Sunday.
 export const REVIEW_TIMEOUT_MS = 30000;
-export const REVIEW_MODEL = "@cf/qwen/qwen2.5-coder-32b-instruct";
+// GLM-5.2 on Workers AI: ~12 s for a two-candidate review and catches parity bugs Qwen 2.5 Coder missed.
+export const REVIEW_MODEL = "@cf/zai-org/glm-5.2";
 export interface ReviewInput {
   intent: string; base: string;
   candidates: Array<{ agent: string; diff: string; tests?: Candidate["tests"] }>;
@@ -196,19 +197,31 @@ class ReviewDecodeError extends Error {
   constructor(reason: DecodeReason) { super(reason); this.reason = reason; }
 }
 class ReviewDeadlineError extends Error {}
-function decode(output: unknown): unknown {
-  if (!object(output) || !Object.hasOwn(output, "response")) throw new ReviewDecodeError("invalid_envelope");
-  if (typeof output.response === "string") {
-    if (output.response.length > 64000) throw new ReviewDecodeError("response_too_large");
-    try { return JSON.parse(output.response); } catch { throw new ReviewDecodeError("malformed_json"); }
+/** Workers AI returns { response } for older models and an OpenAI chat completion for newer ones. */
+function payload(output: unknown): { present: boolean; value?: unknown } {
+  if (!object(output)) return { present: false };
+  if (Object.hasOwn(output, "response")) return { present: true, value: output.response };
+  const choices = (output as { choices?: unknown }).choices;
+  if (Array.isArray(choices) && object(choices[0]) && object((choices[0] as { message?: unknown }).message) &&
+      Object.hasOwn((choices[0] as { message: object }).message, "content")) {
+    return { present: true, value: ((choices[0] as { message: { content: unknown } }).message).content };
   }
-  return output.response;
+  return { present: false };
+}
+function decode(output: unknown): unknown {
+  const { present, value } = payload(output);
+  if (!present) throw new ReviewDecodeError("invalid_envelope");
+  if (typeof value === "string") {
+    if (value.length > 64000) throw new ReviewDecodeError("response_too_large");
+    try { return JSON.parse(value); } catch { throw new ReviewDecodeError("malformed_json"); }
+  }
+  return value;
 }
 
 function responseShape(output: unknown): Pick<ReviewDiagnostic, "responseType" | "responseLength"> {
   try {
-    if (!object(output) || !Object.hasOwn(output, "response")) return { responseType: "missing" };
-    const response = output.response;
+    const { present, value: response } = payload(output);
+    if (!present) return { responseType: "missing" };
     if (response === null) return { responseType: "null" };
     if (Array.isArray(response)) return { responseType: "array" };
     if (typeof response === "string") return { responseType: "string", responseLength: response.length };
@@ -277,7 +290,8 @@ export async function review(input: ReviewInput, env: ReviewerEnv = {}, options:
           ...(attempt ? [{ role: "user" as const, content: "The previous response failed validation. Return strict schema JSON with the supplied agent ids." }] : []),
         ],
         response_format: { type: "json_schema", json_schema: schema },
-        temperature: 0, max_tokens: 2048, stream: false,
+        // Reasoning models spend output tokens before the JSON; 2048 truncated GLM-5.2 replies.
+        temperature: 0, max_tokens: 4096, stream: false,
       }), timeoutMs);
     } catch (error) {
       report(error instanceof ReviewDeadlineError ? "deadline" : "provider_error", attempt + 1, startedAt, providerCodes(error));
