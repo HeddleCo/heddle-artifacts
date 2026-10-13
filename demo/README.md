@@ -113,6 +113,28 @@ seed and its Vitest suite: each passes alone, the merge is clean, the merged cod
 `DEMO_COMBINED_AGENT` (`opencode`, `codex` or `claude`) and `DEMO_COMBINED_MODEL` pick the sandbox
 agent; evidence is written to `<dir>/combined-<generation>/`.
 
+## A real repository
+
+The same platform runs on any public repository. `init` imports it as a new project with a test recipe
+(how the isolated sandbox installs and tests candidates; set once by the operator, never by candidates),
+and `task` puts several sandboxed agents on one task with one brief:
+
+```bash
+export OPERATOR_TOKEN=... DEMO_RUNNER_URL=https://<agent-runner>.workers.dev DEMO_RUNNER_TOKEN_FILE=~/.runner-token
+DEMO_IMPORT_URL=https://github.com/pngwn/twinkleplop.git DEMO_TEST_RECIPE=@demo/recipes/twinkleplop.json \
+  demo/run.sh init --url https://<worker>.workers.dev --project lua --dir /tmp/lua-demo
+DEMO_TASK_SLUG=lua DEMO_TASK_INTENT='Add Lua 5.4 highlighting (twinkleplop#102)' \
+DEMO_TASK_BRIEF=demo/briefs/twinkleplop-lua.md DEMO_LANE_MINUTES=90 \
+DEMO_TASK_AGENTS=kimi=@cf/moonshotai/kimi-k2.7-code,glm=@cf/zai-org/glm-5.2 \
+  demo/run.sh task --url https://<worker>.workers.dev --project lua --dir /tmp/lua-demo --timeout 6000
+```
+
+`demo/recipes/twinkleplop.json` is twinkleplop's own CI as a recipe: a frozen-lockfile pnpm install, the
+theme build, `svelte-kit sync`, then `pnpm test`, within 600 seconds. The brief points the agents at the
+repository's own grammar skills and carries the Lua 5.4 manual's lexical rules, since lanes reach only
+the model, their fork and the npm registry. Each candidate is compared, reviewed and decided like the
+parser's; Heddle's `bridge git export` turns the landed commit into an ordinary branch for a pull request.
+
 ## Independent local contract test
 
 Until Track A's fake-artifacts plus wrangler and Track B's engine are available:

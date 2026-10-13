@@ -25,7 +25,7 @@ export function options(args, action = 'run') {
   opts.api = projectURL(opts.projectUrl).api;
   opts.directory = resolve(opts.directory);
   // Live coding agents take minutes; scripted pushes take seconds.
-  opts.timeout = Number(opts.timeout ?? (opts.mode === 'live' || ['followup', 'experiment', 'revise', 'combined'].includes(action) ? 2700 : 180)); opts.delay = Number(opts.delay);
+  opts.timeout = Number(opts.timeout ?? (opts.mode === 'live' || ['followup', 'experiment', 'revise', 'combined', 'task'].includes(action) ? 2700 : 180)); opts.delay = Number(opts.delay);
   if (!['scripted', 'live'].includes(opts.mode) || !Number.isFinite(opts.timeout) || opts.timeout < 1 ||
       !Number.isFinite(opts.delay) || opts.delay < 0) throw new Error('Invalid mode, timeout or delay');
   return opts;
@@ -731,11 +731,90 @@ async function verify(opts) {
   const proof = await verifyPublication(opts, state, runDir, parser.decision.mainSha, parser.decision.pick, pushed);
   console.log(`PASS verify: ${parser.decision.decider} chose ${parser.decision.pick}; main ${proof.main}; chosen tree on main; candidates exact; fsck/index-pack strict; notes and Why retained.`);
 }
+/**
+ * A project seeded from a real public repository instead of the demo parser. DEMO_IMPORT_URL is its
+ * https clone URL; DEMO_TEST_RECIPE (JSON, or @path to a JSON file) is how the isolated sandbox tests it.
+ */
+async function initRepo(opts) {
+  const token = process.env.OPERATOR_TOKEN, importUrl = process.env.DEMO_IMPORT_URL;
+  if (!token) throw new Error('Set OPERATOR_TOKEN');
+  if (!importUrl) throw new Error('init needs DEMO_IMPORT_URL');
+  const recipeText = process.env.DEMO_TEST_RECIPE;
+  const tests = recipeText ? JSON.parse(recipeText.startsWith('@') ? await readFile(recipeText.slice(1), 'utf8') : recipeText) : undefined;
+  await mkdir(opts.directory, { recursive: true, mode: 0o700 });
+  if (await saved(opts)) throw new Error('Demo directory already holds a project');
+  const project = await request(`${new URL(opts.url).origin}/api/projects`, token, { id: opts.project, seed: { importUrl }, ...(tests ? { tests } : {}) });
+  remoteURL(project.canonicalRemote, opts.api);
+  await writeFile(join(opts.directory, '.demo.json'), JSON.stringify({ ...project, api: opts.api, clones: {}, generation: Date.now() }), { mode: 0o600 });
+  await request(`${opts.api}/humans`, token, { id: 'luke', displayName: 'Luke' });
+  console.log(`${opts.project}: imported ${importUrl}${tests ? ' with its test recipe' : ''}. Project open until ${project.projectExpiresAt}.`);
+}
+
+/** "name=@cf/org/model,...": lane names for one task and the Workers AI model each runs. */
+export function taskAgents(value) {
+  const agents = new Map();
+  for (const item of (value ?? '').split(',').map(s => s.trim()).filter(Boolean)) {
+    const [name, model, extra] = item.split('=');
+    if (!/^[a-z][a-z0-9-]{0,30}$/.test(name ?? '') || ['reviewer', 'luke'].includes(name) || agents.has(name) || extra !== undefined || !/^@cf\/[\w.-]+\/[\w.-]+$/.test(model ?? ''))
+      throw new Error('DEMO_TASK_AGENTS must be name=@cf/org/model pairs with distinct lowercase names');
+    agents.set(name, model);
+  }
+  if (!agents.size) throw new Error('task needs DEMO_TASK_AGENTS');
+  return [...agents];
+}
+
+/**
+ * One task, several sandboxed agents, one brief: DEMO_TASK_SLUG, DEMO_TASK_INTENT, DEMO_TASK_BRIEF (a file)
+ * and DEMO_TASK_AGENTS ("name=model,..."; Workers AI models through OpenCode). The reviewer joins too.
+ */
+async function task(opts) {
+  const state = await saved(opts);
+  if (!state) throw new Error('No demo state in --dir; run init first');
+  const runner = process.env.DEMO_RUNNER_URL, tokenFile = process.env.DEMO_RUNNER_TOKEN_FILE, token = process.env.OPERATOR_TOKEN;
+  if (!runner || !tokenFile) throw new Error('task needs DEMO_RUNNER_URL and DEMO_RUNNER_TOKEN_FILE');
+  const slug = process.env.DEMO_TASK_SLUG, intent = process.env.DEMO_TASK_INTENT, brief = process.env.DEMO_TASK_BRIEF && resolve(process.env.DEMO_TASK_BRIEF);
+  if (!slug || !intent || !brief) throw new Error('task needs DEMO_TASK_SLUG, DEMO_TASK_INTENT and DEMO_TASK_BRIEF');
+  await readFile(brief, 'utf8');
+  const agents = taskAgents(process.env.DEMO_TASK_AGENTS);
+  try { await request(`${opts.api}/tasks`, token, { slug, intent }); } catch (error) { if (error.status !== 409) throw error; }
+  try { await request(`${opts.api}/tasks/${slug}/agents`, token, { id: 'reviewer', kind: 'reviewer', displayName: 'Reviewer', provider: 'workers-ai', model: '@cf/zai-org/glm-5.2' }); }
+  catch (error) { if (error.status !== 409) throw error; }
+  const generation = Date.now(), session = `heddle-${opts.project}-${slug}-${generation}`, lanes = [];
+  for (const [id, model] of agents) {
+    const joined = await enrollment(opts.projectUrl, { task: slug, as: id, provider: 'cloudflare-sandbox/opencode', model });
+    const lane = { id, model, grant: join(opts.directory, `${generation}-${id}.grant.json`), marker: join(opts.directory, `${generation}-${id}.exit`) };
+    await writeFile(lane.grant, JSON.stringify({ forkRemote: joined.fork.remote, forkToken: joined.fork.token, upstreamRemote: joined.upstream.remote,
+      upstreamToken: joined.upstream.readToken, discussion: { url: `${joined.api}/tasks/${slug}/turns`, token: joined.agentKey },
+      ...(joined.briefing ? { briefing: joined.briefing } : {}) }), { mode: 0o600 });
+    lanes.push(lane);
+  }
+  for (const [index, lane] of lanes.entries()) {
+    const launcher = join(opts.directory, `${generation}-${lane.id}.sh`);
+    await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexport DEMO_RUNNER_URL=${quote(runner)} DEMO_RUNNER_TOKEN_FILE=${quote(tokenFile)} DEMO_LANE_MODEL=${quote(lane.model)}${process.env.DEMO_LANE_MINUTES ? ` DEMO_LANE_MINUTES=${quote(process.env.DEMO_LANE_MINUTES)}` : ''}\nexec node ${quote(join(demoRoot, 'lib', 'sandbox-lane.mjs'))} opencode ${quote(`${opts.project}-${lane.id}-${generation}`)} ${quote(lane.grant)} ${quote(brief)} ${quote(lane.marker)}\n`, { mode: 0o700 });
+    if (index === 0) await command('tmux', ['new-session', '-d', '-s', session, '-x', '200', '-y', '50', 'bash', launcher]);
+    else await command('tmux', ['split-window', '-t', session, 'bash', launcher]);
+    await command('tmux', ['select-layout', '-t', session, 'tiled']);
+  }
+  await command('tmux', ['set-option', '-t', session, 'remain-on-exit', 'on']);
+  console.log(`${lanes.map(l => `${l.id} (${l.model})`).join(', ')} launched on ${slug}. Watch with: tmux attach -t ${session}`);
+  const view = await waitFor(opts, async () => {
+    for (const lane of lanes) { try { await readFile(lane.marker, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return undefined; throw error; } }
+    const current = await request(`${opts.api}/tasks/${slug}`, token);
+    return current.candidates.every(c => c.tests && c.tests.status !== 'pending') ? current : undefined;
+  }, `${slug} candidates with tests`);
+  for (const lane of lanes) {
+    const candidate = view.candidates.find(c => c.agent === lane.id), exit = (await readFile(lane.marker, 'utf8')).trim();
+    console.log(`${lane.id.padEnd(10)} exit ${exit}  ${candidate ? `${candidate.sourceSha.slice(0, 10)} tests ${candidate.tests.status} ${candidate.tests.passed}/${candidate.tests.passed + candidate.tests.failed}` : '(no candidate)'}`);
+  }
+  console.log(`Compare: ${opts.projectUrl}/t/${slug}`);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [action, ...args] = process.argv.slice(2);
   Promise.resolve().then(() => { const opts = options(args, action);
     if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); if (action === 'verify') return verify(opts); if (action === 'followup') return followup(opts); if (action === 'experiment') return experiment(opts);
     if (action === 'revise') return revise(opts); if (action === 'combined') return combinedStory(opts);
-    throw new Error('Expected run, verify, followup, experiment, revise, combined or reset');
+    if (action === 'init') return initRepo(opts); if (action === 'task') return task(opts);
+    throw new Error('Expected run, verify, followup, experiment, revise, combined, init, task or reset');
   }).catch(error => { console.error(`demo: ${error.message}`); process.exitCode = 1; });
 }
