@@ -609,8 +609,9 @@ export class ProjectDO extends DurableObject<Env> {
           const decision: Decision = existing ?? await this.engine.mutate('decide', { opId: crypto.randomUUID(), task: taskId, decider, pick, rationale: text(body.rationale), expectHeads: body.expectHeads });
           await this.revokeReleased();
           await this.engine.mutate('publish', { opId: existing ? `publish:${decision.landState}:retry:${crypto.randomUUID()}` : `publish:${decision.landState}`, canonical: { remote: this.store.get('meta', 'project').canonicalRemote } });
-          // Main moved: open tasks behind it are re-checked combined with the new main.
-          await this.revokeReleased(); await this.refreshCombined().catch(() => {}); await this.nextAlarm(); return Response.json(this.store.get('decisions', taskId));
+          // Main moved: recovery re-checks open tasks behind it combined with the new main, in the
+          // background, so the landing response does not wait for Heddle's merges and the sandbox.
+          await this.revokeReleased(); this.scheduleDrain(); await this.nextAlarm(); return Response.json(this.store.get('decisions', taskId));
         }
         throw new HttpError(404, 'not_found');
       });
