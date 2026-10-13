@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Contract fixture only. This is NOT Heddle and must never be used for production evidence.
 import { isolatedTestResult } from '../engine/lib/isolated-tests.mjs';
+import { decisionOptions } from '../engine/lib/decision-anchor.mjs';
 import { combinedRefusal } from '../engine/lib/combined-rule.mjs';
 const cleanVerdict = { status: 'ready', freshness: 'current', mergeType: 'fast-forward', conflictCount: 0, impact: 'none', impactCategories: [], blockers: [] };
 /**
@@ -31,7 +32,7 @@ export function executeFixture(state, command, input) {
   else if (command === 'lane.open') { result = { laneThread: `task/${input.task}/${input.agent}`, leaseId: sha(input.agent),
     // Mirror the engine: agent lanes are briefed with earlier decisions' rationale.
     ...(state.agents?.[input.agent]?.kind === 'reviewer' || input.brief === false ? {} : { briefing: { hash: sha(`brief:${input.task}:${input.agent}`).padEnd(64, '0').slice(0, 64), omitted: 0,
-      annotations: Object.values(state.decisions ?? {}).map((d, i) => ({ target: 'src/table.ts', scope: 'file', annotationId: `ann-${i}`, revisionId: `rev-${i}`, kind: 'rationale', content: d.rationale, attribution: d.decider })) } }) };
+      annotations: Object.values(state.decisions ?? {}).map((d, i) => ({ target: d.anchor?.split(':')[0] ?? 'src/table.ts', scope: d.anchor?.includes(':') ? `symbol:${d.anchor.split(':')[1]}` : 'file', tags: d.tags ?? [], annotationId: `ann-${i}`, revisionId: `rev-${i}`, kind: 'rationale', content: d.rationale, attribution: d.decider })) } }) };
     // Mirror the engine: a newly opened lane records when it opened (fixture time, before fixture captures).
     state.lanes ??= {}; state.lanes[`${input.task}/${input.agent}`] = { task: input.task, agent: input.agent, seen: {}, openedAt: '2026-10-10T11:59:00.000Z' };
   }
@@ -82,8 +83,18 @@ export function executeFixture(state, command, input) {
     result = { task: input.task, lanes, pending, cacheChanged: computed > 0 };
   }
   else if (command === 'diff') result = { diff: `diff --git a/src/table.ts b/src/table.ts\n+${input.agent}\n` };
+  else if (command === 'decision.validate') {
+    try { const anchor = decisionOptions(input);
+      const picked = state.candidates[`${input.task}/${input.pick}`];
+      const tree = picked?.combined && !state.containsMain?.includes(picked.sourceSha) ? picked.combined.treeSha : picked?.treeSha;
+      const files = state.treeFiles?.[tree] ?? ['README.md', 'src/table.ts', 'package.json'];
+      if (anchor && !files.includes(anchor.path)) return { error: { code: 'invalid_anchor', message: 'Anchor path must be a file in the tree being landed' } };
+      result = { valid: true };
+    } catch (error) { return { error: { code: error.code, message: error.message } }; }
+  }
   else if (command === 'discuss') { const agent = state.agents[input.author]; result = { id: sha(input.opId), task: input.task, author: input.author, kind: agent.kind, body: input.body, ...(input.replyTo ? { replyTo: input.replyTo } : {}), heddleDiscussion: sha(input.task), signedBy: agent.publicKey, at: '2026-10-10T12:00:00.000Z' }; state.turns.push(result); }
   else if (command === 'decide') {
+    const validation = executeFixture(state, 'decision.validate', input); if (validation.error) return validation;
     const heads = Object.values(state.candidates).filter(c => c.task === input.task).map(c => c.state).sort();
     if (JSON.stringify([...input.expectHeads].sort()) !== JSON.stringify(heads)) return { error: { code: 'stale', message: 'Candidates changed' } };
     if (Object.values(state.candidates).some(c => c.task === input.task && c.tests?.status === 'pending')) return { error: { code: 'tests_pending', message: 'Tests pending' } };
@@ -91,7 +102,7 @@ export function executeFixture(state, command, input) {
     const merged = state.tasks[input.task].baseSha !== state.mainSha && !state.containsMain?.includes(picked.sourceSha);
     const refusal = merged && combinedRefusal(picked, state.mainSha);
     if (refusal) return { error: refusal };
-    result = { ...(merged ? { combined: { sha: picked.combined.sha, treeSha: picked.combined.treeSha, mainSha: picked.combined.mainSha, state: picked.combined.state } } : {}), task: input.task, decider: input.decider, pick: input.pick, rationale: input.rationale, alternatives: Object.values(state.candidates).filter(c => c.task === input.task && c.agent !== input.pick).map(c => c.agent), resolutionState: sha(input.opId + 'resolve'), landState: sha(input.opId + 'land'), mainSha: sha(sha(input.opId + 'land')), at: '2026-10-10T12:00:00.000Z' }; state.decisions[input.task] = result;
+    result = { ...(merged ? { combined: { sha: picked.combined.sha, treeSha: picked.combined.treeSha, mainSha: picked.combined.mainSha, state: picked.combined.state } } : {}), task: input.task, decider: input.decider, pick: input.pick, rationale: input.rationale, ...(input.anchor !== undefined ? { anchor: input.anchor } : {}), ...(input.tags !== undefined ? { tags: input.tags } : {}), alternatives: Object.values(state.candidates).filter(c => c.task === input.task && c.agent !== input.pick).map(c => c.agent), resolutionState: sha(input.opId + 'resolve'), landState: sha(input.opId + 'land'), mainSha: sha(sha(input.opId + 'land')), at: '2026-10-10T12:00:00.000Z' }; state.decisions[input.task] = result;
   }
   else if (command === 'publish') { const decision = Object.values(state.decisions).at(-1); state.mainSha = sha(decision?.landState ?? 'seed'); if (decision) decision.mainSha = state.mainSha; result = { main: state.mainSha, pushed: ['main', 'refs/notes/heddle', 'refs/notes/heddle-why'], verify: { exportRoundTrip: true, treeMatch: true, fsck: true } }; }
   else if (command === 'why') { const decision = Object.values(state.decisions).find(d => d.mainSha === input.sha); result = { narrative: decision ? `Heddle decision · task ${decision.task}\nChosen: ${decision.pick}\nRejected: ${decision.alternatives.join(', ')}\n${decision.rationale}` : 'Fixture candidate' }; }

@@ -6,7 +6,7 @@ export interface Lane { project: string; task: string; agent: string; forkRepo: 
   laneThread: string /* task/<t>/<a> */; lastSeenSha?: string; status: "active"|"released"|"abandoned"; briefing?: Briefing; /** Opened without a briefing, as a control. */ unbriefed?: boolean; }
 /** Heddle's signed pre-turn briefing for a lane: earlier decisions' annotations its agent started from. */
 export interface Briefing { hash: string /* Heddle briefing_hash */; omitted: number;
-  annotations: Array<{ target: string; scope: string; annotationId: string; revisionId: string; kind: string; content: string; attribution: string }>; }
+  annotations: Array<{ target: string; scope: string; annotationId: string; revisionId: string; kind: string; content: string; tags?: string[]; attribution: string }>; }
 export interface Tests { status: "pass"|"fail"|"error"|"skipped"|"pending"; passed: number; failed: number; summary: string; durationMs: number;
   provenance?: "reviewed fixture"|"isolated sandbox"|"isolated sandbox (local fixture)"; sourceSha?: string;
   /** On a failing run: the failing test names and the runner output that explains them. */
@@ -41,7 +41,7 @@ export interface CaptureHistory { task: string; lanes: Array<{ agent: string; op
 export interface EngineCaptureHistory extends CaptureHistory { cacheChanged: boolean; }
 export interface Turn { id: string; task: string; author: string; kind: AgentKind; body: string; replyTo?: string;
   heddleDiscussion: string; signedBy: string; at: string; }
-export interface Decision { task: string; decider: string; pick: string /*agent id*/; rationale: string;
+export interface Decision { task: string; decider: string; pick: string /*agent id*/; rationale: string; anchor?: string; tags?: string[];
   alternatives: string[]; resolutionState: string; landState: string; mainSha: string; at: string;
   /** Set when the pick landed as Heddle's merge with main: the tested combined commit. */
   combined?: { sha: string; treeSha: string; mainSha: string; state: string }; }

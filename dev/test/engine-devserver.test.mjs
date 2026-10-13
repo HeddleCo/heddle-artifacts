@@ -11,6 +11,7 @@ test('host engine-devserver streams bytes, isolates project roots, forwards env 
   const server = await startEngineDevserver({ root: join(root, 'state'), engine: script, port: 0, stub: false });
   const request = (project, command, body = '{}') => fetch(`${server.origin}/projects/${project}/${command}`, { method: 'POST', body, headers: { 'x-engine-env': JSON.stringify({ ARTIFACTS_WRITE_TOKEN: 'fixture-only' }) } });
   try {
+    assert.equal((await request('a', 'decision.validate')).status, 200, 'decision anchor preflight reaches the engine');
     const a = await (await request('a', 'selftest')).json(), b = await (await request('b', 'selftest')).json();
     assert.notEqual(a.root, b.root); assert.equal(a.hasEnv, true);
     const bytes = new Uint8Array(await (await request('a', 'snapshot')).arrayBuffer()); assert.deepEqual([...bytes], [0, 255, 4, 3]);

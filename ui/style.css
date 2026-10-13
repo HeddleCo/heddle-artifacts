@@ -248,6 +248,9 @@ pre { margin: 0; overflow: auto; }
 .combined-excerpt { max-height: 240px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
 .check.combined.pass .check-mark { color: var(--good); } .check.combined.fail .check-mark { color: var(--risk); } .check.combined.conflict .check-mark { color: var(--caution); }
 
+/* Decision and briefing tags retain spacing and wrap within the decision rail. */
+.notice .tag, .context-supplied li > .tag { margin-left: 4px; max-width: 100%; overflow-wrap: anywhere; }
+
 /* Captures share one time scale across every lane. */
 .captures { margin-top: 20px; scroll-margin-top: 24px; }
 .captures-heading, .capture-navigation { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

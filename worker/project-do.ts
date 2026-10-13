@@ -13,6 +13,7 @@ import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.
 import { parseTestRecipe, type TestRecipe } from './test-recipe';
 // A failed ingest is retried twice, a minute and then two minutes later, before the push counts as failed.
 export const PUSH_RETRIES = 2, PUSH_RETRY_MS = 60000;
+import { decisionOptions, DecisionInputError } from '../engine/lib/decision-anchor.mjs';
 import { combinedRefusal } from '../engine/lib/combined-rule.mjs';
 
 type Task = { slug: string; intent: string; thread: string; baseSha: string; status: 'open' | 'decided' };
@@ -636,7 +637,9 @@ export class ProjectDO extends DurableObject<Env> {
           return Response.json(await this.engine.mutate('discuss', { opId: crypto.randomUUID(), task: taskId, author, body: text(body.body), ...(body.replyTo ? { replyTo: body.replyTo } : {}) }));
         }
         if (parts[5] === 'decision' && request.method === 'POST') {
-          await this.drain(); const body = await jsonBody(request), heads = this.heads(taskId);
+          const body = await jsonBody(request);
+          try { decisionOptions(body); } catch (error) { if (error instanceof DecisionInputError) throw new HttpError(400, error.code, { message: error.message }); throw error; }
+          await this.drain(); const heads = this.heads(taskId);
           if (!Array.isArray(body.expectHeads) || body.expectHeads.length !== heads.length || [...body.expectHeads].sort().some((h, i) => h !== heads[i])) throw new HttpError(409, 'stale', { heads });
           if (this.testsPending(taskId)) throw new HttpError(409, 'tests_pending');
           if (task.status === 'decided') throw new HttpError(409, 'task_decided');
@@ -646,8 +649,12 @@ export class ProjectDO extends DurableObject<Env> {
           const refusal = picked.combined && !this.store.get('decisions', taskId) ? combinedRefusal(picked, this.store.get<string>('meta', 'mainSha')) : undefined;
           if (refusal) throw new HttpError(409, refusal.code, { message: refusal.message });
           const existing = this.store.get<Decision>('decisions', taskId);
-          if (existing && (existing.pick !== pick || existing.decider !== decider || existing.rationale !== body.rationale)) throw new HttpError(409, 'decision_in_progress');
-          const decision: Decision = existing ?? await this.engine.mutate('decide', { opId: crypto.randomUUID(), task: taskId, decider, pick, rationale: text(body.rationale), expectHeads: body.expectHeads });
+          if (existing && (existing.pick !== pick || existing.decider !== decider || existing.rationale !== body.rationale || (body.anchor !== undefined && existing.anchor !== body.anchor) || JSON.stringify(existing.tags ?? []) !== JSON.stringify(body.tags ?? []))) throw new HttpError(409, 'decision_in_progress');
+          if (!existing && body.anchor !== undefined) {
+            try { await this.engine.read('decision.validate', { task: taskId, pick, anchor: body.anchor, ...(body.tags !== undefined ? { tags: body.tags } : {}) }); }
+            catch (error) { if (error instanceof HttpError && error.code === 'invalid_anchor') throw new HttpError(400, 'invalid_anchor', { message: 'Anchor path must be a file in the tree being landed' }); throw error; }
+          }
+          const decision: Decision = existing ?? await this.engine.mutate('decide', { opId: crypto.randomUUID(), task: taskId, decider, pick, rationale: text(body.rationale), ...(body.anchor !== undefined ? { anchor: body.anchor } : {}), ...(body.tags !== undefined ? { tags: body.tags } : {}), expectHeads: body.expectHeads });
           await this.revokeReleased();
           await this.engine.mutate('publish', { opId: existing ? `publish:${decision.landState}:retry:${crypto.randomUUID()}` : `publish:${decision.landState}`, canonical: { remote: this.store.get('meta', 'project').canonicalRemote } });
           // Main moved: recovery re-checks open tasks behind it combined with the new main, in the

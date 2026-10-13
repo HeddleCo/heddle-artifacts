@@ -61,3 +61,14 @@ test('published decision renders the exact commit Why link', () => {
   assert.ok(html.includes(`/p/demo/why/${'f'.repeat(40)}`));
   assert.doesNotMatch(html, /Publication pending/);
 });
+
+test('anchored and tagged recorded decision survives publication retry exactly', () => {
+  const recorded = { ...pending, anchor: 'src/table.ts:parseRow', tags: ['parseRow', 'whitespace'] };
+  const body = decisionRequest({ ...view, decision: recorded }, { ...draft, anchor: 'README.md', tags: ['replace'] });
+  assert.equal(body.anchor, recorded.anchor);
+  assert.deepEqual(body.tags, recorded.tags);
+  assert.notEqual(body.tags, recorded.tags);
+  const html = renderToString(DecisionNotice({ project: 'demo', decision: { ...recorded, mainSha: 'f'.repeat(40) } }));
+  assert.match(html, /src\/table.ts:parseRow/);
+  assert.match(html, /whitespace/);
+});
