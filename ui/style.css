@@ -250,3 +250,31 @@ pre { margin: 0; overflow: auto; }
 
 /* Decision and briefing tags retain spacing and wrap within the decision rail. */
 .notice .tag, .context-supplied li > .tag { margin-left: 4px; max-width: 100%; overflow-wrap: anywhere; }
+
+/* Captures share one time scale across every lane. */
+.captures { margin-top: 20px; scroll-margin-top: 24px; }
+.captures-heading, .capture-navigation { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.capture-timeline { margin: 24px 0; }
+.capture-axis, .capture-track { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 18px; }
+.capture-axis { color: var(--muted); font-size: 12px; height: 32px; }
+.capture-axis > div { position: relative; }
+.capture-axis time { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.capture-track { min-height: 62px; align-items: center; border-top: 1px solid var(--stroke-subtle); }
+.capture-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.capture-track-line { position: relative; height: 36px; background: linear-gradient(var(--stroke), var(--stroke)) center / 100% 1px no-repeat; }
+.capture-span { position: absolute; top: 14px; height: 8px; border-radius: 4px; background: var(--accent); opacity: .4; }
+button.capture-dot { position: absolute; top: 4px; width: 28px; height: 28px; padding: 0; transform: translateX(-50%); border: 0; border-radius: 50%; background: transparent; justify-content: center; }
+button.capture-dot::after { content: ''; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--accent-deep); background: var(--panel); }
+button.capture-dot[aria-pressed=true]::after { background: var(--accent-deep); width: 16px; height: 16px; }
+.capture-waiting { position: absolute; top: 6px; left: 3%; background: var(--panel); padding: 0 8px; }
+.capture-detail { border-top: 1px solid var(--stroke); padding-top: 16px; }
+.capture-detail h3 { font-size: 18px; }
+.capture-metadata { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; }
+.semantic-changes { max-height: 240px; overflow-y: auto; padding: 0 20px; font-size: 15px; }
+.semantic-changes li { margin: 5px 0; }
+@media (max-width: 700px) {
+  .capture-axis, .capture-track { grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+  .capture-label .tag { font-size: 10px; }
+  .capture-axis time { font-size: 10px; }
+  .captures-heading { flex-wrap: wrap; }
+}

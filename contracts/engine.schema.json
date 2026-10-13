@@ -105,6 +105,22 @@
       "type": "object",
       "properties": {
         "command": {
+          "const": "captures"
+        },
+        "input": {
+          "$ref": "#/$defs/captures.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
           "const": "diff"
         },
         "input": {
@@ -1796,6 +1812,223 @@
       },
       "required": [
         "valid"
+      ],
+      "additionalProperties": false
+    },
+    "SemanticChange": {
+      "type": "object",
+      "properties": {
+        "change_type": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "from_path": {
+          "type": "string"
+        },
+        "to_path": {
+          "type": "string"
+        },
+        "old_name": {
+          "type": "string"
+        },
+        "new_name": {
+          "type": "string"
+        },
+        "importance": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "change_type",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "CaptureSemantic": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "ready"
+            },
+            "changes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SemanticChange"
+              }
+            }
+          },
+          "required": [
+            "status",
+            "changes"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "pending",
+                "unavailable"
+              ]
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Capture": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "sourceSha": {
+          "type": "string"
+        },
+        "treeSha": {
+          "type": "string"
+        },
+        "parentSha": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "diffstat": {
+          "type": "object",
+          "properties": {
+            "files": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "insertions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "deletions": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "files",
+            "insertions",
+            "deletions"
+          ],
+          "additionalProperties": false
+        },
+        "tests": {
+          "$ref": "#/$defs/Tests"
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Conflict"
+          }
+        },
+        "signedBy": {
+          "type": "string"
+        },
+        "capturedAt": {
+          "type": "string"
+        },
+        "combined": {
+          "$ref": "#/$defs/Combined"
+        },
+        "fromState": {
+          "type": "string"
+        },
+        "semantic": {
+          "$ref": "#/$defs/CaptureSemantic"
+        }
+      },
+      "required": [
+        "task",
+        "agent",
+        "state",
+        "sourceSha",
+        "treeSha",
+        "parentSha",
+        "subject",
+        "diffstat",
+        "conflicts",
+        "signedBy",
+        "capturedAt",
+        "fromState",
+        "semantic"
+      ],
+      "additionalProperties": false
+    },
+    "captures.input": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "task"
+      ],
+      "additionalProperties": false
+    },
+    "captures.output": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "lanes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "captures": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Capture"
+                }
+              }
+            },
+            "required": [
+              "agent",
+              "captures"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheChanged": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "task",
+        "lanes",
+        "pending",
+        "cacheChanged"
       ],
       "additionalProperties": false
     }

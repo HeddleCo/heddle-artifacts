@@ -14,7 +14,7 @@ const commands = {
   'lane.open': { opId: 'lane', task: 't', agent: 'alice' },
   ingest: { opId: 'ingest', items: [{ task: 't', agent: 'alice', fork: { remote: 'http://local/fork' }, ref: 'refs/heads/main', sha }], runTests: true },
   'tests.record': { opId: 'tests', task: 't', agent: 'alice', sourceSha: sha, run: { sourceSha: sha, treeSha: sha, output: '# pass 14\n# fail 0\n', durationMs: 10, installExitCode: 0, testExitCode: 0 } },
-  candidates: { task: 't' }, diff: { task: 't', agent: 'alice', maxBytes: 524288 },
+  candidates: { task: 't' }, captures: { task: 't' }, diff: { task: 't', agent: 'alice', maxBytes: 524288 },
   discuss: { opId: 'turn', task: 't', author: 'alice', body: 'why' },
   'decision.validate': { task: 't', pick: 'alice', anchor: 'src/table.ts:parseRow', tags: ['whitespace'] },
   decide: { opId: 'decide', task: 't', decider: 'alice', pick: 'alice', rationale: 'why', anchor: 'src/table.ts:parseRow', tags: ['whitespace'], expectHeads: [] },
@@ -32,7 +32,7 @@ test('§7 schema accepts every JSON fixture command/output and rejects missing o
     assert.equal(validateInput({ ...input, ARTIFACTS_WRITE_TOKEN: 'fixture-only' }), false, 'tokens belong only in env');
   }
   assert.equal(ajv.validate(schema.$id, { command: 'unknown', input: {} }), false);
-  console.log('§7 schema: 15 JSON commands/results accepted; missing opId, stdin credentials and unknown commands rejected');
+  console.log('§7 schema: 16 JSON commands/results accepted; missing opId, stdin credentials and unknown commands rejected');
 });
 
 test('lane briefing contract preserves symbol scope and annotation tags', () => {

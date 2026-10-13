@@ -15,6 +15,7 @@ engine/lib/**
 !engine/lib/state.mjs
 !engine/lib/commands.mjs
 !engine/lib/decision-anchor.mjs
+!engine/lib/captures.mjs
 !engine/lib/tests.mjs
 !engine/lib/isolated-tests.mjs
 !engine/lib/publish.mjs

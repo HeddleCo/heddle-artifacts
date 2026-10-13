@@ -19,7 +19,7 @@ export async function load() {
   let state;
   try { state = JSON.parse(await readFile(join(stateRoot, 'engine.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; state = { format: 1, generation: 0, root: stateRoot, turns: [] }; }
-  for (const name of ['tasks', 'agents', 'lanes', 'operations', 'decisions', 'narratives', 'attestations', 'decisionAttestations', 'publicationRequests']) state[name] = Object.assign(Object.create(null), state[name] || {});
+  for (const name of ['tasks', 'agents', 'lanes', 'semanticDiffs', 'operations', 'decisions', 'narratives', 'attestations', 'decisionAttestations', 'publicationRequests']) state[name] = Object.assign(Object.create(null), state[name] || {});
   return state;
 }
 

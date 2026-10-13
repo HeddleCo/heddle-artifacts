@@ -3,7 +3,7 @@
 import pushing from './fixtures/pushing.json';
 import conflict from './fixtures/conflict.json';
 import decided from './fixtures/decided.json';
-import type { FeedEvent, Decision, Turn } from '../contracts/types';
+import type { Capture, CaptureHistory, FeedEvent, Decision, Lane, Turn } from '../contracts/types';
 import type { ProjectView, TaskView } from './src/api';
 import { updateBoard } from './src/feed';
 const fixtures = { pushing, conflict, decided };
@@ -14,6 +14,25 @@ const diffs: Record<string, string> = {
 };
 export function createMock(initial = 'conflict') {
   let state = structuredClone(fixtures[initial as keyof typeof fixtures] || conflict);
+  const makeHistories = () => {
+    const histories: Record<string, Capture[]> = {};
+    for (const task of state.tasks) for (const lane of task.lanes as Lane[]) {
+      if (lane.agent === 'alice') lane.briefing = { hash: 'e'.repeat(64), annotations: [], omitted: 0 };
+      if (lane.agent === 'bob') lane.unbriefed = true;
+    }
+    for (const task of state.tasks) for (const c of task.candidates) {
+      histories[`${task.slug}/${c.agent}`] = c.agent === 'alice' ? [
+        { ...structuredClone(c), sourceSha: '1'.repeat(40), state: 'state-alice-early', subject: 'Add the row parser', capturedAt: '2026-10-10T18:14:00Z', fromState: 'state-base', semantic: { status: 'ready', changes: [{ change_type: 'function_added', description: 'Function added: parseRow in src/table.ts', new_name: 'parseRow' }] } },
+        { ...structuredClone(c), sourceSha: '2'.repeat(40), state: 'state-alice-middle', subject: 'Handle escaped pipes', capturedAt: '2026-10-10T18:15:00Z', fromState: 'state-alice-early', semantic: { status: 'unavailable' } },
+        { ...structuredClone(c), capturedAt: '2026-10-10T18:16:00Z', fromState: 'state-alice-middle', semantic: { status: 'ready', changes: [{ change_type: 'function_modified', description: 'Function modified: parseRow in src/table.ts', old_name: 'parseRow' }] } }
+      ] : c.agent === 'bob' ? [
+        { ...structuredClone(c), sourceSha: '3'.repeat(40), state: 'state-bob-early', subject: 'Keep the public API', capturedAt: '2026-10-10T18:14:30Z', fromState: 'state-base', semantic: { status: 'ready', changes: [{ change_type: 'function_modified', description: 'Function modified: parseRow in src/table.ts', old_name: 'parseRow' }] } },
+        { ...structuredClone(c), capturedAt: '2026-10-10T18:15:30Z', fromState: 'state-bob-early', semantic: { status: 'ready', changes: [{ change_type: 'function_modified', description: 'Function modified: parseRow in src/table.ts', old_name: 'parseRow' }] } }
+      ] : [{ ...structuredClone(c), fromState: 'state-base', semantic: { status: 'ready', changes: [] } }];
+    }
+    return histories;
+  };
+  let histories = makeHistories();
   let decisionStatus = 200;
   const requests: { path: string; body: unknown }[] = [];
   const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -25,6 +44,16 @@ export function createMock(initial = 'conflict') {
       ...(task.decision ? { decision: task.decision } : {}), heads: task.candidates.map(c => c.state) };
   };
   const apply = (event: FeedEvent) => {
+    if (event.type === 'tests.done') {
+      const list = histories[`${event.task}/${event.agent}`] ?? [];
+      const capture = event.sourceSha ? list.find(c => c.sourceSha === event.sourceSha) : list.at(-1);
+      if (capture) capture.tests = event.tests;
+    }
+    if (event.type === 'candidate.ready') {
+      const c = event.candidate, name = `${c.task}/${c.agent}`, list = histories[name] ??= [], existing = list.find(x => x.sourceSha === c.sourceSha);
+      if (existing) Object.assign(existing, c);
+      else list.push({ ...c, fromState: list.at(-1)?.state ?? 'state-base', semantic: { status: 'ready', changes: [{ change_type: 'function_modified', description: 'Function modified: parseRow in src/table.ts' }] } });
+    }
     const board = updateBoard(state as ProjectView, event);
     state.tasks = board.tasks as typeof state.tasks;
     if (event.type === 'review.posted') state.review = event.review;
@@ -41,6 +70,7 @@ export function createMock(initial = 'conflict') {
       const body = await request.json() as { fixture: keyof typeof fixtures; decisionStatus?: number; pendingPublication?: boolean };
       if (!fixtures[body.fixture]) return json({ error: 'unknown fixture' }, 400);
       state = structuredClone(fixtures[body.fixture]); decisionStatus = body.decisionStatus || 200; requests.length = 0;
+      histories = makeHistories();
       if (body.pendingPublication) { state.tasks[0].decision = { ...decided.tasks[0].decision!, mainSha: '' }; state.tasks[0].status = 'reviewing'; }
       return json({ ok: true });
     }
@@ -57,6 +87,10 @@ export function createMock(initial = 'conflict') {
     const slug = parts[4], task = taskView(slug);
     if (!task) return json({ error: 'not_found' }, 404);
     if (parts.length === 5 && request.method === 'GET') return json(task);
+    if (parts.length === 6 && parts[5] === 'captures' && request.method === 'GET') {
+      const lanes = state.tasks.find(t => t.slug === slug)!.lanes.filter(l => state.agents.find(a => a.id === l.agent)?.kind !== 'reviewer').map(l => ({ agent: l.agent, captures: (histories[`${slug}/${l.agent}`] ?? []).toSorted((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt)) }));
+      return json({ task: slug, lanes, pending: 0 } satisfies CaptureHistory);
+    }
     if (parts[5] === 'candidates' && parts[7] === 'diff' && task.candidates.some(c => c.agent === parts[6])) return new Response(diffs[parts[6]] || '', { headers: { 'Content-Type': 'text/x-diff' } });
     if (request.method === 'POST' && (parts[5] === 'decision' || parts[5] === 'turns')) {
       const body = await request.json() as Record<string, unknown>;
