@@ -46,7 +46,10 @@ describe('independent bounded review retry security', () => {
       (instance as any).env.REVIEW = { review: async () => {
         (instance as any).retrySecurityStarted = true;
         // A push can start a second, background review; release every pending call, not just the latest.
-        await new Promise<void>(resolve => { const waiting = (instance as any).retrySecurityWaiting ??= []; waiting.push(resolve); (instance as any).retrySecurityRelease = () => waiting.splice(0).forEach((r: () => void) => r()); });
+        // The release is sticky: an alarm can start another background review after it (issue #11), and
+        // that call must not wait forever on a release that has already happened.
+        if (!(instance as any).retrySecurityReleased) await new Promise<void>(resolve => { const waiting = (instance as any).retrySecurityWaiting ??= []; waiting.push(resolve);
+          (instance as any).retrySecurityRelease = () => { (instance as any).retrySecurityReleased = true; waiting.splice(0).forEach((r: () => void) => r()); }; });
         return { ...f.fallback, model: REVIEW_MODEL };
       } };
     });
@@ -64,7 +67,10 @@ describe('independent bounded review retry security', () => {
     await evictDurableObject(f.project);
     const later = await api(`${f.task}/review/retry`, f.body);
     expect([200, 409]).toContain(later.status);
-    expect((await f.engine.stats()).calls.filter((call: any) => call.command === 'discuss')).toHaveLength(1);
+    // The consumed retry never posts. (An automatic review of the new heads may; it is not the retry.)
+    const discussed = (await f.engine.stats()).calls.filter((call: any) => call.command === 'discuss');
+    expect(discussed.filter((call: any) => call.input.opId === 'first-review')).toHaveLength(1);
+    expect(discussed.filter((call: any) => String(call.input.opId).startsWith('review-retry:'))).toHaveLength(0);
   });
 
   it('does not publish a stale retry when a new push races native discuss completion', async () => {
