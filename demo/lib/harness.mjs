@@ -671,7 +671,9 @@ async function combinedStory(opts) {
   // The first task lands. On camera the human decides in the UI; a rehearsal can land it from here.
   let decision = tested[0].decision;
   if (!decision?.mainSha && process.env.DEMO_COMBINED_AUTOLAND === '1') {
-    decision = await request(`${opts.api}/tasks/${first.slug}/decision`, token, { pick: first.agent, decider: 'luke', rationale: COMBINED_RATIONALE, expectHeads: tested[0].heads });
+    // A rehearsal lands under its own labelled identity: never sign words a person did not write as theirs.
+    await request(`${opts.api}/humans`, token, { id: 'rehearsal-operator', displayName: 'Rehearsal operator (automated, not Luke)' });
+    decision = await request(`${opts.api}/tasks/${first.slug}/decision`, token, { pick: first.agent, decider: 'rehearsal-operator', rationale: `REHEARSAL (automated, not Luke): ${COMBINED_RATIONALE}`, expectHeads: tested[0].heads });
     console.log(`Landed ${first.agent} on main (${decision.mainSha.slice(0, 12)}).`);
   } else if (!decision?.mainSha) console.log(`Land ${first.agent} at ${new URL(opts.url).origin}/p/${opts.project}/t/${first.slug}. Waiting for its decision…`);
   decision = await waitFor(opts, async () => { const v = await request(`${opts.api}/tasks/${first.slug}`, token); return v.decision?.mainSha ? v.decision : undefined; }, `${first.slug} landed`);
