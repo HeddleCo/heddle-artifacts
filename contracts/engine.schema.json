@@ -760,6 +760,9 @@
               "properties": {
                 "importUrl": {
                   "type": "string"
+                },
+                "snapshot": {
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -786,6 +789,28 @@
         },
         "mainSha": {
           "type": "string"
+        },
+        "imported": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "sha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "tree": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            }
+          },
+          "required": [
+            "url",
+            "sha",
+            "tree"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

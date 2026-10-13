@@ -129,7 +129,9 @@ DEMO_TASK_AGENTS=kimi=@cf/moonshotai/kimi-k2.7-code,glm=@cf/zai-org/glm-5.2 \
   demo/run.sh task --url https://<worker>.workers.dev --project lua --dir /tmp/lua-demo --timeout 6000
 ```
 
-`demo/recipes/twinkleplop.json` is twinkleplop's own CI as a recipe: a frozen-lockfile pnpm install, the
+The project starts from the repository's tip as a single commit whose tree is the source tree exactly; its
+message names the source URL and commit (set `DEMO_IMPORT_HISTORY=full` to import the whole history,
+which Heddle 0.30 then re-exports on every publication). `demo/recipes/twinkleplop.json` is twinkleplop's own CI as a recipe: a frozen-lockfile pnpm install, the
 theme build, `svelte-kit sync`, then `pnpm test`, within 600 seconds. The brief points the agents at the
 repository's own grammar skills and carries the Lua 5.4 manual's lexical rules, since lanes reach only
 the model, their fork and the npm registry. Each candidate is compared, reviewed and decided like the

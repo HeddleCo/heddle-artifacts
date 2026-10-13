@@ -55,6 +55,9 @@ export function actorEnv(agent) {
     HEDDLE_PRINCIPAL_EMAIL: `${agent.id}@heddle-artifacts.local`,
     HEDDLE_AGENT_PROVIDER: agent.provider || '', HEDDLE_AGENT_MODEL: agent.model || '',
     HEDDLE_FSMONITOR: 'off', NO_COLOR: '1',
+    // Heddle 0.30.0 deadlocks when it writes 32 or more files to a worktree on more than one
+    // thread (repository_materialization.rs), so a real repository's import or checkout never ends.
+    HEDDLE_MATERIALIZE_THREADS: '1',
   };
 }
 

@@ -743,7 +743,10 @@ async function initRepo(opts) {
   const tests = recipeText ? JSON.parse(recipeText.startsWith('@') ? await readFile(recipeText.slice(1), 'utf8') : recipeText) : undefined;
   await mkdir(opts.directory, { recursive: true, mode: 0o700 });
   if (await saved(opts)) throw new Error('Demo directory already holds a project');
-  const project = await request(`${new URL(opts.url).origin}/api/projects`, token, { id: opts.project, seed: { importUrl }, ...(tests ? { tests } : {}) });
+  // By default the project starts from the repository's tip as one commit with its exact tree (Heddle 0.30
+  // re-exports all history on every publication); DEMO_IMPORT_HISTORY=full imports the whole history.
+  const snapshot = process.env.DEMO_IMPORT_HISTORY !== 'full';
+  const project = await request(`${new URL(opts.url).origin}/api/projects`, token, { id: opts.project, seed: { importUrl, ...(snapshot ? { snapshot } : {}) }, ...(tests ? { tests } : {}) });
   remoteURL(project.canonicalRemote, opts.api);
   await writeFile(join(opts.directory, '.demo.json'), JSON.stringify({ ...project, api: opts.api, clones: {}, generation: Date.now() }), { mode: 0o600 });
   await request(`${opts.api}/humans`, token, { id: 'luke', displayName: 'Luke' });
