@@ -19,12 +19,28 @@ Follow the repository's own agent skills, in order. They are the maintainer's pr
 Model the package on the most recent language additions (`languages/c`, `languages/dockerfile`):
 `package.json` (version `0.0.0` is fine; the changeset sets the release), `tsconfig.json`, `src/grammar.ts`,
 `src/grammar.test.ts`, `src/index.ts`, and `test/` fixtures (`*.lua`) with their generated
-`*.output.js` snapshots (see `generate-snapshots.js` in those packages). Cover the hard parts with
-fixtures and unit tests: long brackets of every level (`[[ ]]`, `[==[ ]==]`) as strings and as comments
-(`--[[ ]]`, `--[==[ ]==]`), short strings with every escape (`\z`, `\x`, `\ddd`, `\u{XXX}`), numerals
-(hex floats with `p` exponents), labels (`::name::`), `goto`, attributes (`<const>`, `<close>`), method
-calls (`obj:method()`), and function names. Document anything you deliberately do not handle in a
-known-limitations comment, in the format `languages/html/src/grammar.ts` uses.
+`*.output.js` snapshots (see `generate-snapshots.js` in those packages). Use the standard token names in
+`lib/core/src/tokens.ts`.
+
+Required behaviour. Each item needs its own fixture lines and a unit test that asserts the token types:
+
+1. Long brackets of every level (`[[ ]]`, `[==[ ]==]`) as strings and as comments (`--[[ ]]`,
+   `--[==[ ]==]`); a closing bracket of a different level inside does not end them.
+2. Short strings with `string_escape` tokens for every escape, as `languages/python` does: `\a \b \f \n \r
+   \t \v \\ \" \'`, a backslash before a newline, `\xXX`, `\ddd` (one to three digits), `\u{XXX}`, and
+   `\z` together with the whitespace it skips. An escaped quote never ends the string.
+3. Numerals: decimal and hexadecimal integers and floats, exponents (`e`/`E`, and `p`/`P` for hex), and a
+   leading dot (`.5`, `.5e3`).
+4. `...` (varargs) is one token on its own, never merged with a neighbouring `)` or `,`; `..` is concatenation.
+5. Attributes in `local x <const> = 1` and `local f <close> = …`: the name is an `attribute` token.
+6. Labels: in `::name::` and `goto name`, the name is a `label` token.
+7. Function names: in `function name`, `local function name`, `function a.b.c` and `function a.b:c`, the
+   defined name is a `function` token; method calls (`obj:method()`) and ordinary calls (`f()`) mark the
+   called name as `function` too.
+8. Every Lua 5.4 keyword and operator from the manual excerpt below (`//`, `~=`, `~`, `<<`, `>>`, `#`, `::`).
+
+Document anything you deliberately do not handle in a known-limitations comment, in the format
+`languages/html/src/grammar.ts` uses; none of the eight items above may be a limitation.
 
 Register the language where the existing ones are registered, as the C and C++ addition did:
 `lib/_site/package.json` (`"@twinkleplop/lua": "workspace:*"`), `lib/_site/src/lib/explore/grammars.ts`,

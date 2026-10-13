@@ -800,9 +800,16 @@ async function task(opts) {
   }
   await command('tmux', ['set-option', '-t', session, 'remain-on-exit', 'on']);
   console.log(`${lanes.map(l => `${l.id} (${l.model})`).join(', ')} launched on ${slug}. Watch with: tmux attach -t ${session}`);
+  // A lane that finished cleanly pushed work: wait for its candidate (ingest and sync take a while on a real
+  // repository), but not forever, since an agent can finish without pushing.
+  let finishedAt;
   const view = await waitFor(opts, async () => {
-    for (const lane of lanes) { try { await readFile(lane.marker, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return undefined; throw error; } }
+    const exits = [];
+    for (const lane of lanes) { try { exits.push((await readFile(lane.marker, 'utf8')).trim()); } catch (error) { if (error.code === 'ENOENT') return undefined; throw error; } }
+    finishedAt ??= Date.now();
     const current = await request(`${opts.api}/tasks/${slug}`, token);
+    const missing = lanes.filter((lane, i) => exits[i] === '0' && !current.candidates.some(c => c.agent === lane.id));
+    if (missing.length && Date.now() - finishedAt < 10 * 60 * 1000) return undefined;
     return current.candidates.every(c => c.tests && c.tests.status !== 'pending') ? current : undefined;
   }, `${slug} candidates with tests`);
   for (const lane of lanes) {
