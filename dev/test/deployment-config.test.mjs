@@ -40,6 +40,23 @@ test('demo Container build context and compute defaults are bounded', async () =
   assert.match(source, /AbortSignal\.timeout\(ENGINE_COMMAND_MS\)/);
   assert.match(source, /deadline\(Promise\.all\(\[stdout/);
 });
+test('every module the engine imports is in the Docker build context', async () => {
+  // A new engine module missing from .dockerignore ships an image whose engine cannot start (the
+  // combined check did exactly that). Follow relative imports from the entry point and require each one.
+  const rules = new Set((await readFile(new URL('.dockerignore', root), 'utf8')).split(/\r?\n/).filter(l => l.startsWith('!')).map(l => l.slice(1)));
+  const seen = new Set(), queue = ['engine/engine.mjs'];
+  while (queue.length) {
+    const file = queue.pop(); if (seen.has(file)) continue; seen.add(file);
+    assert(rules.has(file), `${file} is imported by the engine but not in .dockerignore`);
+    const source = await readFile(new URL(file, root), 'utf8');
+    for (const [, spec] of source.matchAll(/(?:from|import)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      const next = new URL(spec, new URL(file, root)).pathname.slice(new URL('.', root).pathname.length);
+      if (next.startsWith('engine/')) queue.push(next);
+    }
+  }
+  assert(seen.has('engine/lib/combined.mjs') && seen.size > 10);
+});
+
 test('root Docker context is an exact runtime-source allowlist, excluding private state', async () => {
   const rules = (await readFile(new URL('.dockerignore', root), 'utf8')).split(/\r?\n/).filter(line => line && !line.startsWith('#'));
   assert.equal(rules[0], '**');
