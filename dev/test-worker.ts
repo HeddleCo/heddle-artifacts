@@ -21,8 +21,8 @@ export class StubEngine extends DurableObject {
   combinedFixture: { conflictsWithMain: string[]; containsMain: string[] } = { conflictsWithMain: [], containsMain: [] };
   conflictWithMain(agents: string[]) { this.combinedFixture.conflictsWithMain = agents; }
   markContainsMain(shas: string[]) { this.combinedFixture.containsMain = shas; }
-  failures: { command: string; count: number; after: boolean } | undefined;
-  async failNext(command: string, count = 1, after = true) { this.failures = { command, count, after }; }
+  failures: { command: string; count: number; after: boolean; body: string } | undefined;
+  async failNext(command: string, count = 1, after = true, body = 'crash fixture') { this.failures = { command, count, after, body }; }
   stats() { return { calls: this.calls, state: this.state }; }
   loseDisk() { this.state = emptyState(); }
   async fetch(request: Request): Promise<Response> {
@@ -38,7 +38,7 @@ export class StubEngine extends DurableObject {
     if (this.delay?.command === command) { const ms = this.delay.ms; this.delay = undefined; await new Promise(r => setTimeout(r, ms)); }
     if (this.failures?.command === command && this.failures.count > 0) {
       this.failures.count--; if (this.failures.after) executeFixture(this.state, command, input);
-      this.state = emptyState(); return new Response('crash fixture', { status: 502 });
+      this.state = emptyState(); return new Response(this.failures.body, { status: 502 });
     }
     const result = executeFixture(this.state, command, input);
     return Response.json(result, { status: result.error ? 422 : 200 });

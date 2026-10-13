@@ -57,10 +57,13 @@ try {
   if (cmd !== 'snapshot') process.stdout.write(JSON.stringify(result) + '\n');
 } catch (error) {
   if (error.safeMessage) process.stderr.write(error.safeMessage + '\n');
+  const locations = [];
   for (const frame of error.stack?.split('\n').slice(1) || []) {
     const location = /engine\/(?:lib\/|test\/)?[a-z-]+\.mjs:\d+:\d+/.exec(frame)?.[0];
-    if (location) process.stderr.write(location + '\n');
+    if (location) { locations.push(location); process.stderr.write(location + '\n'); }
   }
-  process.stdout.write(JSON.stringify({ error: { code: error instanceof Rejection ? error.code : 'engine_failure', message: error instanceof Rejection ? error.message : 'Engine operation failed' } }) + '\n');
+  // A crash names only its fixed reason code and the engine frames that led to it, so operators can see which step failed.
+  const detail = error instanceof Rejection ? {} : { ...(error.reason ? { reason: error.reason } : {}), ...(locations.length ? { at: locations.slice(0, 3) } : {}) };
+  process.stdout.write(JSON.stringify({ error: { code: error instanceof Rejection ? error.code : 'engine_failure', message: error instanceof Rejection ? error.message : 'Engine operation failed', ...detail } }) + '\n');
   process.exitCode = error instanceof Rejection ? 2 : 1;
 }

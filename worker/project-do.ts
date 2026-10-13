@@ -460,11 +460,13 @@ export class ProjectDO extends DurableObject<Env> {
         // Operator-only queue state for a live session: ids, states and error codes only, never payloads.
         if (!actor.op) throw new HttpError(403, 'forbidden');
         const error = (result: string | null) => { try { const r = JSON.parse(result ?? 'null'); return r?.error ?? r?.reason ?? r?.code; } catch { return undefined; } };
+        // A failed op's result is only the engine client's fixed reason code and engine frames.
+        const failure = (result: string | null) => { try { const r = JSON.parse(result ?? 'null'); return { reason: r?.reason, at: r?.at }; } catch { return {}; } };
         return Response.json({ open: this.credentials.isOpen(), alarm: await this.ctx.storage.getAlarm(), draining: !!this.draining,
           lanes: this.store.all<Lane>('lanes').map(l => ({ task: l.task, agent: l.agent, status: l.status, lastSeenSha: l.lastSeenSha })),
           pushes: this.store.rows<{ id: string; status: string }>('SELECT id,status FROM pushes ORDER BY rowid').map(r => ({ id: r.id, status: r.status })),
           ops: this.store.rows<{ id: string; command: string; status: string; attempts: number; result: string | null }>('SELECT id,command,status,attempts,result FROM ops ORDER BY rowid DESC LIMIT 40')
-            .map(o => ({ id: o.id.slice(0, 48), command: o.command, status: o.status, attempts: o.attempts, error: error(o.result) })),
+            .map(o => ({ id: o.id.slice(0, 48), command: o.command, status: o.status, attempts: o.attempts, error: error(o.result), ...(o.status === 'failed' ? failure(o.result) : {}) })),
           // Review attempts carry only the reviewer's payload-free diagnostics (reason codes, shapes, timings).
           reviews: this.store.rows<{ key: string; data: string }>(`SELECT key,data FROM meta WHERE key LIKE 'reviewAttempt:%' ORDER BY rowid DESC LIMIT 20`)
             .map(r => { const a = JSON.parse(r.data); return { id: r.key.slice('reviewAttempt:'.length, 80), status: a.status, createdAt: a.createdAt, model: a.review?.model, diagnostics: a.diagnostics ?? [] }; }) }, { headers: { 'cache-control': 'no-store' } });
