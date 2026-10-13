@@ -44,3 +44,18 @@ test('lane briefing contract preserves symbol scope and annotation tags', () => 
   const input = ajv.getSchema(`${schema.$id}#/$defs/decide.input`);
   assert.equal(input({ ...commands.decide, tags: ['tag\n'] }), false, 'schema rejects a trailing newline in a tag');
 });
+
+test('human email is accepted in enrollment and agent records, and preserved by the fixture engine', () => {
+  const agent = { id: 'luke', kind: 'human', displayName: 'Luke', email: 'luke@heddle.sh' };
+  const input = { opId: 'enroll-human', agent }, fixture = emptyState();
+  for (const value of [agent, { ...agent, email: undefined }]) {
+    assert.equal(ajv.getSchema(`${schema.$id}#/$defs/agent.enroll.input`)({ ...input, agent: value }), true);
+    assert.equal(ajv.getSchema(`${schema.$id}#/$defs/Agent`)({ ...value, publicKey: 'a'.repeat(64) }), true);
+  }
+  const result = executeFixture(fixture, 'agent.enroll', input);
+  assert.deepEqual(fixture.agents.luke, { ...agent, ...result });
+  for (const email of [123, 'a'.repeat(255)]) {
+    assert.equal(ajv.getSchema(`${schema.$id}#/$defs/AgentInput`)({ ...agent, email }), false);
+    assert.equal(ajv.getSchema(`${schema.$id}#/$defs/Agent`)({ ...agent, email, publicKey: 'a'.repeat(64) }), false);
+  }
+});

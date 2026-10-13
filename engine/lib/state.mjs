@@ -47,12 +47,16 @@ export async function identity(id) {
   return hex;
 }
 
+export function actorEmail(agent) {
+  return agent.kind === 'human' && agent.email ? agent.email : `${agent.id}@heddle-artifacts.local`;
+}
+
 export function actorEnv(agent) {
   return {
     HEDDLE_HOME: join(stateRoot, 'agents', agent.id, 'home'),
     HEDDLE_CONFIG: join(stateRoot, 'agents', agent.id, 'home', 'config.toml'),
     HEDDLE_PRINCIPAL_NAME: agent.displayName || agent.id,
-    HEDDLE_PRINCIPAL_EMAIL: `${agent.id}@heddle-artifacts.local`,
+    HEDDLE_PRINCIPAL_EMAIL: actorEmail(agent),
     HEDDLE_AGENT_PROVIDER: agent.provider || '', HEDDLE_AGENT_MODEL: agent.model || '',
     HEDDLE_FSMONITOR: 'off', NO_COLOR: '1',
   };

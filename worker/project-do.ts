@@ -4,7 +4,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Agent, Candidate, Decision, FeedEvent, Lane, Review, Turn } from '../contracts/types';
 import type { Env } from './env';
 import { artifacts, existingRepository, forkName, setupScript, subscribeFork } from './artifacts';
-import { bodyText, checkOrigin, credential, digest, HttpError, jsonBody, operator, randomKey, responseError, slug, text } from './auth';
+import { bodyText, checkOrigin, credential, digest, email, HttpError, jsonBody, operator, randomKey, responseError, slug, text } from './auth';
 import { Store } from './store';
 import { EngineClient } from './engine-client';
 import { DemoCredentials } from './credentials';
@@ -477,6 +477,13 @@ export class ProjectDO extends DurableObject<Env> {
       const anonymous = { op: false, agent: undefined };
       const actor = publicRead ? await this.authorize(request).catch(() => anonymous) : await this.authorize(request);
       const anonymousRead = publicRead && actor === anonymous;
+      // Validate human registration before recovery can replay any pending engine writes.
+      let human: { id: string; displayName: string; email?: string } | undefined;
+      if (actor.op && parts[3] === 'humans' && request.method === 'POST') {
+        const body = await jsonBody(request);
+        human = { id: slug(body.id), displayName: text(body.displayName, 200),
+          ...(body.email !== undefined ? { email: email(body.email) } : {}) };
+      }
       this.expireAccess();
       if (parts[3] === 'credentials' && (parts.length === 4 || parts[4] === 'status' && parts.length === 5) && request.method === 'GET' || parts[3] === 'cleanup' && parts.length === 4 && request.method === 'POST') {
         if (!actor.op) throw new HttpError(403, 'forbidden');
@@ -561,9 +568,9 @@ export class ProjectDO extends DurableObject<Env> {
         }
         if (!this.store.get('meta', 'project')) throw new HttpError(404, 'project_not_found');
         if (parts[3] === 'humans' && request.method === 'POST') {
-          const body = await jsonBody(request), id = slug(body.id), displayName = text(body.displayName, 200);
-          const prior = this.store.get<Agent>('agents', id); if (prior && prior.kind !== 'human') throw new HttpError(409, 'identity_exists');
-          await this.engine.mutate('agent.enroll', { opId: `enroll:${id}`, agent: { id, kind: 'human', displayName } });
+          const { id, displayName, email: address } = human!;
+          const prior = this.store.get<Agent>('agents', id); if (prior && (prior.kind !== 'human' || prior.email !== address)) throw new HttpError(409, 'identity_exists');
+          await this.engine.mutate('agent.enroll', { opId: `enroll:${id}`, agent: { id, kind: 'human', displayName, ...(address !== undefined ? { email: address } : {}) } });
           const agent = this.store.get<Agent>('agents', id)!; return Response.json({ id, publicKey: agent.publicKey });
         }
         if (parts[3] === 'why' && request.method === 'GET') {

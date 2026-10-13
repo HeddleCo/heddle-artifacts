@@ -17,6 +17,13 @@ export DEMO_DIR=/tmp/heddle-recording
 ./demo/run.sh --mode scripted
 ```
 
+The human decider is configured through `DEMO_DECIDER_ID` (default `luke`),
+`DEMO_DECIDER_NAME` (default `Luke`), and optional `DEMO_DECIDER_EMAIL`.
+Set the email in the operator's environment for live runs; it must be a plain
+`local@domain` address with a dot in the domain. When omitted, the decider keeps
+`<id>@heddle-artifacts.local`. Set these before creating a project: registration
+is immutable, and existing projects retain their recorded identity.
+
 The harness creates the project using `{seed:{template:"demo"}}`, the two tasks,
 Luke, reviewer, and three coding agents. The engine demo template must contain
 the contents of `demo/seed-project` at its repo root, including the lockfile and

@@ -333,6 +333,10 @@
         },
         "model": {
           "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254
         }
       },
       "required": [
@@ -367,6 +371,10 @@
         },
         "publicKey": {
           "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254
         }
       },
       "required": [

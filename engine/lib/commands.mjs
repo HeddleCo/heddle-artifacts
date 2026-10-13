@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run, git, gitAuth, remote, slug, Rejection } from './process.mjs';
 import { decisionOptions, DecisionInputError } from './decision-anchor.mjs';
-import { stateRoot, repoRoot, exportRoot, identity, heddle } from './state.mjs';
+import { stateRoot, repoRoot, exportRoot, identity, heddle, actorEmail } from './state.mjs';
 import { forkRemote, fetchCommits, materialize, conflictPaths, diffstat, fixedIdentity } from './git.mjs';
 import { verifyCapture } from './signatures.mjs';
 import { testCandidate } from './tests.mjs';
@@ -105,7 +105,7 @@ export async function enroll(state, request) {
   const agent = request.agent;
   slug(agent?.id);
   if (!['agent', 'human', 'reviewer'].includes(agent.kind) || typeof agent.displayName !== 'string') throw new Rejection('invalid_agent', 'Agent kind and displayName are required');
-  if (!state.agents[agent.id]) state.agents[agent.id] = { id: agent.id, kind: agent.kind, displayName: agent.displayName, ...(agent.provider ? { provider: agent.provider } : {}), ...(agent.model ? { model: agent.model } : {}), publicKey: await identity(agent.id) };
+  if (!state.agents[agent.id]) state.agents[agent.id] = { id: agent.id, kind: agent.kind, displayName: agent.displayName, ...(agent.email !== undefined ? { email: agent.email } : {}), ...(agent.provider ? { provider: agent.provider } : {}), ...(agent.model ? { model: agent.model } : {}), publicKey: await identity(agent.id) };
   return { publicKey: state.agents[agent.id].publicKey };
 }
 export async function openLane(state, request) {
@@ -392,7 +392,7 @@ export async function decide(state, request) {
   // decision belongs to this native rationale turn, not that earlier Capture.
   // Persist the same native timestamp in both the decision and projection pin.
   state.projection = { parentSha: state.mainSha, treeSha: native.tree, author: decider.displayName,
-    email: `${decider.id}@heddle-artifacts.local`, at: decisionTurn.at,
+    email: actorEmail(decider), at: decisionTurn.at,
     message: `${message}\n\nHeddle-State: ${landed.state_id_full}\nHeddle-Change: ${change}` };
   const mainSha = (await exportProjection(state)).sha;
   /** @type {Decision} */
