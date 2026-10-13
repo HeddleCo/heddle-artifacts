@@ -3,6 +3,8 @@ import { Container } from '@cloudflare/containers';
 import { deadline, DeadlineError } from './deadline';
 export const ENGINE_COMMAND_MS = 180000;
 export const ENGINE_START_MS = 120000;
+/** Commands the container will exec; must cover every command engine/engine.mjs accepts (a test checks). */
+export const ENGINE_COMMANDS = ['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'tests.record', 'combine', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'];
 export class HeddleEngine extends Container {
   // Bounded single-project demo: do not keep idle paid compute awake for hours.
   // Five minutes exceeds the per-command three-minute deadline below.
@@ -11,7 +13,7 @@ export class HeddleEngine extends Container {
   entrypoint = ['sleep', 'infinity'];
   async fetch(request: Request): Promise<Response> {
     const command = new URL(request.url).pathname.slice(1);
-    if (!['restore', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'tests.record', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'].includes(command)) return new Response(null, { status: 404 });
+    if (!ENGINE_COMMANDS.includes(command)) return new Response(null, { status: 404 });
     if (!this.ctx.container) throw new Error('container_unavailable');
     // Custom exec bypasses Container.fetch, so renew the SDK's separate idle deadline.
     this.renewActivityTimeout();

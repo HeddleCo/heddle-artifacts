@@ -40,6 +40,17 @@ test('demo Container build context and compute defaults are bounded', async () =
   assert.match(source, /AbortSignal\.timeout\(ENGINE_COMMAND_MS\)/);
   assert.match(source, /deadline\(Promise\.all\(\[stdout/);
 });
+test('the engine Container execs every command the engine accepts', async () => {
+  // The Worker-side wrapper refused \'combine\' with a 404 in production while local runs (no wrapper) passed.
+  const engine = await readFile(new URL('engine/engine.mjs', root), 'utf8');
+  const mutating = [...engine.match(/const mutating = \{([^}]*)\}/)[1].matchAll(/'?([a-z.]+)'?\s*:|(?:^|,)\s*([a-z]+)(?=\s*(?:,|$))/g)].map(m => m[1] ?? m[2]);
+  const reads = engine.match(/\[\.\.\.Object\.keys\(mutating\), ([^\]]*)\]/)[1].match(/'([a-z.]+)'/g).map(x => x.slice(1, -1));
+  const wrapper = await readFile(new URL('worker/engine-container.ts', root), 'utf8');
+  const allowed = new Set(wrapper.match(/ENGINE_COMMANDS = \[([^\]]*)\]/)[1].match(/'([a-z.]+)'/g).map(x => x.slice(1, -1)));
+  assert(mutating.includes('combine') && reads.includes('why'));
+  for (const command of [...mutating, ...reads]) assert(allowed.has(command), `engine accepts ${command} but the Container wrapper refuses it`);
+});
+
 test('every module the engine imports is in the Docker build context', async () => {
   // A new engine module missing from .dockerignore ships an image whose engine cannot start (the
   // combined check did exactly that). Follow relative imports from the entry point and require each one.
