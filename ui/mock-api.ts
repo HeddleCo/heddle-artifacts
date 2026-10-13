@@ -7,6 +7,8 @@ import type { Capture, CaptureHistory, FeedEvent, Decision, Lane, Turn } from '.
 import type { ProjectView, TaskView } from './src/api';
 import { updateBoard } from './src/feed';
 const fixtures = { pushing, conflict, decided };
+// When the engine opened each lane; carol's lane predates openedAt and has none.
+const openedAt: Record<string, string> = { 'parser-escapes/alice': '2026-10-10T18:10:00Z', 'parser-escapes/bob': '2026-10-10T18:12:00Z' };
 const diffs: Record<string, string> = {
   alice: 'diff --git a/src/table.ts b/src/table.ts\n--- a/src/table.ts\n+++ b/src/table.ts\n@@ -4,2 +4,3 @@ parseRow\n-export function parseRow(row: string): string[] {\n-  return row.split("|");\n+export function parseRow(row: string): { cells: string[] } {\n+  return { cells: row.split(/(?<!\\\\)\\|/) };\n+}\n',
   bob: 'diff --git a/src/table.ts b/src/table.ts\n--- a/src/table.ts\n+++ b/src/table.ts\n@@ -4,2 +4,8 @@ parseRow\n export function parseRow(row: string): string[] {\n-  return row.split("|");\n+  const cells: string[] = [];\n+  let cell = "", escaped = false;\n+  for (const char of row) {\n+    if (escaped) { cell += char; escaped = false; }\n+    else if (char === "\\\\") escaped = true;\n+    else if (char === "|") { cells.push(cell); cell = ""; }\n+    else cell += char;\n+  }\n+  return [...cells, cell];\n }\n',
@@ -17,8 +19,10 @@ export function createMock(initial = 'conflict') {
   const makeHistories = () => {
     const histories: Record<string, Capture[]> = {};
     for (const task of state.tasks) for (const lane of task.lanes as Lane[]) {
+      // alice was briefed with no earlier decisions (no tag), bob is the control, carol started from one decision.
       if (lane.agent === 'alice') lane.briefing = { hash: 'e'.repeat(64), annotations: [], omitted: 0 };
       if (lane.agent === 'bob') lane.unbriefed = true;
+      if (lane.agent === 'carol') lane.briefing = { hash: 'd'.repeat(64), omitted: 0, annotations: [{ target: 'src/table.ts', scope: 'file', annotationId: 'ann-fixture', revisionId: 'rev-fixture', kind: 'rationale', content: 'Document the escaped-pipe syntax next to parseRow.', attribution: 'luke' }] };
     }
     for (const task of state.tasks) for (const c of task.candidates) {
       histories[`${task.slug}/${c.agent}`] = c.agent === 'alice' ? [
@@ -88,7 +92,7 @@ export function createMock(initial = 'conflict') {
     if (!task) return json({ error: 'not_found' }, 404);
     if (parts.length === 5 && request.method === 'GET') return json(task);
     if (parts.length === 6 && parts[5] === 'captures' && request.method === 'GET') {
-      const lanes = state.tasks.find(t => t.slug === slug)!.lanes.filter(l => state.agents.find(a => a.id === l.agent)?.kind !== 'reviewer').map(l => ({ agent: l.agent, captures: (histories[`${slug}/${l.agent}`] ?? []).toSorted((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt)) }));
+      const lanes = state.tasks.find(t => t.slug === slug)!.lanes.filter(l => state.agents.find(a => a.id === l.agent)?.kind !== 'reviewer').map(l => ({ agent: l.agent, ...(openedAt[`${slug}/${l.agent}`] ? { openedAt: openedAt[`${slug}/${l.agent}`] } : {}), captures: (histories[`${slug}/${l.agent}`] ?? []).toSorted((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt)) }));
       return json({ task: slug, lanes, pending: 0 } satisfies CaptureHistory);
     }
     if (parts[5] === 'candidates' && parts[7] === 'diff' && task.candidates.some(c => c.agent === parts[6])) return new Response(diffs[parts[6]] || '', { headers: { 'Content-Type': 'text/x-diff' } });

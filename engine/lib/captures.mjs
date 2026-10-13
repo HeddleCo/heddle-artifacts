@@ -54,7 +54,8 @@ export async function captures(state, request) {
       history.push({ ...candidate, fromState: from, semantic });
       from = candidate.state;
     }
-    lanes.push({ agent: lane.agent, captures: history });
+    // Lanes opened before the engine recorded openedAt have none.
+    lanes.push({ agent: lane.agent, ...(typeof lane.openedAt === 'string' ? { openedAt: lane.openedAt } : {}), captures: history });
   }
   // A timed-out attempt changes the cache too: its count must survive to the next read and a restore.
   if (computed) await save(state);

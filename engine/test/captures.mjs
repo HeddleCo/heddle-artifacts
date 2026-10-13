@@ -5,7 +5,8 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, writeFile, readFile, chmod, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { run } from '../lib/process.mjs';
+import { run, git } from '../lib/process.mjs';
+import { fixedIdentity } from '../lib/git.mjs';
 
 test('capture history reads every stored push, bounds work, caches across restore, isolates unavailable pairs and retries timeouts', async () => {
   const root = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'heddle-captures-'));
@@ -97,5 +98,47 @@ test('capture history reads every stored push, bounds work, caches across restor
     assert.equal(settled.cacheChanged, false); assert.equal(settled.pending, 0);
     assert.deepEqual(settled.lanes[0].captures.map(c => c.semantic.status), ['ready', 'ready', 'ready', 'unavailable', 'unavailable']);
     console.log('Captures PASS: 3 stored pushes ordered, previous/base pairs, 1 uncached pair per call, shared cache, real snapshot restore, Heddle errors cached unavailable, timeouts retried (2 pending attempts, 3rd final), timed-out pair later ready');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('a newly opened lane records openedAt once; replays keep it and captures reports it only when known', async () => {
+  const root = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'heddle-opened-'));
+  const stateDir = join(root, 'state'), home = join(root, 'home'), seed = join(root, 'seed'), canonical = join(root, 'fixture.git');
+  await mkdir(home); await mkdir(seed);
+  const env = { ENGINE_STATE_DIR: stateDir, HEDDLE_BIN: process.env.HEDDLE_BIN || 'heddle', HOME: home, TMPDIR: process.env.TMPDIR || '/tmp' };
+  const engine = process.env.ENGINE_FILE || fileURLToPath(new URL('../engine.mjs', import.meta.url));
+  const call = async (command, body = {}) => {
+    const output = await run(process.execPath, [engine, command], { env, input: JSON.stringify(body), allowFailure: true });
+    assert.equal(output.code, 0, `${command}: ${output.stdout} ${output.stderr}`);
+    return JSON.parse(output.stdout);
+  };
+  const manifest = async () => JSON.parse(await readFile(join(stateDir, 'engine.json')));
+  try {
+    await git(seed, ['init', '-b', 'main']);
+    await writeFile(join(seed, 'table.ts'), 'export const rows = [];\n');
+    await git(seed, ['add', '.']); await git(seed, ['commit', '-m', 'Seed'], { env: fixedIdentity() });
+    await git(root, ['init', '--bare', '--initial-branch=main', canonical]);
+    await call('init', { opId: 'init', project: 'fixture', canonical: { remote: canonical }, seed: { importUrl: `file://${seed}` } });
+    await call('task.create', { opId: 'task', task: 'table', intent: 'Record when lanes open' });
+    await call('agent.enroll', { opId: 'enroll', agent: { id: 'alice', kind: 'agent', displayName: 'Alice' } });
+    const before = Date.now();
+    const opened = await call('lane.open', { opId: 'lane', task: 'table', agent: 'alice' });
+    const after = Date.now(), openedAt = (await manifest()).lanes['table/alice'].openedAt;
+    assert.equal(typeof openedAt, 'string', 'a newly opened lane records openedAt');
+    assert.equal(new Date(openedAt).toISOString(), openedAt, 'openedAt is an ISO timestamp');
+    assert.ok(Date.parse(openedAt) >= before - 1000 && Date.parse(openedAt) <= after, 'openedAt is the time lane.open ran');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const stored = await readFile(join(stateDir, 'engine.json'));
+    assert.deepEqual(await call('lane.open', { opId: 'lane', task: 'table', agent: 'alice' }), opened, 'an opId replay returns the recorded result');
+    assert.deepEqual(await readFile(join(stateDir, 'engine.json')), stored, 'an opId replay does not rewrite the lane');
+    const reopened = await call('lane.open', { opId: 'lane-again', task: 'table', agent: 'alice' });
+    assert.equal(reopened.laneThread, opened.laneThread);
+    assert.equal((await manifest()).lanes['table/alice'].openedAt, openedAt, 'reopening an open lane keeps its original openedAt');
+    const history = await call('captures', { task: 'table' });
+    assert.deepEqual(history.lanes, [{ agent: 'alice', openedAt, captures: [] }], 'captures reports when the lane opened');
+    const legacy = await manifest(); delete legacy.lanes['table/alice'].openedAt;
+    await writeFile(join(stateDir, 'engine.json'), JSON.stringify(legacy));
+    assert.deepEqual((await call('captures', { task: 'table' })).lanes, [{ agent: 'alice', captures: [] }], 'a lane opened before openedAt was recorded reports none');
+    console.log(`Lane openedAt PASS: new lane records ${openedAt}; opId replay leaves engine.json byte-identical; reopening keeps openedAt; captures reports it, and omits it for older lanes`);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

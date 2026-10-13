@@ -120,7 +120,8 @@ export async function openLane(state, request) {
   // decisions' annotations (for example a decider's rationale) and records a signed briefing for the
   // lane. Reviewers judge candidates; they are not briefed as authors. `brief: false` opens a control lane.
   const briefing = agent.kind === 'agent' && request.brief !== false ? laneBriefing(await heddle(['context', '--for-thread', thread], path, agent)) : undefined;
-  state.lanes[key] = { task: request.task, agent: request.agent, thread, path, leaseId, remote: forkRemote(state.canonical, state.project, request.task, request.agent), status: 'active', seen: {}, ...(briefing ? { briefing } : {}) };
+  // Heddle records no thread start time, so the engine keeps when this lane opened for the Captures view.
+  state.lanes[key] = { task: request.task, agent: request.agent, thread, path, leaseId, remote: forkRemote(state.canonical, state.project, request.task, request.agent), status: 'active', seen: {}, openedAt: new Date().toISOString(), ...(briefing ? { briefing } : {}) };
   return { laneThread: thread, leaseId, ...(briefing ? { briefing } : {}) };
 }
 /** Keep only what the control plane shows and the agent reads: the latest revision of each annotation. */
