@@ -78,8 +78,8 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('independent credential ledger adversarial review', () => {
   it('defaults to one hour and rejects unbounded or malformed configuration', () => {
-    expect(demoTtl({})).toBe(DEFAULT_DEMO_TTL); expect(demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: String(MAX_DEMO_TTL) })).toBe(7200);
-    for (const value of ['0', '59', '7201', 'Infinity', '-1', '60.5', '', 'NaN']) {
+    expect(demoTtl({})).toBe(DEFAULT_DEMO_TTL); expect(demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: String(MAX_DEMO_TTL) })).toBe(14400);
+    for (const value of ['0', '59', '14401', 'Infinity', '-1', '60.5', '', 'NaN']) {
       expect(() => demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: value })).toThrow('invalid_demo_credential_ttl');
     }
   });

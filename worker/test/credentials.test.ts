@@ -22,8 +22,8 @@ function testCredentials(instance: any, value: ArtifactsBinding) { return new De
 describe('bounded demo credential ledger', () => {
   it('validates the operator TTL hard ceiling and persists no plaintext for all seven app credentials', async () => {
     expect(demoTtl({})).toBe(3600);
-    for (const value of ['120', '300', '3600']) expect(demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: value })).toBe(Number(value));
-    for (const value of ['', '0', '59', '60', '61', '119', '7201', '3600.0', '-1', 'NaN', ' 3600', '1e3']) expect(() => demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: value })).toThrow('invalid_demo_credential_ttl');
+    for (const value of ['120', '300', '3600', '14400']) expect(demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: value })).toBe(Number(value));
+    for (const value of ['', '0', '59', '60', '61', '119', '14401', '3600.0', '-1', 'NaN', ' 3600', '1e3']) expect(() => demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: value })).toThrow('invalid_demo_credential_ttl');
     const { id, base, stub, creation } = await fixture();
     expect(Date.parse(creation.expiresAt)).toBeLessThanOrEqual(Date.parse(creation.projectExpiresAt));
     expect(Date.parse(creation.projectExpiresAt) - Date.now()).toBeLessThanOrEqual(3600000);
