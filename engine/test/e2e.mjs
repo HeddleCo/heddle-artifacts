@@ -357,7 +357,7 @@ console.log(`Evidence scratch: ${root}`);
   assert.equal((await mutate2('tests.record', { task: 'table-shape', agent: 'finn', sourceSha: shaB, combined: { sha: shaB, mainSha: decisionA.mainSha }, run: combinedRun })).ignored, true);
   const failing = await mutate2('tests.record', { task: 'table-shape', agent: 'finn', sourceSha: shaB, combined: { sha: combinedB.sha, mainSha: decisionA.mainSha }, run: combinedRun });
   const combinedTests = failing.candidate.combined.tests;
-  assert.equal(failing.candidate.combined.status, 'fail'); assert.equal(combinedTests.status, 'fail');
+  assert.equal(failing.candidate.combined.status, 'fail', 'the merged result fails its tests'); assert.equal(combinedTests.status, 'fail');
   assert.equal(combinedTests.failed, 3, 'B fails combined with main'); assert.equal(combinedTests.passed, 3);
   assert.deepEqual([...combinedTests.failures].sort(), ['handles a header-only table', 'returns the body rows', 'returns the header']);
   assert.match(combinedTests.excerpt, /Name/);
