@@ -138,7 +138,7 @@ function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; tur
 function Compare({ p, t }: { p: string; t: string }) {
   const [captureRefresh, setCaptureRefresh] = useState(0);
   const [view, setView] = useState<TaskView>(), [agents, setAgents] = useState<Agent[]>([]), [lanes, setLanes] = useState<Lane[]>([]), [error, setError] = useState('');
-  const [pick, setPick] = useState(''), [rationale, setRationale] = useState(''), [decider, setDecider] = useState(''), [busy, setBusy] = useState(false), [changed, setChanged] = useState(false), [reviewing, setReviewing] = useState(false);
+  const [pick, setPick] = useState(''), [rationale, setRationale] = useState(''), [anchor, setAnchor] = useState(''), [tags, setTags] = useState(''), [decider, setDecider] = useState(''), [busy, setBusy] = useState(false), [changed, setChanged] = useState(false), [reviewing, setReviewing] = useState(false);
   const sending = useRef(false), version = useRef(0), hydrated = useRef(false), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
   const stale = useRef(false), feedAvailable = useRef(false), connectionEpoch = useRef(0), reloadRequested = useRef(false), previousProject = useRef(p), lifecycle = useRef(0);
   const invalidate = () => { stale.current = true; setChanged(true); };
@@ -151,7 +151,7 @@ function Compare({ p, t }: { p: string; t: string }) {
   };
   useEffect(() => {
     if (previousProject.current !== p) { feedAvailable.current = false; previousProject.current = p; }
-    setView(undefined); setAgents([]); setError(''); setPick(''); setRationale(''); setDecider(''); setBusy(false); setChanged(false);
+    setView(undefined); setAgents([]); setError(''); setPick(''); setRationale(''); setAnchor(''); setTags(''); setDecider(''); setBusy(false); setChanged(false);
     hydrated.current = false; sending.current = false; stale.current = true; void load();
     return () => { version.current++; lifecycle.current++; loading.current = false; reloadRequested.current = false; pending.current = []; };
   }, [p, t]);
@@ -173,7 +173,7 @@ function Compare({ p, t }: { p: string; t: string }) {
   () => { feedAvailable.current = false; connectionEpoch.current++; invalidate(); });
   const humans = agents.filter(a => a.kind === 'human'), who = decider || humans[0]?.id || '';
   const submit = async (e: Event) => { e.preventDefault(); if (!view || sending.current || busy || stale.current || loading.current || changed || reviewing) return;
-    const body = decisionRequest(view, { pick, rationale, decider: who }); if (!body) return; const n = lifecycle.current; sending.current = true; setBusy(true); setError('');
+    const body = decisionRequest(view, { pick, rationale, decider: who, ...(anchor.trim() ? { anchor: anchor.trim() } : {}), ...(tags.trim() ? { tags: tags.split(',').map(t => t.trim()) } : {}) }); if (!body) return; const n = lifecycle.current; sending.current = true; setBusy(true); setError('');
     try {
       const decision = await request<Decision>(`${taskPath(p, t)}/decision`, body);
       if (n === lifecycle.current) setView(v => v && { ...v, decision });
@@ -213,7 +213,9 @@ function Compare({ p, t }: { p: string; t: string }) {
         <form onSubmit={submit}><fieldset disabled={busy || !!view.decision || changed || reviewing}><legend>Candidate to land</legend>{view.candidates.map(c => <label class="radio-choice"><input type="radio" name="pick" value={c.agent} required checked={(view.decision?.pick ?? pick) === c.agent} onChange={() => setPick(c.agent)}/><span>{c.agent}</span><Badge candidate={c}/></label>)}
           <label>Decide as<select required value={view.decision?.decider ?? who} onChange={e => setDecider(e.currentTarget.value)}><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
           <label>Why this candidate?<textarea required maxLength={10000} value={view.decision?.rationale ?? rationale} onInput={e => setRationale(e.currentTarget.value)} placeholder="Explain the tradeoff. This becomes part of the Git history."/></label>
-        </fieldset><button class="land-button" disabled={!decisionRequest(view, { pick, rationale, decider: who }) || busy || changed || reviewing}>{busy ? view.decision ? 'Publishing…' : 'Landing…' : isPublished(view.decision) ? 'Decision landed' : view.decision ? 'Retry publication' : 'Land candidate →'}</button></form>
+          <label>Point this reason at<input type="text" value={view.decision?.anchor ?? anchor} onInput={e => setAnchor(e.currentTarget.value)} placeholder="src/table.ts:parseRow"/></label>
+          <label>Tags<input type="text" value={view.decision?.tags?.join(', ') ?? tags} onInput={e => setTags(e.currentTarget.value)} placeholder="parseRow, whitespace"/></label><p class="muted">Optional, comma-separated · up to 8 tags</p>
+        </fieldset><button class="land-button" disabled={!decisionRequest(view, { pick, rationale, decider: who, ...(anchor.trim() ? { anchor: anchor.trim() } : {}), ...(tags.trim() ? { tags: tags.split(',').map(t => t.trim()) } : {}) }) || busy || changed || reviewing}>{busy ? view.decision ? 'Publishing…' : 'Landing…' : isPublished(view.decision) ? 'Decision landed' : view.decision ? 'Retry publication' : 'Land candidate →'}</button></form>
         {!view.decision && (() => { const picked = view.candidates.find(c => c.agent === pick), blocked = combinedBlock(picked);
           return blocked ? <p class="notice warning combined-block" role="status">{blocked}</p>
             : picked?.combined?.status === 'pass' ? <p class="muted combined-note">{picked.agent} lands as Heddle's merge with main, the exact result that passed its tests.</p> : null; })()}
@@ -223,7 +225,7 @@ function Compare({ p, t }: { p: string; t: string }) {
         <p class="muted">Heddle briefed each agent with earlier decisions on this code before it started.</p>
         {lanes.some(l => l.unbriefed) && <p class="muted control-note">Not briefed, as a control: {lanes.filter(l => l.unbriefed).map(l => l.agent).join(', ')}.</p>}
         {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
-          <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span><span class="verdict-notes">“{a.content}”</span><span class="muted">— {displayName(a.attribution)}</span></li>)}</ul></div>)}
+          <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span>{a.tags?.map(tag => <span class="tag" key={tag}>{tag}</span>)}<span class="verdict-notes">“{a.content}”</span><span class="muted">— {displayName(a.attribution)}</span></li>)}</ul></div>)}
       </section>}
       {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}
         {view.candidates.filter(c => c.combined).map(c => { const line = combinedText(c)!; return <li class={`check combined ${line.tone}`}><span class="check-mark" aria-hidden="true">{line.text.slice(0, 1)}</span><strong>{c.agent} + main</strong><span class="check-detail">{line.text.slice(2)}</span></li>; })}</ul></section>}

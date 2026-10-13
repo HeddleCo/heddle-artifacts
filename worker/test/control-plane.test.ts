@@ -145,11 +145,56 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     expect((await api(`${base}/agents/agent-0/token`, {}, joins[0].agentKey)).status).toBe(409);
     console.log('A-T4 PASS: missing token 403, agent token 403, stale heads 409, current heads land and revoke lane token');
   });
+  it('decision anchor/tag validation precedes mutations and passes exact values to the engine', async () => {
+    const { p, base, project, engine } = await setup();
+    await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(240), 'event');
+    const task = await waitCandidates(base, 1);
+    await ok(`${base}/humans`, { id: 'luke', displayName: 'Luke' });
+    const body = { pick: 'agent-0', decider: 'luke', rationale: 'Whitespace belongs to parseRow.', expectHeads: task.heads };
+    for (const invalid of [
+      { anchor: null }, { anchor: '' }, { anchor: '/src/table.ts' }, { anchor: '../src/table.ts' }, { anchor: 'src//table.ts' },
+      { anchor: 'src/table.ts:' }, { anchor: 'src/table.ts:bad-name' }, { anchor: 'src/table.ts:parseRow\n' }, { anchor: 'src/table.ts:parseRow:extra' },
+      { anchor: 'missing.ts:parseRow' }, { anchor: 'src' },
+      { tags: null }, { tags: 'whitespace' }, { tags: [''] }, { tags: ['bad tag'] }, { tags: ['whitespace\n'] }, { tags: [2] },
+      { tags: ['x'.repeat(65)] }, { tags: Array(9).fill('x') },
+    ]) {
+      const response = await api(`${base}/tasks/parser-escapes/decision`, { ...body, ...invalid });
+      expect(response.status, JSON.stringify(invalid)).toBe(400);
+      expect(await response.json()).toMatchObject({ error: 'anchor' in invalid ? 'invalid_anchor' : 'invalid_tags', message: expect.any(String) });
+    }
+    expect((await engine.stats()).calls.filter((c: any) => ['decide', 'publish'].includes(c.command))).toHaveLength(0);
+    await runInDurableObject(project, instance => {
+      expect(instance.store.get('decisions', 'parser-escapes')).toBeUndefined();
+      expect(instance.store.rows("SELECT * FROM ops WHERE command IN ('decide','publish')")).toHaveLength(0);
+    });
+    await (engine as any).setTreeFiles(task.candidates[0].treeSha, ['src/table.ts', 'src/added.ts']);
+    const absentFromPick = await api(`${base}/tasks/parser-escapes/decision`, { ...body, anchor: 'README.md' });
+    expect(absentFromPick.status).toBe(400);
+    expect(await absentFromPick.json()).toMatchObject({ error: 'invalid_anchor' });
+    const exact = { ...body, anchor: 'src/table.ts:parseRow', tags: ['parseRow', 'whitespace', 'a'.repeat(64), '_.:/-'] };
+    const decision = await ok(`${base}/tasks/parser-escapes/decision`, exact);
+    expect(decision).toMatchObject({ anchor: exact.anchor, tags: exact.tags });
+    expect((await engine.stats()).calls.find((c: any) => c.command === 'decide').input).toMatchObject(exact);
+    const stored = (await ok(`${base}/tasks/parser-escapes`)).decision;
+    expect(stored).toMatchObject({ anchor: exact.anchor, tags: exact.tags });
+    await ok(`${base}/tasks`, { slug: 'next-task', intent: 'Read earlier decision context' });
+    const next = await ok(`${base}/tasks/next-task/agents`, { id: 'later', kind: 'agent', displayName: 'Later' });
+    expect(next.briefing.annotations[0]).toMatchObject({ target: 'src/table.ts', scope: 'symbol:parseRow', tags: exact.tags });
+  });
+  it('file-only anchor and eight tags are accepted', async () => {
+    const { p, base, project, engine } = await setup();
+    await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(241), 'event');
+    const task = await waitCandidates(base, 1);
+    await ok(`${base}/humans`, { id: 'luke', displayName: 'Luke' });
+    const body = { pick: 'agent-0', decider: 'luke', rationale: 'File rule', expectHeads: task.heads, anchor: 'src/table.ts', tags: Array.from({ length: 8 }, (_, i) => `tag${i}`) };
+    expect(await ok(`${base}/tasks/parser-escapes/decision`, body)).toMatchObject({ anchor: body.anchor, tags: body.tags });
+    expect((await engine.stats()).calls.find((c: any) => c.command === 'decision.validate').input.anchor).toBe(body.anchor);
+  });
   it('failed publication retains readable metadata, revokes forks and an operator retry resumes the existing decision', async () => {
     const { p, base, project, engine } = await setup();
     await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(250), 'event'); const task = await waitCandidates(base, 1);
     await ok(`${base}/humans`, { id: 'luke', displayName: 'Luke' });
-    const body = { pick: 'agent-0', decider: 'luke', rationale: 'resume safely', expectHeads: task.heads };
+    const body = { pick: 'agent-0', decider: 'luke', rationale: 'resume safely', expectHeads: task.heads, anchor: 'src/table.ts:parseRow', tags: ['whitespace'] };
     await engine.failNext('publish', 3, false);
     expect((await api(`${base}/tasks/parser-escapes/decision`, body)).status).toBe(503);
     const board = await ok(base); expect(board.tasks[0].decision.mainSha).toBe(''); expect(board.tasks[0].lanes[0].status).toBe('released');
@@ -172,7 +217,10 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     expect(blocked.status).toBe(409); expect(await blocked.json()).toEqual({ error: 'publication_pending', task: 'parser-escapes' });
     expect((await engine.stats()).calls.filter((c: any) => c.command === 'publish')).toHaveLength(3);
     expect((await api(`${base}/tasks/parser-escapes/decision`, { ...body, rationale: 'different decision' })).status).toBe(409);
-    const landed = await ok(`${base}/tasks/parser-escapes/decision`, body); expect(landed.mainSha).toMatch(/^[a-f0-9]{40}$/);
+    expect((await api(`${base}/tasks/parser-escapes/decision`, { ...body, anchor: 'README.md' })).status).toBe(409);
+    expect((await api(`${base}/tasks/parser-escapes/decision`, { ...body, tags: ['different'] })).status).toBe(409);
+    const landed = await ok(`${base}/tasks/parser-escapes/decision`, body);
+    expect(landed).toMatchObject({ anchor: body.anchor, tags: body.tags }); expect(landed.mainSha).toMatch(/^[a-f0-9]{40}$/);
     await runInDurableObject(project, instance => expect(instance.store.get('meta', 'decisionMain:parser-escapes')).toBe(landed.mainSha));
     expect((await api(`${base}/tasks`, { slug: 'later-task', intent: 'Prior publication is complete' })).status).toBe(200);
     const calls = (await engine.stats()).calls; expect(calls.filter((c: any) => c.command === 'decide')).toHaveLength(1);

@@ -3,6 +3,7 @@ import { mkdir, writeFile, readFile, cp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run, git, gitAuth, remote, slug, Rejection } from './process.mjs';
+import { decisionOptions, DecisionInputError } from './decision-anchor.mjs';
 import { stateRoot, repoRoot, exportRoot, identity, heddle } from './state.mjs';
 import { forkRemote, fetchCommits, materialize, conflictPaths, diffstat, fixedIdentity } from './git.mjs';
 import { verifyCapture } from './signatures.mjs';
@@ -133,6 +134,7 @@ export function laneBriefing(output) {
       const latest = Array.isArray(a.revisions) ? a.revisions[a.revisions.length - 1] : undefined;
       if (!latest || typeof latest.content !== 'string') return [];
       return [{ target: String(a.target), scope: String(a.scope ?? ''), annotationId: String(a.annotation_id), revisionId: String(latest.revision_id),
+        tags: Array.isArray(latest.tags) ? latest.tags.filter(t => typeof t === 'string') : [],
         kind: String(latest.kind), content: latest.content.slice(0, 2000), attribution: String(latest.attribution ?? '') }];
     }),
   };
@@ -283,6 +285,26 @@ export async function diff(state, request) {
   return { diff: output.subarray(0, maxBytes).toString() };
 }
 
+function parsedDecisionAnchor(request) {
+  try { return decisionOptions(request); }
+  catch (error) { if (error instanceof DecisionInputError) throw new Rejection(error.code, error.message); throw error; }
+}
+async function treeFiles(tree) {
+  const output = await run('git', ['--git-dir', exportRoot, 'ls-tree', '-rz', tree]);
+  return output.stdout.toString().split('\0').filter(row => /^\d+ blob /.test(row)).map(row => row.slice(row.indexOf('\t') + 1));
+}
+export async function validateDecision(state, request) {
+  const anchor = parsedDecisionAnchor(request), task = taskFor(state, request.task);
+  const candidate = state.lanes[`${request.task}/${request.pick}`]?.candidate;
+  if (!candidate) throw new Rejection('unknown_candidate', 'Chosen candidate is unavailable');
+  const merged = task.baseSha !== state.mainSha && !(await containsMain(state, candidate.sourceSha));
+  if (merged) { const refusal = combinedRejection(candidate, state); if (refusal) throw refusal; }
+  const tree = merged ? candidate.combined.treeSha : candidate.treeSha;
+  if (anchor && !(await treeFiles(tree)).includes(anchor.path))
+    throw new Rejection('invalid_anchor', 'Anchor path must be a file in the tree being landed');
+  return { valid: true };
+}
+
 export async function discuss(state, request) {
   const task = taskFor(state, request.task), author = agentFor(state, request.author);
   if (typeof request.body !== 'string' || !request.body.trim()) throw new Rejection('invalid_body', 'Discussion body is required');
@@ -294,11 +316,12 @@ export async function discuss(state, request) {
     result = await heddle(['discuss', 'reply', parent.heddleDiscussion, '--turn', String(turnNumber), '--body', request.body], task.path, author);
   }
   else {
+    const anchor = request.anchor ? parsedDecisionAnchor(request) : undefined;
     const conflictPath = candidates(state, request.task).candidates.flatMap(c => c.conflicts)[0]?.path;
     const basePaths = (await run('git', ['--git-dir', exportRoot, 'ls-tree', '-rz', '--name-only', task.baseSha])).stdout.toString().split('\0').filter(Boolean);
-    const path = conflictPath && basePaths.includes(conflictPath) ? conflictPath : basePaths[0];
+    const path = anchor?.path ?? (conflictPath && basePaths.includes(conflictPath) ? conflictPath : basePaths[0]);
     if (!path) throw new Rejection('missing_anchor', 'Discussion needs a file in the task base');
-    result = await heddle(['discuss', 'new', '--path', path, '--thread', task.thread, '--title', `${request.task}: ${author.displayName}`, '--body', request.body], task.path, author);
+    result = await heddle(['discuss', 'new', `--path=${path}`,  ...(anchor?.symbol ? ['--symbol', anchor.symbol] : []), '--thread', task.thread, '--title', `${request.task}: ${author.displayName}`, '--body', request.body], task.path, author);
   }
   /** @type {Turn} */
   const turn = { id: result.turn_id || result.operation_id || result.discussion_id, task: request.task, author: request.author, kind: author.kind, body: request.body,
@@ -325,6 +348,12 @@ export async function decide(state, request) {
   if (mergedWithMain) { const refusal = combinedRejection(lane.candidate, state); if (refusal) throw refusal; }
   const combined = mergedWithMain ? lane.candidate.combined : undefined;
   const expectedTree = combined ? combined.treeSha : lane.candidate.treeSha;
+  await validateDecision(state, request);
+  const files = await treeFiles(expectedTree);
+  const changed = (await run('git', ['--git-dir', exportRoot, 'diff', '--name-only', '-z', '--diff-filter=ACMRT', await diffBase(state, task, lane.candidate.sourceSha), lane.candidate.sourceSha, '--'])).stdout.toString().split('\0').filter(path => files.includes(path));
+  const defaultPath = current.candidates.flatMap(c => c.conflicts).find(c => files.includes(c.path))?.path ?? changed[0] ?? (await treeFiles(task.baseSha)).find(path => files.includes(path));
+  const anchor = request.anchor ?? defaultPath;
+  if (!anchor) throw new Rejection('missing_anchor', 'Decision needs a file in the tree being landed');
   const alternatives = current.candidates.map(c => c.agent).filter(id => id !== request.pick);
   // G2 fallback b2: absorb only the selected native lane; other alternatives remain addressable.
   const message = `${request.rationale}\n\nHeddle-Task: ${request.task}\nHeddle-Chosen: ${request.pick}\n${alternatives.map(id => `Heddle-Alternative: ${id}`).join('\n')}\n${combined ? `Heddle-Combined: ${combined.sha}\n` : ''}Heddle-Decided-by: ${request.decider}`;
@@ -339,8 +368,8 @@ export async function decide(state, request) {
     }
     if (!merged) throw new Rejection('combined_conflict', 'Heddle could not absorb the chosen work on top of main');
   } else await heddle(['thread', 'absorb', lane.thread, '--into', task.thread, '-m', message], task.path, decider);
-  const decisionTurn = await discuss(state, { task: request.task, author: request.decider, body: request.rationale });
-  const resolutionRecord = await heddle(['discuss', 'resolve', decisionTurn.heddleDiscussion, '--mode', 'into-annotation', '--kind', 'rationale', '--body', request.rationale], task.path, decider);
+  const decisionTurn = await discuss(state, { task: request.task, author: request.decider, body: request.rationale, anchor });
+  const resolutionRecord = await heddle(['discuss', 'resolve', decisionTurn.heddleDiscussion, '--mode', 'into-annotation', '--kind', 'rationale', ...(request.tags ?? []).map(tag => `--tag=${tag}`), '--body', request.rationale], task.path, decider);
   // b2 can fast-forward: the selected State keeps its original agent signature.
   // The human's custodial attestation signs the exact native resolution envelope.
   const resolution = await heddle(['show', task.thread], task.path, decider);
@@ -366,7 +395,7 @@ export async function decide(state, request) {
     message: `${message}\n\nHeddle-State: ${landed.state_id_full}\nHeddle-Change: ${change}` };
   const mainSha = (await exportProjection(state)).sha;
   /** @type {Decision} */
-  const decision = { task: request.task, decider: request.decider, pick: request.pick, rationale: request.rationale, alternatives,
+  const decision = { task: request.task, decider: request.decider, pick: request.pick, rationale: request.rationale, anchor, ...(request.tags !== undefined ? { tags: [...request.tags] } : {}), alternatives,
     resolutionState: resolution.state_id_full, landState: landed.state_id_full, mainSha, at: decisionTurn.at,
     // Landed as Heddle's merge of the pick with main: the exact commit and tree the sandbox tested.
     ...(combined ? { combined: { sha: combined.sha, treeSha: combined.treeSha, mainSha: combined.mainSha, state: combined.state } } : {}) };
