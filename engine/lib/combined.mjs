@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { run, git, Rejection } from './process.mjs';
 import { stateRoot, repoRoot, exportRoot, heddle } from './state.mjs';
 import { fixedIdentity } from './git.mjs';
+import { combinedRefusal } from './combined-rule.mjs';
 
 export const COMBINED_REF = 'refs/heads/combined';
 const ENGINE = { id: '_engine', displayName: 'Heddle engine' };
@@ -134,23 +135,10 @@ export async function refreshCombined(state, taskId, { isolate = false } = {}) {
   return refs;
 }
 
-/**
- * Why a pick from an older base cannot land yet, or undefined when Heddle merged it with the current
- * main cleanly and the merged result passed its isolated tests: then the human may land that merge.
- */
+/** The landing rule (combined-rule.mjs) as an engine Rejection, or undefined when the pick may land. */
 export function combinedRejection(candidate, state) {
-  const combined = candidate.combined;
-  if (!combined || combined.mainSha !== state.mainSha || combined.candidateSha !== candidate.sourceSha || combined.status === 'pending')
-    return new Rejection('combined_pending', 'Main advanced; the check of this candidate combined with main has not finished');
-  if (combined.status === 'conflict')
-    return new Rejection('combined_conflict', `Heddle found conflicts with main in ${combined.conflicts.map(c => c.symbol ? `${c.path} (${c.symbol})` : c.path).join(', ')}; the agent must resolve them and push again`);
-  if (combined.status === 'fail' || combined.status === 'error') {
-    const t = combined.tests;
-    return new Rejection('combined_failing', t?.status === 'fail' ? `${t.failed} test${t.failed === 1 ? '' : 's'} fail combined with main; the agent must fix them on the combined commit and push again`
-      : 'The combined result could not be tested; the agent must update its candidate from the combined commit and push again');
-  }
-  if (combined.status !== 'pass') return new Rejection('combined_untested', 'Main advanced; the result combined with main was not tested in the isolated sandbox');
-  return undefined;
+  const refusal = combinedRefusal(candidate, state.mainSha);
+  return refusal && new Rejection(refusal.code, refusal.message);
 }
 
 /** Bring the task thread and the chosen lane up to date with main natively, so the absorb sees main. */

@@ -383,7 +383,7 @@ console.log(`Evidence scratch: ${root}`);
   const shaFixed = await edit('finn', { 'src/table.mjs': s => s.replace('return { header, rows };', 'const trim = row => row.map(cell => cell.trim());\n  return { header: trim(header), rows: rows.map(trim) };') }, 'Trim cells when reading a table');
   const revised = (await mutate2('ingest', { items: [item('finn', shaFixed)], runTests: true, isolateUnreviewed: true })).results[0].candidate;
   assert.equal(revised.combined, undefined, 'a head that contains main needs no separate combined check');
-  assert.doesNotMatch((await call2('diff', { task: 'table-shape', agent: 'finn' })).diff, /return text\.split\("\|"\);/, 'the diff shows B\'s work, not main\'s');
+  assert.doesNotMatch((await call2('diff', { task: 'table-shape', agent: 'finn', maxBytes: 65536 })).diff, /return text\.split\("\|"\);/, 'the diff shows B\'s work, not main\'s');
   const fixedTests = (await mutate2('tests.record', { task: 'table-shape', agent: 'finn', sourceSha: shaFixed, run: await sandbox(canonical2, shaFixed, revised.treeSha) })).candidate.tests;
   assert.equal(fixedTests.status, 'pass'); assert.equal(fixedTests.passed, 6);
   const decisionB = await mutate2('decide', { task: 'table-shape', decider: 'luke', pick: 'finn', rationale: 'Merged main and trims where a table is read.', expectHeads: (await call2('candidates', { task: 'table-shape' })).heads });

@@ -244,6 +244,22 @@
         "input"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "combine"
+        },
+        "input": {
+          "$ref": "#/$defs/combine.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
     }
   ],
   "$defs": {
@@ -371,6 +387,18 @@
             "signature"
           ],
           "additionalProperties": false
+        },
+        "failures": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "excerpt": {
+          "type": "string",
+          "maxLength": 4000
         }
       },
       "required": [
@@ -465,6 +493,9 @@
         },
         "capturedAt": {
           "type": "string"
+        },
+        "combined": {
+          "$ref": "#/$defs/Combined"
         }
       },
       "required": [
@@ -562,6 +593,33 @@
         },
         "at": {
           "type": "string"
+        },
+        "combined": {
+          "type": "object",
+          "properties": {
+            "sha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "treeSha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "mainSha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sha",
+            "treeSha",
+            "mainSha",
+            "state"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -1358,6 +1416,24 @@
         },
         "run": {
           "$ref": "#/$defs/SandboxRun"
+        },
+        "combined": {
+          "type": "object",
+          "properties": {
+            "sha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "mainSha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            }
+          },
+          "required": [
+            "sha",
+            "mainSha"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -1400,6 +1476,166 @@
           "additionalProperties": false
         }
       ]
+    },
+    "HeddleConflict": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "Combined": {
+      "type": "object",
+      "description": "The candidate merged with the current main by Heddle and tested in the isolated sandbox.",
+      "properties": {
+        "mainSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "mainState": {
+          "type": "string"
+        },
+        "candidateSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "status": {
+          "enum": [
+            "conflict",
+            "pending",
+            "pass",
+            "fail",
+            "error",
+            "skipped"
+          ]
+        },
+        "heddle": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string"
+            },
+            "freshness": {
+              "type": "string"
+            },
+            "mergeType": {
+              "type": "string"
+            },
+            "conflictCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "impact": {
+              "type": "string"
+            },
+            "impactCategories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "blockers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "status",
+            "freshness",
+            "mergeType",
+            "conflictCount",
+            "impact",
+            "impactCategories",
+            "blockers"
+          ],
+          "additionalProperties": false
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HeddleConflict"
+          }
+        },
+        "state": {
+          "type": "string"
+        },
+        "sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "treeSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "tests": {
+          "$ref": "#/$defs/Tests"
+        }
+      },
+      "required": [
+        "mainSha",
+        "mainState",
+        "candidateSha",
+        "status",
+        "heddle",
+        "conflicts"
+      ],
+      "additionalProperties": false
+    },
+    "combine.input": {
+      "type": "object",
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "isolate": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "opId",
+        "task"
+      ],
+      "additionalProperties": false
+    },
+    "combine.output": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Candidate"
+          }
+        }
+      },
+      "required": [
+        "task",
+        "candidates"
+      ],
+      "additionalProperties": false
     }
   }
 }

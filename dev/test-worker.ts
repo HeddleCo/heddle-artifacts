@@ -17,6 +17,10 @@ export class StubEngine extends DurableObject {
   isolatedFixture = false;
   async delayNext(command: string, ms: number) { this.delay = { command, ms }; }
   isolateUnreviewed() { this.isolatedFixture = true; }
+  // Combined-check fixture hooks survive snapshot restores, like the isolation flag above.
+  combinedFixture: { conflictsWithMain: string[]; containsMain: string[] } = { conflictsWithMain: [], containsMain: [] };
+  conflictWithMain(agents: string[]) { this.combinedFixture.conflictsWithMain = agents; }
+  markContainsMain(shas: string[]) { this.combinedFixture.containsMain = shas; }
   failures: { command: string; count: number; after: boolean } | undefined;
   async failNext(command: string, count = 1, after = true) { this.failures = { command, count, after }; }
   stats() { return { calls: this.calls, state: this.state }; }
@@ -27,6 +31,7 @@ export class StubEngine extends DurableObject {
     if (command === 'snapshot') return new Response(JSON.stringify(this.state));
     const input = await request.json();
     if (this.isolatedFixture) this.state.isolateUnreviewed = true;
+    Object.assign(this.state, this.combinedFixture);
     const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}');
     const reads = JSON.parse(env.ARTIFACTS_READ_TOKENS ?? '{}');
     this.calls.push({ command, input, hasCanonicalRead: command === 'publish' ? typeof reads[input.canonical.remote] === 'string' : undefined });
