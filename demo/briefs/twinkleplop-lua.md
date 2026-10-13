@@ -58,7 +58,7 @@ npx --yes pnpm@10 --filter site exec svelte-kit sync
 npx --yes pnpm@10 test                          # the whole suite must pass
 npx --yes pnpm@10 --filter ./languages/lua exec vite build --config ../../build/language.vite.config.ts
 npx --yes pnpm@10 --filter ./languages/lua run types
-npx --yes pnpm@10 format:write                  # the repository's formatter, before every commit
+npx --yes pnpm@10 exec oxfmt languages/lua/src  # format your own source before every commit; leave other files alone
 ```
 
 The platform tests your pushed commit in an isolated sandbox with `pnpm install --frozen-lockfile`, the
