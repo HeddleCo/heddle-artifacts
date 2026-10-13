@@ -79,6 +79,7 @@ export function executeFixture(state, command, input) {
   else if (command === 'publish') { const decision = Object.values(state.decisions).at(-1); state.mainSha = sha(decision?.landState ?? 'seed'); if (decision) decision.mainSha = state.mainSha; result = { main: state.mainSha, pushed: ['main', 'refs/notes/heddle', 'refs/notes/heddle-why'], verify: { exportRoundTrip: true, treeMatch: true, fsck: true } }; }
   else if (command === 'why') { const decision = Object.values(state.decisions).find(d => d.mainSha === input.sha); result = { narrative: decision ? `Heddle decision · task ${decision.task}\nChosen: ${decision.pick}\nRejected: ${decision.alternatives.join(', ')}\n${decision.rationale}` : 'Fixture candidate' }; }
   else if (command === 'selftest') result = { heddleVersion: 'stub', gitVersion: 'fixture', ok: true };
+  else if (command === 'loaded') result = { loaded: null };
   else throw new Error('Unknown fixture command');
   if (input.opId) { state.ops[input.opId] = result; state.generation++; }
   return structuredClone(result);

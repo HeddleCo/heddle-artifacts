@@ -318,6 +318,28 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     expect(await statuses()).toEqual(['failed']);
     expect((await second.engine.stats()).calls.filter((c: any) => c.command === 'ingest')).toHaveLength(9);
   });
+  it('reads and operations skip the restore while the engine container still holds the current snapshot', async () => {
+    const { p, base, joins, project, engine } = await setup();
+    await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(540), 'event'); await waitCandidates(base, 1);
+    const count = async (command: string) => (await engine.stats()).calls.filter((c: any) => c.command === command).length;
+    const diff = async () => { const r = await api(`${base}/tasks/parser-escapes/candidates/agent-0/diff`); expect(r.status).toBe(200); return r.text(); };
+    // Warm: the last operation left exactly the current generation on disk, so neither read restores.
+    let restores = await count('restore');
+    const first = await diff(); expect(await diff()).toBe(first);
+    expect(await count('restore')).toBe(restores); expect(await count('loaded')).toBeGreaterThan(0);
+    // A restarted container holds no token: the next read restores, and reads the right state.
+    await engine.loseDisk();
+    expect(await diff()).toBe(first); expect(await count('restore')).toBe(restores + 1);
+    restores = await count('restore');
+    // An attempt that fails may leave its disk changed, so the retry restores before running again.
+    await engine.failNext('discuss', 1, true);
+    expect((await api(`${base}/tasks/parser-escapes/turns`, { body: 'after a failed attempt' }, joins[0].agentKey)).status).toBe(200);
+    const calls = (await engine.stats()).calls.map((c: any) => c.command);
+    const failedAt = calls.lastIndexOf('discuss', calls.lastIndexOf('discuss') - 1);
+    expect(failedAt).toBeGreaterThanOrEqual(0);
+    expect(calls.slice(failedAt + 1, calls.lastIndexOf('discuss'))).toContain('restore');
+    expect(await count('restore')).toBe(restores + 1);
+  });
   it('a failed op keeps the engine reason code and frames for diagnostics, and nothing else', async () => {
     const { p, base, project, engine } = await setup();
     const crash = (error: object) => JSON.stringify({ error: { code: 'engine_failure', message: 'Engine operation failed', ...error } });

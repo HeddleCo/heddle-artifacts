@@ -17,7 +17,7 @@ const commands = {
   candidates: { task: 't' }, diff: { task: 't', agent: 'alice', maxBytes: 524288 },
   discuss: { opId: 'turn', task: 't', author: 'alice', body: 'why' },
   decide: { opId: 'decide', task: 't', decider: 'alice', pick: 'alice', rationale: 'why', expectHeads: [] },
-  publish: { opId: 'publish', canonical: { remote: 'http://local/p' } }, why: { sha }, selftest: {}
+  publish: { opId: 'publish', canonical: { remote: 'http://local/p' } }, why: { sha }, selftest: {}, loaded: {}
 };
 test('§7 schema accepts every JSON fixture command/output and rejects missing opId, extra credentials and unknown verbs', () => {
   for (const [command, input] of Object.entries(commands)) {
@@ -31,5 +31,5 @@ test('§7 schema accepts every JSON fixture command/output and rejects missing o
     assert.equal(validateInput({ ...input, ARTIFACTS_WRITE_TOKEN: 'fixture-only' }), false, 'tokens belong only in env');
   }
   assert.equal(ajv.validate(schema.$id, { command: 'unknown', input: {} }), false);
-  console.log('§7 schema: 13 JSON commands/results accepted; missing opId, stdin credentials and unknown commands rejected');
+  console.log('§7 schema: 14 JSON commands/results accepted; missing opId, stdin credentials and unknown commands rejected');
 });

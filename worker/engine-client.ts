@@ -55,12 +55,23 @@ export class EngineClient {
     if (line.includes('\n')) throw new Error('engine_protocol');
     return JSON.parse(line);
   }
+  // The snapshot generation this project's engine container holds on disk, and the token its restore wrote.
+  // Restoring a real repository takes most of a minute, so a call skips it while the container still holds
+  // that token. A failed call may leave the disk changed and a restarted container has no token; either
+  // way the next call restores.
+  private loaded: { generation: number; token: string } | undefined;
   private async restore() {
     const generation = this.store.get<number>('meta', 'stateGeneration') ?? 0;
     if (!generation) return;
+    if (this.loaded?.generation === generation && await this.holds(this.loaded.token)) return;
+    this.loaded = undefined;
     const snapshot = await this.env.STATE.get(`projects/${this.project()}/gen-${generation}.tar.zst`);
     if (!snapshot) throw new Error('snapshot_missing');
-    await this.parsed(await this.transport('restore', snapshot.body));
+    const restored = await this.parsed(await this.transport('restore', snapshot.body));
+    if (typeof restored?.loaded === 'string') this.loaded = { generation, token: restored.loaded };
+  }
+  private async holds(token: string): Promise<boolean> {
+    try { return (await this.parsed(await this.transport('loaded', '{}')))?.loaded === token; } catch { return false; }
   }
   private async tokens<T>(fn: (env: Record<string, string>) => Promise<T>): Promise<T> {
     this.credentials.assertOpen();
@@ -85,7 +96,11 @@ export class EngineClient {
       for (const lease of leases) await this.credentials.revoke(lease.repo, lease.token);
     }
   }
-  async read(command: string, input: any): Promise<any> { await this.restore(); return this.parsed(await this.transport(command, JSON.stringify(input))); }
+  async read(command: string, input: any): Promise<any> {
+    await this.restore();
+    try { return await this.parsed(await this.transport(command, JSON.stringify(input))); }
+    catch (error) { this.loaded = undefined; throw error; }
+  }
   async replay(): Promise<void> {
     if (!this.credentials.isOpen()) return;
     const pending = this.store.rows<any>("SELECT * FROM ops WHERE status='pending' ORDER BY rowid");
@@ -123,9 +138,12 @@ export class EngineClient {
           events = this.apply(op.command, input, result, context);
           this.store.storage.sql.exec("UPDATE ops SET status='done',result=? WHERE id=?", JSON.stringify(result), op.id);
         });
+        // The disk now holds exactly what was just snapshotted as the next generation.
+        if (this.loaded?.generation === generation) this.loaded = { generation: generation + 1, token: this.loaded.token };
         for (const event of events) this.emit(event);
         return result;
       } catch (error) {
+        this.loaded = undefined;
         if (error instanceof HttpError && error.status < 500) {
           this.store.storage.sql.exec("UPDATE ops SET status='rejected' WHERE id=?", op.id);
           throw error;

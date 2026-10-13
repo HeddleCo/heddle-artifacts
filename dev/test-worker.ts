@@ -24,10 +24,13 @@ export class StubEngine extends DurableObject {
   failures: { command: string; count: number; after: boolean; body: string } | undefined;
   async failNext(command: string, count = 1, after = true, body = 'crash fixture') { this.failures = { command, count, after, body }; }
   stats() { return { calls: this.calls, state: this.state }; }
-  loseDisk() { this.state = emptyState(); }
+  // A container restart: no state and no restore token.
+  loseDisk() { this.state = emptyState(); this.loadedToken = null; }
+  loadedToken: string | null = null;
   async fetch(request: Request): Promise<Response> {
     const command = new URL(request.url).pathname.slice(1);
-    if (command === 'restore') { this.state = JSON.parse(await request.text()); this.calls.push({ command, input: {} }); return Response.json({ generation: this.state.generation }); }
+    if (command === 'restore') { this.state = JSON.parse(await request.text()); this.calls.push({ command, input: {} }); this.loadedToken = crypto.randomUUID(); return Response.json({ generation: this.state.generation, loaded: this.loadedToken }); }
+    if (command === 'loaded') { this.calls.push({ command, input: {} }); return Response.json({ loaded: this.loadedToken }); }
     if (command === 'snapshot') return new Response(JSON.stringify(this.state));
     const input = await request.json();
     if (this.isolatedFixture) this.state.isolateUnreviewed = true;
@@ -38,7 +41,7 @@ export class StubEngine extends DurableObject {
     if (this.delay?.command === command) { const ms = this.delay.ms; this.delay = undefined; await new Promise(r => setTimeout(r, ms)); }
     if (this.failures?.command === command && this.failures.count > 0) {
       this.failures.count--; if (this.failures.after) executeFixture(this.state, command, input);
-      this.state = emptyState(); return new Response(this.failures.body, { status: 502 });
+      this.state = emptyState(); this.loadedToken = null; return new Response(this.failures.body, { status: 502 });
     }
     const result = executeFixture(this.state, command, input);
     return Response.json(result, { status: result.error ? 422 : 200 });
