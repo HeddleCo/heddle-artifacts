@@ -1,0 +1,9 @@
+{
+  "setup": [
+    ["npx", "--yes", "pnpm@10", "install", "--frozen-lockfile", "--ignore-scripts"],
+    ["npx", "--yes", "pnpm@10", "--filter", "./lib/theme-*", "build"],
+    ["npx", "--yes", "pnpm@10", "--filter", "site", "exec", "svelte-kit", "sync"]
+  ],
+  "test": ["npx", "--yes", "pnpm@10", "test"],
+  "budgetSeconds": 600
+}

@@ -32,7 +32,9 @@ try {
   if (started.status !== 202) { await finish(1, `${who}: sandbox start failed (HTTP ${started.status})`); process.exit(); }
   console.log(`${who}: ${agent} running in a Cloudflare Sandbox`);
   let last = '';
-  for (const deadline = Date.now() + 40 * 60 * 1000; Date.now() < deadline;) {
+  // DEMO_LANE_MINUTES gives longer work (a real repository's task) more time; 40 minutes by default, at most 110.
+  const minutes = Math.min(110, Math.max(1, Number(process.env.DEMO_LANE_MINUTES) || 40));
+  for (const deadline = Date.now() + minutes * 60 * 1000; Date.now() < deadline;) {
     await new Promise(r => setTimeout(r, 10000));
     let status;
     try { status = await (await fetch(lane, { headers, signal: AbortSignal.timeout(30000) })).json(); } catch { continue; }
@@ -40,7 +42,7 @@ try {
     if (status.state === 'succeeded') { await finish(0, `${who}: agent finished`); process.exit(); }
     if (['failed', 'lost'].includes(status.state)) { await finish(1, `${who}: agent ${status.state}`); process.exit(); }
   }
-  await finish(1, `${who}: timed out after 40 minutes`);
+  await finish(1, `${who}: timed out after ${minutes} minutes`);
 } catch (error) {
   // Messages here come from this script's own checks or fetch/fs errors; none carry the grant or bearer.
   await finish(1, `${name ?? 'lane'}: sandbox lane failed: ${error.message === 'usage' ? 'invalid arguments' : String(error.message).slice(0, 160)}`);
