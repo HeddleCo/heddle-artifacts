@@ -38,7 +38,7 @@ const canonicalJSON = value => JSON.stringify(value, (_key, item) => item && typ
 const reject = message => { throw new Rejection('publication_conflict', message); };
 
 async function readRefs(target, refs) {
-  const rows = await git(exportRoot, ['ls-remote', target, ...refs], { env: gitAuth(target) });
+  const rows = await git(exportRoot, ['ls-remote', target, ...refs], { env: gitAuth(target), protocol: 2 });
   const result = Object.fromEntries(refs.map(ref => [ref, null]));
   for (const row of rows.split('\n').filter(Boolean)) {
     const [oid, ref] = row.split('\t');
@@ -49,7 +49,7 @@ async function readRefs(target, refs) {
 
 async function fetchObject(target, oid) {
   if (!oidPattern.test(oid)) reject('Invalid publication object ID');
-  await git(exportRoot, ['fetch', '--no-tags', '--no-write-fetch-head', target, oid], { env: gitAuth(target) });
+  await git(exportRoot, ['fetch', '--no-tags', '--no-write-fetch-head', target, oid], { env: gitAuth(target), protocol: 2 });
   if (await git(exportRoot, ['cat-file', '-t', oid]) !== 'commit') reject('Publication object is not a commit');
 }
 

@@ -16,7 +16,7 @@ export function forkRemote(canonical, project, task, agent) {
 export async function fetchCommits(source, shas) {
   remote(source);
   if (shas.some(sha => !/^[0-9a-f]{40}$/.test(sha))) throw new Rejection('invalid_sha', 'Expected a complete SHA-1 commit id');
-  await git(exportRoot, ['fetch', '--no-tags', '--no-write-fetch-head', source, ...new Set(shas)], { env: gitAuth(source) });
+  await git(exportRoot, ['fetch', '--no-tags', '--no-write-fetch-head', source, ...new Set(shas)], { env: gitAuth(source), protocol: 2 });
   for (const sha of shas) if (await git(exportRoot, ['cat-file', '-t', sha]) !== 'commit') throw new Rejection('invalid_commit', 'Push must refer to a commit');
 }
 
