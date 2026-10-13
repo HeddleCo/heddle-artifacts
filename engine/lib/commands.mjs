@@ -300,9 +300,11 @@ export async function validateDecision(state, request) {
   if (!candidate) throw new Rejection('unknown_candidate', 'Chosen candidate is unavailable');
   const merged = task.baseSha !== state.mainSha && !(await containsMain(state, candidate.sourceSha));
   if (merged) { const refusal = combinedRejection(candidate, state); if (refusal) throw refusal; }
-  const tree = merged ? candidate.combined.treeSha : candidate.treeSha;
-  if (anchor && !(await treeFiles(tree)).includes(anchor.path))
-    throw new Rejection('invalid_anchor', 'Anchor path must be a file in the tree being landed');
+  if (anchor) {
+    const tree = merged ? candidate.combined.treeSha : candidate.treeSha;
+    if (!(await treeFiles(tree)).includes(anchor.path))
+      throw new Rejection('invalid_anchor', 'Anchor path must be a file in the tree being landed');
+  }
   return { valid: true };
 }
 

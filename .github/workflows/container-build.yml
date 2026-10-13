@@ -179,7 +179,9 @@ jobs:
           set -euo pipefail
           # Mount ONLY reviewed tests. Production engine, libs, contracts and
           # public fixture manifest come from the image, never a source overlay.
-          docker run --rm --read-only --network none \
+          # Reap native CLI descendants across all acceptance copies; otherwise
+          # zombies exhaust the PID limit before a mutation reaches its assertion.
+          docker run --rm --init --read-only --network none \
             --cap-drop ALL --security-opt no-new-privileges \
             --pids-limit 256 --memory 4g --cpus 2 \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=2147483648,mode=1777 \
