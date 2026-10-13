@@ -753,13 +753,15 @@ async function initRepo(opts) {
   console.log(`${opts.project}: imported ${importUrl}${tests ? ' with its test recipe' : ''}. Project open until ${project.projectExpiresAt}.`);
 }
 
-/** "name=@cf/org/model,...": lane names for one task and the Workers AI model each runs. */
+/** "name=@cf/org/model,..." or "name=claude:claude-...": lane names for one task and the model each runs
+ * (a Workers AI model through OpenCode, or a Claude model through Claude Code and the account's gateway). */
 export function taskAgents(value) {
   const agents = new Map();
   for (const item of (value ?? '').split(',').map(s => s.trim()).filter(Boolean)) {
     const [name, model, extra] = item.split('=');
-    if (!/^[a-z][a-z0-9-]{0,30}$/.test(name ?? '') || ['reviewer', 'luke'].includes(name) || agents.has(name) || extra !== undefined || !/^@cf\/[\w.-]+\/[\w.-]+$/.test(model ?? ''))
-      throw new Error('DEMO_TASK_AGENTS must be name=@cf/org/model pairs with distinct lowercase names');
+    if (!/^[a-z][a-z0-9-]{0,30}$/.test(name ?? '') || ['reviewer', 'luke'].includes(name) || agents.has(name) || extra !== undefined ||
+        !(/^@cf\/[\w.-]+\/[\w.-]+$/.test(model ?? '') || /^claude:claude-[a-z0-9.-]{1,60}$/.test(model ?? '')))
+      throw new Error('DEMO_TASK_AGENTS must be name=@cf/org/model or name=claude:claude-... pairs with distinct lowercase names');
     agents.set(name, model);
   }
   if (!agents.size) throw new Error('task needs DEMO_TASK_AGENTS');
@@ -783,9 +785,10 @@ async function task(opts) {
   try { await request(`${opts.api}/tasks/${slug}/agents`, token, { id: 'reviewer', kind: 'reviewer', displayName: 'Reviewer', provider: 'workers-ai', model: '@cf/zai-org/glm-5.2' }); }
   catch (error) { if (error.status !== 409) throw error; }
   const generation = Date.now(), session = `heddle-${opts.project}-${slug}-${generation}`, lanes = [];
-  for (const [id, model] of agents) {
-    const joined = await enrollment(opts.projectUrl, { task: slug, as: id, provider: 'cloudflare-sandbox/opencode', model });
-    const lane = { id, model, grant: join(opts.directory, `${generation}-${id}.grant.json`), marker: join(opts.directory, `${generation}-${id}.exit`) };
+  for (const [id, spec] of agents) {
+    const [agent, model] = spec.startsWith('claude:') ? ['claude', spec.slice('claude:'.length)] : ['opencode', spec];
+    const joined = await enrollment(opts.projectUrl, { task: slug, as: id, provider: `cloudflare-sandbox/${agent}`, model });
+    const lane = { id, agent, model, grant: join(opts.directory, `${generation}-${id}.grant.json`), marker: join(opts.directory, `${generation}-${id}.exit`) };
     await writeFile(lane.grant, JSON.stringify({ forkRemote: joined.fork.remote, forkToken: joined.fork.token, upstreamRemote: joined.upstream.remote,
       upstreamToken: joined.upstream.readToken, discussion: { url: `${joined.api}/tasks/${slug}/turns`, token: joined.agentKey },
       ...(joined.briefing ? { briefing: joined.briefing } : {}) }), { mode: 0o600 });
@@ -793,7 +796,7 @@ async function task(opts) {
   }
   for (const [index, lane] of lanes.entries()) {
     const launcher = join(opts.directory, `${generation}-${lane.id}.sh`);
-    await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexport DEMO_RUNNER_URL=${quote(runner)} DEMO_RUNNER_TOKEN_FILE=${quote(tokenFile)} DEMO_LANE_MODEL=${quote(lane.model)}${process.env.DEMO_LANE_MINUTES ? ` DEMO_LANE_MINUTES=${quote(process.env.DEMO_LANE_MINUTES)}` : ''}\nexec node ${quote(join(demoRoot, 'lib', 'sandbox-lane.mjs'))} opencode ${quote(`${opts.project}-${lane.id}-${generation}`)} ${quote(lane.grant)} ${quote(brief)} ${quote(lane.marker)}\n`, { mode: 0o700 });
+    await writeFile(launcher, `#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\nunset OPERATOR_TOKEN\nexport DEMO_RUNNER_URL=${quote(runner)} DEMO_RUNNER_TOKEN_FILE=${quote(tokenFile)} DEMO_LANE_MODEL=${quote(lane.model)}${process.env.DEMO_LANE_MINUTES ? ` DEMO_LANE_MINUTES=${quote(process.env.DEMO_LANE_MINUTES)}` : ''}\nexec node ${quote(join(demoRoot, 'lib', 'sandbox-lane.mjs'))} ${lane.agent} ${quote(`${opts.project}-${lane.id}-${generation}`)} ${quote(lane.grant)} ${quote(brief)} ${quote(lane.marker)}\n`, { mode: 0o700 });
     if (index === 0) await command('tmux', ['new-session', '-d', '-s', session, '-x', '200', '-y', '50', 'bash', launcher]);
     else await command('tmux', ['split-window', '-t', session, 'bash', launcher]);
     await command('tmux', ['select-layout', '-t', session, 'tiled']);

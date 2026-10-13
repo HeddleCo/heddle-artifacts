@@ -10,6 +10,7 @@ import type { z } from "zod";
 import type { Outbound } from "./outbound";
 import type { DiscussionTarget, LaneGrant } from "./policy";
 import { cleanAnnouncement } from "./announce";
+import { FOLLOW_UP_PROMPT, hasUnpushedWork } from "./follow-up";
 
 const REPOSITORY_DIRECTORY = "/workspace/repo";
 const TASK_DIRECTORY = "/workspace/task";
@@ -24,6 +25,10 @@ const TASK_KEY = "task";
 const GRANT_KEY = "grant";
 const DISCUSSION_KEY = "discussion";
 const ANNOUNCED_KEY = "announced";
+const MODEL_KEY = "model";
+// "checked" once the finished run was examined; "started" while its one follow-up turn runs.
+const FOLLOW_UP_KEY = "follow-up";
+const FIRST_RESULT_KEY = "first-result";
 const CA_PATH = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
 
 // exec() does not inherit start() env. Pass these on every command that makes HTTPS requests.
@@ -87,6 +92,8 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
   }
 
   protected abstract command(prompt: string, model?: string): AgentCommand;
+  /** The same agent, continuing its last session with a new prompt; undefined when it cannot. */
+  protected continueCommand(_prompt: string, _model?: string): AgentCommand | undefined { return undefined; }
   protected abstract outcome(exitCode: number): Promise<TaskOutcome>;
 
   /** Clone the fork, wire the read-only upstream, then start the agent. One lane runs once. */
@@ -94,6 +101,7 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
     return this.ctx.blockConcurrencyWhile(async () => {
       if (this.ctx.storage.kv.get(TASK_KEY) !== undefined) return "busy";
       this.ctx.storage.kv.put(GRANT_KEY, lane.grant);
+      if (lane.model) this.ctx.storage.kv.put(MODEL_KEY, lane.model);
       if (lane.discussion) this.ctx.storage.kv.put(DISCUSSION_KEY, lane.discussion);
       await this.#ensureExecution(name);
       const steps: string[][] = [
@@ -226,14 +234,52 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
 
   async #taskStatus(): Promise<TaskStatus> {
     const exitCode = await this.#readOptionalText(EXIT_CODE_PATH);
-    if (exitCode !== undefined) return this.outcome(Number.parseInt(exitCode, 10));
+    if (exitCode !== undefined) return this.#finished(Number.parseInt(exitCode, 10));
     const pid = await this.#readOptionalText(PID_PATH);
     if (pid === undefined) return { state: "none" };
     const probe = await this.#run(["/bin/sh", "-c", 'kill -0 "$1"', "probe", pid.trim()], "/", {});
     if (probe.exitCode === 0) return { state: "running" };
     const lateExitCode = await this.#readOptionalText(EXIT_CODE_PATH);
-    if (lateExitCode !== undefined) return this.outcome(Number.parseInt(lateExitCode, 10));
+    if (lateExitCode !== undefined) return this.#finished(Number.parseInt(lateExitCode, 10));
     return { state: "lost" };
+  }
+
+  /**
+   * A run that ended successfully but left its work uncommitted or unpushed gets one follow-up turn in
+   * the same session, asking it to push or say why not. The sandbox is discarded afterwards, so without
+   * this the work is silently lost. The runner never commits or pushes on the agent's behalf.
+   */
+  async #finished(exitCode: number): Promise<TaskStatus> {
+    const outcome = await this.outcome(exitCode);
+    const followUp = this.ctx.storage.kv.get<string>(FOLLOW_UP_KEY);
+    if (followUp === "started") {
+      // The follow-up's closing message is the lane's result; an empty or failed one keeps the first.
+      this.ctx.storage.kv.put(FOLLOW_UP_KEY, "done");
+      const first = this.ctx.storage.kv.get<string>(FIRST_RESULT_KEY) ?? "";
+      return outcome.state === "succeeded" && outcome.result.trim() ? outcome : { state: "succeeded", result: first };
+    }
+    if (followUp !== undefined || outcome.state !== "succeeded") return outcome;
+    // Claim before any await: the alarm and a status poll can both see the finished run.
+    this.ctx.storage.kv.put(FOLLOW_UP_KEY, "checked");
+    return (await this.#startFollowUp(outcome.result)) ? { state: "running" } : outcome;
+  }
+
+  async #startFollowUp(firstResult: string): Promise<boolean> {
+    const command = this.continueCommand(FOLLOW_UP_PROMPT, this.ctx.storage.kv.get<string>(MODEL_KEY));
+    if (command === undefined) return false;
+    const status = await this.#run(["git", "status", "--porcelain"], REPOSITORY_DIRECTORY, {});
+    const ahead = await this.#run(["git", "rev-list", "--count", "origin/main..HEAD"], REPOSITORY_DIRECTORY, {});
+    if (!hasUnpushedWork({ statusExit: status.exitCode, status: status.stdout, aheadExit: ahead.exitCode, ahead: ahead.stdout })) return false;
+    this.ctx.storage.kv.put(FOLLOW_UP_KEY, "started");
+    this.ctx.storage.kv.put(FIRST_RESULT_KEY, firstResult);
+    await this.#files.remove(EXIT_CODE_PATH, { force: true });
+    const task = await this.#container.exec(["/bin/sh", "-c", TASK_SCRIPT, "agent", ...command.argv], {
+      cwd: REPOSITORY_DIRECTORY, env: { ...TRUST_ENV, ...command.env }, stdout: "ignore", stderr: "ignore",
+    });
+    await this.#files.writeFile(PID_PATH, String(task.pid));
+    await this.ctx.storage.setAlarm(Date.now() + TASK_CHECK_INTERVAL_MS);
+    console.log({ event: "lane.follow_up", agent: this.agent });
+    return true;
   }
 
   async #readOptionalText(path: string): Promise<string | undefined> {

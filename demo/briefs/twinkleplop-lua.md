@@ -61,8 +61,13 @@ npx --yes pnpm@10 --filter ./languages/lua run types
 ```
 
 The platform tests your pushed commit in an isolated sandbox with `pnpm install --frozen-lockfile`, the
-theme build, `svelte-kit sync` and `pnpm test`, so the committed lockfile must match. Show a new test
-failing before your grammar handles its case, then passing. Commit and `git push origin HEAD:main`.
+theme build, `svelte-kit sync` and `pnpm test`, so the committed lockfile must match. Every command above
+passes on `main` today; there are no pre-existing failures, so a failure in your work is yours to fix.
+Show a new test failing before your grammar handles its case, then passing.
+
+Commit and `git push origin HEAD:main` each time a requirement works; your latest push is your candidate,
+and your sandbox is discarded when you finish. Your run is not finished until your last `git push`
+succeeds with the full suite passing.
 Do not wait for another agent or call the platform control API.
 
 ## Rules

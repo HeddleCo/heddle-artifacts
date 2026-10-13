@@ -4,7 +4,7 @@
 //   GET    /lanes/:agent/:name       outcome: none | running | succeeded | failed | lost
 //   GET    /lanes/:agent/:name/log   last bytes of the agent's JSON event stream
 //   DELETE /lanes/:agent/:name       destroy the sandbox
-import { validDiscussion, validGrant } from "./policy";
+import { validDiscussion, validGrant, laneModelAllowed } from "./policy";
 import type { LaneSandbox, RunnerEnv } from "./lane";
 
 export { CodexLane, ClaudeLane, OpencodeLane } from "./agents";
@@ -47,9 +47,10 @@ export default {
           typeof body.prompt !== "string" || !body.prompt.trim() || new TextEncoder().encode(body.prompt).byteLength > MAX_PROMPT_BYTES) {
         return new Response("Body must be { grant, prompt, author } for this Artifacts namespace\n", { status: 400 });
       }
-      // A per-lane model is limited to Workers AI models, which the outbound policy can reach.
-      if (body.model !== undefined && (agent !== "opencode" || typeof body.model !== "string" || !/^cloudflare-workers-ai\/@cf\/[\w.-]+\/[\w.-]+$/.test(body.model))) {
-        return new Response("model must be a cloudflare-workers-ai/@cf/... id on an opencode lane\n", { status: 400 });
+      // A per-lane model is one the outbound policy can reach: a Workers AI model on an opencode lane,
+      // or a Claude model (through this account's gateway) on a claude lane.
+      if (body.model !== undefined && !laneModelAllowed(agent, body.model)) {
+        return new Response("model must be a cloudflare-workers-ai/@cf/... id on an opencode lane or a claude-... id on a claude lane\n", { status: 400 });
       }
       if (body.discussion !== undefined && !validDiscussion(body.discussion, env.CONTROL_PLANE_HOST)) {
         return new Response("discussion must be { url, token } for one task's turns on the control plane\n", { status: 400 });

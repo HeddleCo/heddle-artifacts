@@ -34,8 +34,8 @@ test('experiment tally counts regexes added to src/table.ts, not division, paths
 });
 
 test('task lanes are named agents on Workers AI models', () => {
-  assert.deepEqual(taskAgents('kimi=@cf/moonshotai/kimi-k2.7-code, glm=@cf/zai-org/glm-5.2'),
-    [['kimi', '@cf/moonshotai/kimi-k2.7-code'], ['glm', '@cf/zai-org/glm-5.2']]);
-  for (const bad of [undefined, '', 'Kimi=@cf/a/b', 'reviewer=@cf/a/b', 'luke=@cf/a/b', 'a=@cf/a/b,a=@cf/c/d', 'a=gpt-4', 'a=meta/muse-wonder-1.0', 'a=@cf/a/b=c'])
+  assert.deepEqual(taskAgents('kimi=@cf/moonshotai/kimi-k2.7-code, sonnet=claude:claude-sonnet-5-5'),
+    [['kimi', '@cf/moonshotai/kimi-k2.7-code'], ['sonnet', 'claude:claude-sonnet-5-5']]);
+  for (const bad of [undefined, '', 'Kimi=@cf/a/b', 'reviewer=@cf/a/b', 'luke=@cf/a/b', 'a=@cf/a/b,a=@cf/c/d', 'a=gpt-4', 'a=meta/muse-wonder-1.0', 'a=@cf/a/b=c', 'a=claude:', 'a=claude:gpt-6', 'a=claude:claude-x y'])
     assert.throws(() => taskAgents(bad), /DEMO_TASK_AGENTS/, String(bad));
 });

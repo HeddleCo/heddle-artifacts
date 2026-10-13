@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decide, validGrant, type LaneGrant } from "../src/policy.ts";
+import { decide, validGrant, type LaneGrant, laneModelAllowed } from "../src/policy.ts";
 
 const host = "acct.artifacts.cloudflare.net";
 const grant: LaneGrant = {
@@ -88,4 +88,11 @@ test("a discussion target is exactly one task's turns endpoint on the control pl
     { ...ok, token: "" },
     { url: ok.url },
   ]) assert.equal(validDiscussion(bad, cp), false, JSON.stringify(bad));
+});
+
+test("per-lane models are ones the outbound policy can reach", () => {
+  assert.equal(laneModelAllowed("opencode", "cloudflare-workers-ai/@cf/moonshotai/kimi-k2.7-code"), true);
+  assert.equal(laneModelAllowed("claude", "claude-sonnet-5-5"), true);
+  for (const [agent, model] of [["opencode", "claude-sonnet-5-5"], ["claude", "cloudflare-workers-ai/@cf/qwen/qwen3.8-27b"], ["claude", "claude-sonnet-5-5 --dangerously"], ["claude", "../x"], ["codex", "claude-sonnet-5-5"], ["claude", 42]] as const)
+    assert.equal(laneModelAllowed(agent, model), false, `${agent} ${String(model)}`);
 });

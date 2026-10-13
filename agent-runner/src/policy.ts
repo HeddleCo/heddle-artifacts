@@ -113,3 +113,10 @@ export function validDiscussion(value: unknown, controlPlaneHost: string): value
       /^\/api\/projects\/[a-z0-9][a-z0-9-]{0,62}\/tasks\/[a-z0-9][a-z0-9-]{0,62}\/turns$/.test(u.pathname);
   } catch { return false; }
 }
+
+export function laneModelAllowed(agent: string, model: unknown): boolean {
+  if (typeof model !== "string") return false;
+  if (agent === "opencode") return /^cloudflare-workers-ai\/@cf\/[\w.-]+\/[\w.-]+$/.test(model);
+  if (agent === "claude") return /^claude-[a-z0-9.-]{1,60}$/.test(model);
+  return false;
+}
