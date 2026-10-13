@@ -9,6 +9,7 @@ export class FakeTestRunner {
   installExitCode = 0;
   testExitCode = 0;
   delayMs = 0;
+  durationMs = 5;
   reject = false;
   get(id: string): TestRunner {
     return {
@@ -16,7 +17,7 @@ export class FakeTestRunner {
         this.inputs.push({ id, input: structuredClone(input) });
         if (this.delayMs) await new Promise(r => setTimeout(r, this.delayMs));
         if (this.reject) throw new Error('fake sandbox failure');
-        return { sourceSha: input.sourceSha, treeSha: input.treeSha, output: this.output, durationMs: 5,
+        return { sourceSha: input.sourceSha, treeSha: input.treeSha, output: this.output, durationMs: this.durationMs,
           installExitCode: this.installExitCode, testExitCode: this.testExitCode, ...(this.failure ? { failure: this.failure } : {}) };
       },
       destroy: async () => { this.destroyed.push(id); },

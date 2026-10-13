@@ -1386,6 +1386,11 @@
             "output"
           ]
         },
+        "budgetMs": {
+          "type": "integer",
+          "minimum": 30000,
+          "maximum": 600000
+        },
         "fixture": {
           "type": "boolean"
         }

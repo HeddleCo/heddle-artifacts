@@ -18,7 +18,8 @@ test('demo Container build context and compute defaults are bounded', async () =
   const sandbox = parsed.config.containers[1];
   assert.equal(sandbox.class_name, 'CandidateTestSandbox');
   assert.equal(sandbox.max_instances, 3);
-  assert.equal(sandbox.instance_type, 'lite');
+  // Half a vCPU and 4 GiB: a real repository's dependency install does not fit lite's 256 MiB.
+  assert.equal(sandbox.instance_type, 'standard-1');
   assert.equal(sandbox.image, './sandbox/Dockerfile');
   assert.equal(sandbox.image_build_context, './sandbox');
   assert.deepEqual(parsed.config.migrations[0], { tag: 'v1', new_sqlite_classes: ['ProjectDO', 'HeddleEngine'] });
