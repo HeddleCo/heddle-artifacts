@@ -8,7 +8,7 @@ COPY contracts/ /out/opt/contracts/
 COPY demo/ /out/opt/demo/
 RUN chown -R 0:0 /out && chmod -R go-w /out
 
-FROM registry.cloudflare.com/163867166be2a9e9a601132b1f3081a4/heddle-artifacts-engine@sha256:085fc19e7bc673d97204ca07e636c95cb51054658e1b0282f349549004e97445
+FROM registry.cloudflare.com/163867166be2a9e9a601132b1f3081a4/heddle-artifacts-engine@sha256:0d829880eec4748277807b292e3092f53bd34091860b6d88447b2c1d2b095118
 COPY --from=files /out/opt/ /opt/
 USER 65532:65532
 WORKDIR /opt/engine

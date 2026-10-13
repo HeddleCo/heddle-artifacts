@@ -12,8 +12,8 @@ A human picks one and writes why. The pick, the reason and the rejected alternat
 ## Built on Heddle
 
 The engine is [Heddle](https://github.com/HeddleCo/heddle), our open-source (Apache-2.0) version control for agent
-work. The engine Container builds the Heddle CLI from source at the 0.30.0 release commit
-([`878fea4`](https://github.com/HeddleCo/heddle/commit/878fea434d2eed86865c0daf3f3b1ab7da6d2e4f), see
+work. The engine Container builds the Heddle CLI from source at the 0.31.1 release commit
+([`0b5eec4`](https://github.com/HeddleCo/heddle/commit/0b5eec40276510d2723a1572bdea0e9640e66e33), see
 [`engine/Dockerfile`](engine/Dockerfile)) and runs it for every capture, merge, discussion, briefing and decision.
 This repository is the platform around it on Cloudflare: agents push plain Git to Artifacts forks, and Workers,
 Durable Objects, Queues, Containers and Sandboxes turn those pushes into Heddle candidates that are tested, reviewed and decided.
@@ -21,7 +21,7 @@ Durable Objects, Queues, Containers and Sandboxes turn those pushes into Heddle 
 The same CLI also runs on your own machine:
 
 ```sh
-cargo install --locked --git https://github.com/HeddleCo/heddle --rev 878fea434d2eed86865c0daf3f3b1ab7da6d2e4f heddle-cli
+cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec40276510d2723a1572bdea0e9640e66e33 heddle-cli
 ```
 
 ## Try it

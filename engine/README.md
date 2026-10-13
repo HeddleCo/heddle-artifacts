@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Track B engine
 
-The engine runs the published Heddle 0.30.0 CLI at `878fea43`, without changes
+The engine runs the published Heddle 0.31.1 CLI at `0b5eec40`, without changes
 in the Heddle repository. Build from the repository root:
 
 ```sh
@@ -215,7 +215,7 @@ version check fails when Git is substituted for Heddle. Exact outputs are in
 [`EVIDENCE.md`](EVIDENCE.md).
 
 The Docker build uses the required cached multi-stage `cargo install --locked
---git https://github.com/HeddleCo/heddle --rev 878fea43 heddle-cli`, generates
+--git https://github.com/HeddleCo/heddle --rev 0b5eec40 heddle-cli`, generates
 and checks the binary SHA-256 between stages, and runs as UID/GID 65532. It
 copies the required tools and shared libraries from Debian trixie into a
 minimal root filesystem to stay below 400 MB. No release tag or binary asset

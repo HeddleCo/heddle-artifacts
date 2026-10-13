@@ -2,8 +2,8 @@
 # Account-free local integration and preflight
 
 Use Node 22+ on Linux or macOS and Git. The native story also needs tar, zstd
-and stock Heddle 0.30.0 from source commit
-`878fea434d2eed86865c0daf3f3b1ab7da6d2e4f`. There is no Cloudflare account,
+and stock Heddle 0.31.1 from source commit
+`0b5eec40276510d2723a1572bdea0e9640e66e33`. There is no Cloudflare account,
 remote repository, deployment, paid CI, or live model call in this recipe.
 All writes and Git servers created by these checks are local fixtures.
 
@@ -62,9 +62,9 @@ execute reviewed source on a suitable local test host.
 ## Optional native story with an explicit CLI
 
 First obtain the stock CLI from the pinned source and verify its provenance.
-The recovered Linux CLI used for the recorded rehearsal has SHA-256
-`c4d99e134fe8f0debd4aecb393a42a774285b03bdec2bca031b5788766824f78`.
-Other platform builds need their own provenance. Preflight checks version 0.30.0
+The Linux CLI built into the engine image has SHA-256
+`2537ed019d2b567aaf3432758ef258004d20c62e1df9b07c112b852af98d3db8`.
+Other platform builds need their own provenance. Preflight checks version 0.31.1
 and records the binary hash; version text alone does not attest source identity.
 
 The existing native engine reconstructs locked dependencies inside fresh,

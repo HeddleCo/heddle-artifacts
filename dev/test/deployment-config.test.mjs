@@ -29,7 +29,7 @@ test('demo Container build context and compute defaults are bounded', async () =
   assert.equal(pkg.dependencies['@cloudflare/sandbox'], '1.0.0');
   assert.match(dockerfile, /cloudflare\/sandbox:1\.0\.0/);
   const layer = await readFile(new URL('engine/Dockerfile.layer', root), 'utf8');
-  assert.match(layer, /@sha256:085fc19e7bc673d97204ca07e636c95cb51054658e1b0282f349549004e97445/);
+  assert.match(layer, /@sha256:0d829880eec4748277807b292e3092f53bd34091860b6d88447b2c1d2b095118/);
   // The base has no shell: files are copied and normalized (root-owned, not group/other-writable) in a builder stage.
   for (const dir of ['engine', 'contracts', 'demo']) assert.match(layer, new RegExp(`COPY ${dir}/ /out/opt/${dir}/`));
   assert.match(layer, /chown -R 0:0 \/out && chmod -R go-w \/out/); assert.match(layer, /COPY --from=files \/out\/opt\/ \/opt\//);

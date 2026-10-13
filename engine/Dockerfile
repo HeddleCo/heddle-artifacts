@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends cmake pkg-confi
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/build-target \
-    CARGO_TARGET_DIR=/build-target cargo install --locked --git https://github.com/HeddleCo/heddle --rev 878fea434d2eed86865c0daf3f3b1ab7da6d2e4f heddle-cli
+    CARGO_TARGET_DIR=/build-target cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec40276510d2723a1572bdea0e9640e66e33 heddle-cli
 RUN strip /usr/local/cargo/bin/heddle && cd /usr/local/cargo/bin && sha256sum heddle > heddle.sha256
 
 FROM node:22-trixie-slim AS node

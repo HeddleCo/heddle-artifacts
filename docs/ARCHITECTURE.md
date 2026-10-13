@@ -98,9 +98,9 @@ From the terms PDF, sections 2–6, and the blog post.
 | `heddle-repo`, `heddle-git-projection` | Fail on `errno` via rustix → cap-primitives → sley-worktree; the graph also includes `ring`, `memmap2` and `zstd-sys` |
 
 - Storage traits exist: `ObjectStore`, `RefBackend` and `OpLogBackend`, with `Repository<R,O,S>` generic over them. But capture and init are written against the filesystem.
-- **Conclusion:** capture, conflict handling and Git projection **cannot run in a Worker this week**. Heddle runs as its **0.30.0 CLI inside a Cloudflare Container**. WASM is only an optional stretch: in-Worker signature verification badges using object-model and crypto.
+- **Conclusion:** capture, conflict handling and Git projection **cannot run in a Worker this week**. Heddle runs as its **CLI (now 0.31.1) inside a Cloudflare Container**. WASM is only an optional stretch: in-Worker signature verification badges using object-model and crypto.
 
-### Heddle 0.30.0 surface we use
+### Heddle CLI surface we use (0.30.0, unchanged in 0.31.1)
 The release is `878fea43` on `origin/main`. **Its tag is not yet cut.** The `heddle-cli` crate is **not** on crates.io past 0.23.0. GitHub release binaries exist up to v0.28.10, including x86_64 Linux.
 
 | Need | Heddle surface |
