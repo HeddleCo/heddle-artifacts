@@ -157,9 +157,37 @@ lane's subsequent decision/publication rather than republishing an older snapsho
 under a new operation ID. A newer pending directory is handled separately through
 the historical manifest resolver.
 
-Candidate updates also use fast-forward pushes. After another task lands,
-merge upstream main into a still-open fork before selecting it; an old base
-is rejected before changing native history.
+Candidate updates also use fast-forward pushes.
+
+### Combined with main
+
+When another task lands, an open task's candidates are behind main. `ingest`
+(for a new capture) and `combine {task, isolate}` (after main moves; the
+control plane calls it once per task and main) check each such candidate
+combined with main, unless it already contains main:
+
+- Heddle merges it: a scratch thread started from the candidate's State is
+  refreshed onto main (`heddle thread refresh`). The agent's lane is never
+  refreshed for the check, so its signed head stays exactly as pushed.
+- `heddle ready` gives the verdict (merge type, conflicts, impact, blockers).
+  A conflicted refresh is reported with Heddle's own `resolve --list`
+  (path, symbol, line range).
+- A clean merge is exported natively and projected to Git as a commit with
+  parents main and the candidate, under
+  `refs/heads/combined/<task>/<agent>/<sha>` on the canonical remote, for the
+  isolated sandbox. `tests.record` with `combined: {sha, mainSha}` records its
+  run as a separate signed observation bound to that SHA, tree and State.
+
+`decide` refuses a stale pick with `combined_pending`, `combined_conflict`,
+`combined_failing` or `combined_untested` until the merged result passed.
+A passing pick lands as Heddle's merge: the lane and task threads are
+refreshed natively, the resolution must descend from the agent's signed
+Capture, and the landed tree must equal the tested combined tree (the
+decision records it as `combined`). A pick that contains main lands as itself.
+Heddle's merge is structural: it also merges edits Git reports as conflicting
+(adjacent lines, appends at one place), and it can combine two correct edits
+into a wrong result while reporting ready. Only the merged result's tests catch
+that; `engine/test/e2e.mjs` covers both cases.
 
 Run all acceptance tests, including temporary production-code mutations:
 

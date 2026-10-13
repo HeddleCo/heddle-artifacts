@@ -31,7 +31,8 @@ export class EngineClient {
     if (response.status === 422) {
       const error = await response.json() as { error: { code: string; message: string } };
       const code = /^[a-z_]{1,40}$/.test(error.error?.code) ? error.error.code : 'rejected';
-      throw new HttpError(code === 'stale' ? 409 : 422, code);
+      // Combined-check refusals are state conflicts the decider resolves by waiting or re-briefing.
+      throw new HttpError(code === 'stale' || code.startsWith('combined_') ? 409 : 422, code);
     }
     if (!response.ok) throw new Error('engine_crash');
     const line = (await response.text()).trim();

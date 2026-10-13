@@ -10,11 +10,15 @@ import { EngineClient } from './engine-client';
 import { DemoCredentials } from './credentials';
 import { sandboxId, type SandboxRun, type TestRunner } from './isolated-tests';
 import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
+import { combinedRefusal } from '../engine/lib/combined-rule.mjs';
 
 type Task = { slug: string; intent: string; thread: string; baseSha: string; status: 'open' | 'decided' };
 // A lane that never pushes must not hold up review of the others forever.
 export const REVIEW_WAIT_MS = 5 * 60 * 1000;
-type SandboxJob = { id: string; task: string; agent: string; sourceSha: string; treeSha: string; status: 'queued'|'running'|'observed'|'done'; startedAt?: number; run?: SandboxRun };
+// A combined job tests the candidate merged with main: sourceSha/treeSha are the combined commit in
+// the canonical repository; `combined` names the candidate push and main it was merged from.
+type SandboxJob = { id: string; task: string; agent: string; sourceSha: string; treeSha: string; status: 'queued'|'running'|'observed'|'done'; startedAt?: number; run?: SandboxRun;
+  combined?: { candidateSha: string; mainSha: string } };
 export class ProjectDO extends DurableObject<Env> {
   store: Store;
   engine: EngineClient;
@@ -64,6 +68,7 @@ export class ProjectDO extends DurableObject<Env> {
       for (const item of result.results) this.store.put('meta', `candidateSync:${item.task}`, true);
     }
     if (command === 'tests.record' && !result.ignored) this.store.put('meta', `candidateSync:${input.task}`, true);
+    if (command === 'combine') this.store.put('meta', `candidateSync:${input.task}`, true);
     if (command === 'discuss') {
       this.store.put('turns', result.id, result);
       const reviewCurrent = !context.reviewHeads || (JSON.stringify(context.reviewHeads) === JSON.stringify(this.heads(input.task)) && !this.store.get('meta', `candidateSync:${input.task}`) && !this.store.get('decisions', input.task) && this.task(input.task).status === 'open' && !this.pendingPush(input.task) && !this.testsPending(input.task));
@@ -126,6 +131,7 @@ export class ProjectDO extends DurableObject<Env> {
     if (!open || !this.expireAccess()) return;
     await this.engine.replay();
     await this.syncCandidates();
+    await this.refreshCombined();
     await this.recoverSandboxJobs();
     await this.revokeReleased();
     for (const decision of this.store.all<Decision>('decisions').filter(d => !d.mainSha)) {
@@ -188,9 +194,38 @@ export class ProjectDO extends DurableObject<Env> {
           const id = await sandboxId(this.store.get('meta', 'project').id, candidate);
           if (!this.store.get('meta', `isolated:${id}`)) this.store.put('meta', `isolated:${id}`, { id, task: candidate.task, agent: candidate.agent, sourceSha: candidate.sourceSha, treeSha: candidate.treeSha, status: 'queued' } satisfies SandboxJob);
         }
+        const combined = candidate.combined;
+        if (combined?.sha && combined.treeSha && combined.tests?.status === 'pending' && combined.tests.provenance === 'isolated sandbox') {
+          const id = await sandboxId(this.store.get('meta', 'project').id, { task: candidate.task, agent: candidate.agent, sourceSha: combined.sha });
+          if (!this.store.get('meta', `isolated:${id}`)) this.store.put('meta', `isolated:${id}`, { id, task: candidate.task, agent: candidate.agent, sourceSha: combined.sha, treeSha: combined.treeSha, status: 'queued',
+            combined: { candidateSha: candidate.sourceSha, mainSha: combined.mainSha } } satisfies SandboxJob);
+        }
       }
     }
     this.scheduleSandboxJobs();
+  }
+  /**
+   * After main advances, re-check every open task whose base is behind it: Heddle merges each candidate
+   * with the new main and the merged result is queued for the isolated sandbox. Once per task and main.
+   */
+  private async refreshCombined() {
+    const main = this.store.get<string>('meta', 'mainSha');
+    if (!main) return;
+    // Synchronous selection: with nothing behind main this adds no await to recovery.
+    const behind = this.store.all<Task>('tasks').filter(task => task.status === 'open' && !this.store.get('decisions', task.slug) && task.baseSha !== main &&
+      this.store.get('meta', `combinedMain:${task.slug}`) !== main && this.candidates(task.slug).length > 0);
+    if (!behind.length || !this.expireAccess()) return;
+    for (const task of behind) {
+      try {
+        await this.engine.mutate('combine', { opId: `combine:${task.slug}:${main}`, task: task.slug, isolate: true });
+        this.store.put('meta', `combinedMain:${task.slug}`, main);
+      } catch {
+        // A failed check must not stall recovery of everything else; a terminal failure is not retried.
+        const op = this.store.rows<{ status: string }>('SELECT status FROM ops WHERE id=?', `combine:${task.slug}:${main}`)[0];
+        if (op && ['failed', 'rejected'].includes(op.status)) this.store.put('meta', `combinedMain:${task.slug}`, main);
+      }
+    }
+    await this.syncCandidates();
   }
   private sandboxJobs(): SandboxJob[] { return this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'isolated:%'").map(r => JSON.parse(r.data)); }
   private runner(id: string): TestRunner | undefined { return this.env.TEST_RUNNER?.get(id) ?? this.env.TEST_SANDBOX?.getByName(id); }
@@ -199,7 +234,9 @@ export class ProjectDO extends DurableObject<Env> {
   }
   private async finishSandboxJob(job: SandboxJob) {
     if (!job.run) return;
-    await this.engine.mutate('tests.record', { opId: `tests:${job.id}`, task: job.task, agent: job.agent, sourceSha: job.sourceSha, run: job.run });
+    await this.engine.mutate('tests.record', job.combined
+      ? { opId: `tests:${job.id}`, task: job.task, agent: job.agent, sourceSha: job.combined.candidateSha, combined: { sha: job.sourceSha, mainSha: job.combined.mainSha }, run: job.run }
+      : { opId: `tests:${job.id}`, task: job.task, agent: job.agent, sourceSha: job.sourceSha, run: job.run });
     job.status = 'done'; this.store.put('meta', `isolated:${job.id}`, job);
     await this.syncCandidates();
   }
@@ -229,15 +266,19 @@ export class ProjectDO extends DurableObject<Env> {
   }
   private async runSandboxJob(job: SandboxJob) {
     const lane = this.store.get<Lane>('lanes', `${job.task}/${job.agent}`), runner = this.runner(job.id);
+    // A candidate is fetched from its fork. A combined commit exists only in the canonical repository
+    // (the engine never writes to an agent's fork), so that job gets a canonical read grant instead.
+    // Either way it is one repo, read-only, short-lived, attached outside the sandbox by TestOutbound.
+    const project = this.store.get('meta', 'project'), repo = job.combined ? project.id : lane?.forkRepo, remote = job.combined ? project.canonicalRemote : lane?.forkRemote;
     let token: { id: string; plaintext: string } | undefined, run = this.sandboxError(job);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await this.ctx.storage.sync();
       if (!runner || !lane || lane.status !== 'active') throw new Error('sandbox_unavailable');
-      token = await this.credentials.issue(lane.forkRepo, 'read', 'sandbox-read', job.agent, 240);
+      token = await this.credentials.issue(repo, 'read', 'sandbox-read', job.agent, 240);
       this.credentials.assertOpen();
-      const result = await Promise.race([runner.run({ project: this.store.get('meta', 'project').id, task: job.task, agent: job.agent,
-        sourceSha: job.sourceSha, treeSha: job.treeSha, remote: lane.forkRemote, readCredential: token.plaintext }),
+      const result = await Promise.race([runner.run({ project: project.id, task: job.task, agent: job.agent,
+        sourceSha: job.sourceSha, treeSha: job.treeSha, remote, readCredential: token.plaintext }),
         new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('sandbox_timeout')), Math.max(1, TEST_BUDGET_MS - (Date.now() - job.startedAt!))); })]);
       if (result.sourceSha !== job.sourceSha || result.treeSha !== job.treeSha) throw new Error('sandbox_binding');
       // Copy only observation fields; candidate output cannot supply test counts.
@@ -248,7 +289,7 @@ export class ProjectDO extends DurableObject<Env> {
     finally {
       if (timer) clearTimeout(timer);
       try { await runner?.destroy(); } catch { run = this.sandboxError(job); }
-      if (token && lane) await this.credentials.revoke(lane.forkRepo, token.id);
+      if (token && repo) await this.credentials.revoke(repo, token.id);
     }
     await this.engine.serial(async () => {
       job.run = run; job.status = 'observed'; this.store.put('meta', `isolated:${job.id}`, job); await this.ctx.storage.sync();
@@ -559,13 +600,18 @@ export class ProjectDO extends DurableObject<Env> {
           if (this.testsPending(taskId)) throw new HttpError(409, 'tests_pending');
           if (task.status === 'decided') throw new HttpError(409, 'task_decided');
           const decider = slug(body.decider); if (this.store.get<Agent>('agents', decider)?.kind !== 'human') throw new HttpError(403, 'human_decider_required');
-          const pick = slug(body.pick); if (!this.candidates(taskId).some(c => c.agent === pick)) throw new HttpError(400, 'candidate_not_found');
+          const pick = slug(body.pick), picked = this.candidates(taskId).find(c => c.agent === pick); if (!picked) throw new HttpError(400, 'candidate_not_found');
+          // A pick checked combined with main lands only once that merged result passed (the engine re-checks).
+          const refusal = picked.combined && !this.store.get('decisions', taskId) ? combinedRefusal(picked, this.store.get<string>('meta', 'mainSha')) : undefined;
+          if (refusal) throw new HttpError(409, refusal.code, { message: refusal.message });
           const existing = this.store.get<Decision>('decisions', taskId);
           if (existing && (existing.pick !== pick || existing.decider !== decider || existing.rationale !== body.rationale)) throw new HttpError(409, 'decision_in_progress');
           const decision: Decision = existing ?? await this.engine.mutate('decide', { opId: crypto.randomUUID(), task: taskId, decider, pick, rationale: text(body.rationale), expectHeads: body.expectHeads });
           await this.revokeReleased();
           await this.engine.mutate('publish', { opId: existing ? `publish:${decision.landState}:retry:${crypto.randomUUID()}` : `publish:${decision.landState}`, canonical: { remote: this.store.get('meta', 'project').canonicalRemote } });
-          await this.revokeReleased(); await this.nextAlarm(); return Response.json(this.store.get('decisions', taskId));
+          // Main moved: recovery re-checks open tasks behind it combined with the new main, in the
+          // background, so the landing response does not wait for Heddle's merges and the sandbox.
+          await this.revokeReleased(); this.scheduleDrain(); await this.nextAlarm(); return Response.json(this.store.get('decisions', taskId));
         }
         throw new HttpError(404, 'not_found');
       });

@@ -21,7 +21,8 @@ export async function verifyProjection(state, expectedSha) {
     const roundTripSha = await git(roundTrip, ['rev-parse', 'main']);
     const exportRoundTrip = roundTripSha === expectedSha;
     const lastDecision = Object.values(state.decisions).at(-1);
-    const treeMatch = !lastDecision || await git(exportRoot, ['rev-parse', 'main^{tree}']) === state.lanes[`${lastDecision.task}/${lastDecision.pick}`].candidate.treeSha;
+    // A pick merged with main by Heddle lands the tested combined tree, not the pick's own tree.
+    const treeMatch = !lastDecision || await git(exportRoot, ['rev-parse', 'main^{tree}']) === (lastDecision.combined?.treeSha ?? state.lanes[`${lastDecision.task}/${lastDecision.pick}`].candidate.treeSha);
     const clone = join(temp, 'clone');
     await git(temp, ['clone', '--no-local', '--', exportRoot, clone]);
     await git(clone, ['fsck', '--strict']);

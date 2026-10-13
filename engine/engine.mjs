@@ -2,7 +2,7 @@
 import { run, Rejection } from './lib/process.mjs';
 import { load, save, requestHash } from './lib/state.mjs';
 import { snapshot, restore } from './lib/snapshots.mjs';
-import { init, createTask, enroll, openLane, ingest, recordTests, candidates, diff, discuss, decide } from './lib/commands.mjs';
+import { init, createTask, enroll, openLane, ingest, recordTests, candidates, diff, discuss, decide, combine } from './lib/commands.mjs';
 import { publish } from './lib/publish.mjs';
 
 export async function selftest() {
@@ -13,7 +13,7 @@ export async function selftest() {
 
 try {
   const cmd = process.argv[2];
-  const mutating = { init, 'task.create': createTask, 'agent.enroll': enroll, 'lane.open': openLane, ingest, 'tests.record': recordTests, discuss, decide, publish };
+  const mutating = { init, 'task.create': createTask, 'agent.enroll': enroll, 'lane.open': openLane, ingest, 'tests.record': recordTests, combine, discuss, decide, publish };
   if (![...Object.keys(mutating), 'selftest', 'snapshot', 'restore', 'candidates', 'diff', 'why'].includes(cmd)) throw new Rejection('unknown_command', 'Unknown engine command');
   const chunks = []; let bytes = 0;
   for await (const chunk of process.stdin) {

@@ -22,6 +22,8 @@ const cases = [
   ['B-T1', 'lib/git.mjs', 'export async function conflictPaths(base, a, b) {', 'export async function conflictPaths(base, a, b) {\n  return [];', 'B-T1 alice conflict attributed to bob', 'disable conflict preview'],
   ['B-T2', 'lib/signatures.mjs', 'export async function verifyCapture(heddleDir, show, expectedKey) {', 'export async function verifyCapture(heddleDir, show, expectedKey) {\n  return expectedKey;', 'B-T2 wrong enrolled key must be rejected', 'disable native identity verification'],
   ['B-T4', 'lib/commands.mjs', "  if (!Array.isArray(request.expectHeads) || JSON.stringify([...request.expectHeads].sort()) !== JSON.stringify(current.heads)) throw new Rejection('stale', 'Candidates changed; review the current heads');", '', 'decide:', 'remove stale-head guard'],
+  ['B-C1', 'lib/combined-rule.mjs', 'export function combinedRefusal(candidate, mainSha) {', 'export function combinedRefusal(candidate, mainSha) {\n  return undefined;', "- 'combined_pending'", 'land a stale pick without its combined check'],
+  ['B-C2', 'lib/commands.mjs', '  combined.status = tests.status;', "  combined.status = 'pass';", 'the merged result fails its tests', 'record a failing merged result as passing'],
   ['B-T5', 'lib/snapshots.mjs', '    state.root = stateRoot;', "    state.root = stateRoot;\n    Object.values(state.lanes).find(l => l.candidate).candidate.subject += ' changed on restore';", 'B-T5 candidates stdout byte-identical', 'corrupt restored candidate metadata'],
 ];
 for (const [label, file, before, after, expected, description] of cases) {

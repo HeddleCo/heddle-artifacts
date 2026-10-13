@@ -250,3 +250,228 @@ assert.equal(await readFile(sentinel, 'utf8'), 'PUBLIC-SYNTHETIC-CUSTODY-MARKER\
 await assert.rejects(access(attemptedRead), { code: 'ENOENT' });
 console.log('Isolated observations PASS: real native Capture stays key-safe; pending decision rejected; old SHA ignored; ed25519 proof verified; sandbox provenance and proof survive publication in Git notes');
 console.log(`Evidence scratch: ${root}`);
+
+// ── Combined with main ─────────────────────────────────────────────────────────────────────────
+// Two tasks start from the same main. Each candidate passes its own tests. Task A lands; task B is
+// then behind main. Heddle merges B with main in a scratch thread; the merged state is projected to
+// Git and tested the way the isolated sandbox does (fetch the exact commit, check SHA and tree, run
+// the tests). Here the tests are real `node --test` runs, not fixture output.
+{
+  const state2 = join(root, 'combined-state'), canonical2 = join(root, 'combined.git');
+  let ops = 0;
+  const call2 = (cmd, body = {}, expected = 0) => call(cmd, body, expected, state2);
+  const mutate2 = (cmd, body) => call2(cmd, { opId: `combined-${++ops}`, ...body });
+  const files = {
+    'package.json': JSON.stringify({ type: 'module', scripts: { test: 'node --test' } }) + '\n',
+    'src/table.mjs': '// SPDX-License-Identifier: Apache-2.0\n/** Parse one Markdown table row. */\nexport function parseRow(row) {\n  let text = row.trim();\n  if (text.startsWith("|")) text = text.slice(1);\n  if (text.endsWith("|")) text = text.slice(0, -1);\n  return text.split("|").map(cell => cell.trim());\n}\n\n/** Parse a table, ignoring its separator row. */\nexport function parseTable(markdown) {\n  return markdown.trim().split(/\\r?\\n/).filter(line => line.trim() && !/^\\s*\\|?\\s*:?-{3,}/.test(line)).map(parseRow);\n}\n',
+    'test/table.test.mjs': '// SPDX-License-Identifier: Apache-2.0\nimport { test } from "node:test"; import assert from "node:assert/strict";\nimport { parseRow, parseTable } from "../src/table.mjs";\ntest("parses a row", () => assert.deepEqual(parseRow("| a | b |"), ["a", "b"]));\ntest("ignores the separator", () => assert.deepEqual(parseTable("| A | B |\\n| --- | --- |\\n| 1 | 2 |"), [["A", "B"], ["1", "2"]]));\n',
+  };
+  const seed2 = join(root, 'combined-seed');
+  for (const [path, contents] of Object.entries(files)) { await mkdir(dirname(join(seed2, path)), { recursive: true }); await writeFile(join(seed2, path), contents); }
+  await git(seed2, ['init', '-b', 'main']); await git(seed2, ['add', '.']);
+  await git(seed2, ['-c', 'user.name=Seed', '-c', 'user.email=seed@example.invalid', 'commit', '-m', 'Table parser seed']);
+  await git(root, ['init', '--bare', '--initial-branch=main', canonical2]);
+  await mutate2('init', { project: 'c', canonical: { remote: canonical2 }, seed: { importUrl: seed2 } });
+  await mutate2('task.create', { task: 'cell-whitespace', intent: 'Preserve whitespace inside cells' });
+  await mutate2('task.create', { task: 'table-shape', intent: 'Return the header separately from the rows' });
+  await mutate2('task.create', { task: 'row-case', intent: 'Collapse runs of spaces in cells' });
+  await mutate2('task.create', { task: 'column-count', intent: 'Count the columns of a table' });
+  const keys = {};
+  for (const id of ['erin', 'finn', 'gil', 'hana', 'luke']) keys[id] = (await mutate2('agent.enroll', { agent: { id, kind: id === 'luke' ? 'human' : 'agent', displayName: id, provider: 'scripted', model: 'fixture' } })).publicKey;
+  const checkouts = {}, forks = {};
+  const edit = async (id, change, message) => {
+    const co = checkouts[id];
+    for (const [path, update] of Object.entries(change)) { await mkdir(dirname(join(co, path)), { recursive: true }); await writeFile(join(co, path), typeof update === 'function' ? update(await readFile(join(co, path), 'utf8')) : update); }
+    await git(co, ['add', '.']); await git(co, ['-c', `user.name=${id}`, '-c', `user.email=${id}@example.invalid`, 'commit', '-m', message]);
+    await git(co, ['push', 'origin', 'HEAD:main']);
+    return git(co, ['rev-parse', 'HEAD']);
+  };
+  const lanes = { erin: 'cell-whitespace', finn: 'table-shape', gil: 'row-case', hana: 'column-count' };
+  for (const [id, task] of Object.entries(lanes)) {
+    forks[id] = join(root, `c--${task}--${id}.git`); checkouts[id] = join(root, `combined-${id}`);
+    await git(root, ['clone', '--bare', canonical2, forks[id]]);
+    await mutate2('lane.open', { task, agent: id });
+    await git(root, ['clone', forks[id], checkouts[id]]);
+  }
+  // A: cells keep their whitespace; its own tests are updated to the new behaviour.
+  const shaA = await edit('erin', {
+    'src/table.mjs': s => s.replace('return text.split("|").map(cell => cell.trim());', 'return text.split("|");'),
+    'test/table.test.mjs': s => s.replace('["a", "b"]', '[" a ", " b "]').replace('[["A", "B"], ["1", "2"]]', '[[" A ", " B "], [" 1 ", " 2 "]]'),
+    'test/whitespace.test.mjs': '// SPDX-License-Identifier: Apache-2.0\nimport { test } from "node:test"; import assert from "node:assert/strict";\nimport { parseRow } from "../src/table.mjs";\ntest("keeps code indentation", () => assert.deepEqual(parseRow("|    return x; |"), ["    return x; "]));\n',
+  }, 'Preserve whitespace inside cells');
+  // B: a new function and its own tests, written against the trimming parser B started from.
+  const shaB = await edit('finn', {
+    'src/table.mjs': s => s + '\n/** Split a table into its header and body rows. */\nexport function readTable(markdown) {\n  const [header = [], ...rows] = parseTable(markdown);\n  return { header, rows };\n}\n',
+    'test/read-table.test.mjs': '// SPDX-License-Identifier: Apache-2.0\nimport { test } from "node:test"; import assert from "node:assert/strict";\nimport { readTable } from "../src/table.mjs";\nconst md = "| Name | Age |\\n| --- | --- |\\n| Ann | 31 |\\n| Bo | 7 |";\ntest("returns the header", () => assert.deepEqual(readTable(md).header, ["Name", "Age"]));\ntest("returns the body rows", () => assert.deepEqual(readTable(md).rows, [["Ann", "31"], ["Bo", "7"]]));\ntest("handles a header-only table", () => assert.deepEqual(readTable("| A |"), { header: ["A"], rows: [] }));\n',
+  }, 'Return the header separately from the rows');
+  // G: edits the same line of parseRow as A, so it cannot merge with A cleanly.
+  const shaG = await edit('gil', { 'src/table.mjs': s => s.replace('.map(cell => cell.trim());', '.map(cell => cell.trim().replace(/\\s+/g, " "));') }, 'Collapse runs of spaces in cells');
+  // H: also appends a function at the end of src/table.mjs, as B does. Git sees two edits at one spot.
+  const shaH = await edit('hana', {
+    'src/table.mjs': s => s + '\n/** The number of columns in a table. */\nexport function columnCount(markdown) {\n  return parseTable(markdown)[0]?.length ?? 0;\n}\n',
+    'test/column-count.test.mjs': '// SPDX-License-Identifier: Apache-2.0\nimport { test } from "node:test"; import assert from "node:assert/strict";\nimport { columnCount } from "../src/table.mjs";\ntest("counts columns", () => assert.equal(columnCount("| a | b | c |\\n| --- | --- | --- |"), 3));\n',
+  }, 'Count the columns of a table');
+  const item = (id, sha) => ({ task: lanes[id], agent: id, fork: { remote: forks[id] }, ref: 'refs/heads/main', sha });
+  // What CandidateTestSandbox does, against a local remote: fetch the exact commit, check SHA and tree, run the tests.
+  const sandbox = async (remote, sha, treeSha) => {
+    const dir = await mkdtemp(join(root, 'sandbox-')), start = Date.now();
+    await git(dir, ['init', '-q']); await git(dir, ['fetch', '-q', '--no-tags', '--depth=1', remote, sha]); await git(dir, ['checkout', '-q', '--detach', sha]);
+    assert.equal(await git(dir, ['rev-parse', 'HEAD^{tree}']), treeSha, 'sandbox checkout matches the recorded tree');
+    const tested = await run(process.execPath, ['--test', '--test-reporter=tap'], { cwd: dir, allowFailure: true, env: { NO_COLOR: '1' } });
+    return { sourceSha: sha, treeSha, output: tested.stdout.toString() + tested.stderr.toString(), durationMs: Date.now() - start, installExitCode: 0, testExitCode: tested.code };
+  };
+  const captured = await mutate2('ingest', { items: [item('erin', shaA), item('finn', shaB), item('gil', shaG), item('hana', shaH)], runTests: true, isolateUnreviewed: true });
+  assert(captured.results.every(r => r.status === 'captured' && r.candidate.tests.status === 'pending' && r.candidate.combined === undefined), 'fresh tasks need no combined check');
+  for (const id of ['erin', 'finn', 'gil', 'hana']) {
+    const c = captured.results.find(r => r.agent === id).candidate;
+    const recorded = await mutate2('tests.record', { task: c.task, agent: id, sourceSha: c.sourceSha, run: await sandbox(canonical2, c.sourceSha, c.treeSha) });
+    assert.equal(recorded.candidate.tests.status, 'pass', `${id} passes alone`);
+  }
+  const aloneB = (await call2('candidates', { task: 'table-shape' })).candidates[0].tests;
+  assert.equal(aloneB.passed, 5); assert.equal(aloneB.failed, 0);
+  const decisionA = await mutate2('decide', { task: 'cell-whitespace', decider: 'luke', pick: 'erin', rationale: 'Code tables need their indentation; callers can trim.', expectHeads: (await call2('candidates', { task: 'cell-whitespace' })).heads });
+  await mutate2('publish', { canonical: { remote: canonical2 } });
+  // Main advanced. Before the check has run, B cannot land and says why.
+  const headsB = (await call2('candidates', { task: 'table-shape' })).heads;
+  assert.equal((await call2('decide', { opId: 'combined-early', task: 'table-shape', decider: 'luke', pick: 'finn', rationale: 'r', expectHeads: headsB }, 2)).error.code, 'combined_pending');
+  const combineB = { opId: 'combine-table-shape', task: 'table-shape', isolate: true };
+  const checked = await call2('combine', combineB);
+  const combinedB = checked.candidates[0].combined;
+  assert.equal(combinedB.mainSha, decisionA.mainSha); assert.equal(combinedB.candidateSha, shaB);
+  assert.equal(combinedB.status, 'pending'); assert.deepEqual(combinedB.conflicts, []);
+  assert.equal(combinedB.heddle.conflictCount, 0, 'Heddle merged B with main cleanly'); assert.equal(combinedB.heddle.freshness, 'current');
+  assert.match(combinedB.state, /^hs-/);
+  assert.deepEqual(await call2('combine', combineB), checked, 'combine opId replay');
+  assert.deepEqual((await mutate2('combine', { task: 'table-shape', isolate: true })).candidates[0].combined, combinedB, 'combine is idempotent for the same main');
+  // The combined commit is main + B, in canonical where the sandbox fetches it; B's fork is untouched.
+  assert.equal(await git(canonical2, ['rev-parse', `refs/heads/combined/table-shape/finn/${combinedB.sha}`]), combinedB.sha);
+  assert.equal(await git(canonical2, ['rev-parse', `${combinedB.sha}^1`]), decisionA.mainSha);
+  assert.equal(await git(canonical2, ['rev-parse', `${combinedB.sha}^2`]), shaB);
+  assert.equal(await git(forks.finn, ['rev-parse', 'main']), shaB, 'agent fork unchanged');
+  const mergedSource = await git(canonical2, ['show', `${combinedB.sha}:src/table.mjs`]);
+  assert.match(mergedSource, /return text\.split\("\|"\);/); assert.match(mergedSource, /export function readTable/);
+  assert.equal((await call2('decide', { opId: 'combined-pending', task: 'table-shape', decider: 'luke', pick: 'finn', rationale: 'r', expectHeads: headsB }, 2)).error.code, 'combined_pending');
+  // A result bound to another commit is refused; one for an older candidate is ignored.
+  const combinedRun = await sandbox(canonical2, combinedB.sha, combinedB.treeSha);
+  assert.equal((await call2('tests.record', { opId: 'combined-bad-binding', task: 'table-shape', agent: 'finn', sourceSha: shaB, combined: { sha: combinedB.sha, mainSha: decisionA.mainSha }, run: { ...combinedRun, treeSha: aloneB.sourceSha } }, 2)).error.code, 'test_binding_mismatch');
+  assert.equal((await mutate2('tests.record', { task: 'table-shape', agent: 'finn', sourceSha: shaB, combined: { sha: shaB, mainSha: decisionA.mainSha }, run: combinedRun })).ignored, true);
+  const failing = await mutate2('tests.record', { task: 'table-shape', agent: 'finn', sourceSha: shaB, combined: { sha: combinedB.sha, mainSha: decisionA.mainSha }, run: combinedRun });
+  const combinedTests = failing.candidate.combined.tests;
+  assert.equal(failing.candidate.combined.status, 'fail', 'the merged result fails its tests'); assert.equal(combinedTests.status, 'fail');
+  assert.equal(combinedTests.failed, 3, 'B fails combined with main'); assert.equal(combinedTests.passed, 3);
+  assert.deepEqual([...combinedTests.failures].sort(), ['handles a header-only table', 'returns the body rows', 'returns the header']);
+  assert.match(combinedTests.excerpt, /Name/);
+  assert.equal(failing.candidate.tests.status, 'pass', 'its own tests still pass alone');
+  const proof = JSON.parse(combinedTests.observation.payload);
+  assert.equal(verifyAttestation(combinedTests.observation, combinedTests.observation.publicKey), combinedTests.observation.publicKey);
+  assert.deepEqual([proof.check, proof.sourceSha, proof.treeSha, proof.candidateSha, proof.mainSha, proof.state], ['combined-with-main', combinedB.sha, combinedB.treeSha, shaB, decisionA.mainSha, combinedB.state]);
+  const failed = await call2('decide', { opId: 'combined-failing', task: 'table-shape', decider: 'luke', pick: 'finn', rationale: 'r', expectHeads: headsB }, 2);
+  assert.equal(failed.error.code, 'combined_failing'); assert.match(failed.error.message, /3 tests fail combined with main/);
+  // G edits the same parseRow line as A: Heddle reports the conflict in its own terms.
+  const conflicted = (await mutate2('combine', { task: 'row-case', isolate: true })).candidates[0].combined;
+  assert.equal(conflicted.status, 'conflict'); assert.equal(conflicted.sha, undefined);
+  assert.deepEqual(conflicted.conflicts.map(c => [c.path, c.symbol]), [['src/table.mjs', 'parseRow']]);
+  assert(conflicted.heddle.conflictCount >= 1); assert(conflicted.heddle.blockers.length >= 1);
+  const conflictRejection = await call2('decide', { opId: 'combined-conflict', task: 'row-case', decider: 'luke', pick: 'gil', rationale: 'r', expectHeads: (await call2('candidates', { task: 'row-case' })).heads }, 2);
+  assert.equal(conflictRejection.error.code, 'combined_conflict'); assert.match(conflictRejection.error.message, /src\/table\.mjs \(parseRow\)/);
+  console.log(`Combined PASS: A and B each pass alone (B ${aloneB.passed}/${aloneB.passed}); after A lands Heddle merges B with main cleanly (${combinedB.heddle.mergeType}), the merged commit fails ${combinedTests.failed} tests (${combinedTests.failures.join('; ')}); signed observation bound to the combined SHA/tree; deciding B refused (pending, then failing); G conflicts with main in parseRow and is refused`);
+  // Resolution: B's agent fast-forwards its fork to the combined commit (main + B, merged by Heddle),
+  // fixes the failures and pushes. That head contains main, so its own tests are the combined result.
+  const finn = checkouts.finn;
+  await git(finn, ['fetch', '-q', canonical2, `refs/heads/combined/table-shape/finn/${combinedB.sha}`]);
+  await git(finn, ['merge', '-q', '--ff-only', 'FETCH_HEAD']);
+  const shaFixed = await edit('finn', { 'src/table.mjs': s => s.replace('return { header, rows };', 'const trim = row => row.map(cell => cell.trim());\n  return { header: trim(header), rows: rows.map(trim) };') }, 'Trim cells when reading a table');
+  const revised = (await mutate2('ingest', { items: [item('finn', shaFixed)], runTests: true, isolateUnreviewed: true })).results[0].candidate;
+  assert.equal(revised.combined, undefined, 'a head that contains main needs no separate combined check');
+  assert.doesNotMatch((await call2('diff', { task: 'table-shape', agent: 'finn', maxBytes: 65536 })).diff, /return text\.split\("\|"\);/, 'the diff shows B\'s work, not main\'s');
+  const fixedTests = (await mutate2('tests.record', { task: 'table-shape', agent: 'finn', sourceSha: shaFixed, run: await sandbox(canonical2, shaFixed, revised.treeSha) })).candidate.tests;
+  assert.equal(fixedTests.status, 'pass'); assert.equal(fixedTests.passed, 6);
+  const decisionB = await mutate2('decide', { task: 'table-shape', decider: 'luke', pick: 'finn', rationale: 'Merged main and trims where a table is read.', expectHeads: (await call2('candidates', { task: 'table-shape' })).heads });
+  await mutate2('publish', { canonical: { remote: canonical2 } });
+  assert.equal(await git(canonical2, ['rev-parse', 'main']), decisionB.mainSha);
+  assert.equal(await git(canonical2, ['rev-parse', 'main^{tree}']), revised.treeSha, 'the landed tree is the tested merged head');
+  assert.equal(await git(canonical2, ['rev-parse', 'main^']), decisionA.mainSha);
+  assert.equal(decisionB.combined, undefined, 'a head that contains main lands as itself');
+  console.log(`Combined resolution PASS: finn took the combined commit and fixed (${fixedTests.passed}/${fixedTests.passed} pass); its head contains main so no separate check; landed tree equals the tested head; main ${decisionB.mainSha.slice(0, 12)}`);
+  // Both B (now on main) and H appended a function at the end of the same file. Plain Git reports a
+  // conflict; Heddle merges the two functions cleanly, the merged result passes, and the human lands it.
+  const gitMerge = await run('git', ['--git-dir', canonical2, 'merge-tree', '--write-tree', '--name-only', 'main', shaH], { allowFailure: true });
+  assert.equal(gitMerge.code, 1, 'plain git merge conflicts'); assert.match(gitMerge.stdout.toString(), /src\/table\.mjs/);
+  const combinedH = (await mutate2('combine', { task: 'column-count', isolate: true })).candidates[0].combined;
+  assert.equal(combinedH.status, 'pending'); assert.equal(combinedH.heddle.conflictCount, 0, 'Heddle merges where git conflicts'); assert.deepEqual(combinedH.conflicts, []);
+  const mergedH = await git(canonical2, ['show', `${combinedH.sha}:src/table.mjs`]);
+  assert.match(mergedH, /export function readTable/); assert.match(mergedH, /export function columnCount/); assert.doesNotMatch(mergedH, /^[<>=]{7}/m);
+  const passedH = (await mutate2('tests.record', { task: 'column-count', agent: 'hana', sourceSha: shaH, combined: { sha: combinedH.sha, mainSha: combinedH.mainSha }, run: await sandbox(canonical2, combinedH.sha, combinedH.treeSha) })).candidate.combined;
+  assert.equal(passedH.status, 'pass'); assert.equal(passedH.tests.passed, 7);
+  const decisionH = await mutate2('decide', { task: 'column-count', decider: 'luke', pick: 'hana', rationale: 'Heddle merged it with main and the merged result passes.', expectHeads: (await call2('candidates', { task: 'column-count' })).heads });
+  assert.deepEqual(decisionH.combined, { sha: combinedH.sha, treeSha: combinedH.treeSha, mainSha: combinedH.mainSha, state: combinedH.state });
+  const publishedH = await mutate2('publish', { canonical: { remote: canonical2 } });
+  assert.deepEqual(publishedH.verify, { exportRoundTrip: true, treeMatch: true, fsck: true });
+  assert.equal(await git(canonical2, ['rev-parse', 'main^{tree}']), combinedH.treeSha, 'main is exactly the tested combined tree');
+  assert.equal(await git(canonical2, ['rev-parse', 'main^']), decisionB.mainSha);
+  assert.match(await git(canonical2, ['log', '-1', '--format=%B', 'main']), new RegExp(`Heddle-Combined: ${combinedH.sha}`));
+  assert.match((await call2('why', { sha: decisionH.mainSha })).narrative, /merged with main .* by Heddle; tested as/);
+  console.log(`Native merge PASS: git merge-tree conflicts on src/table.mjs; Heddle merged hana with main cleanly (${combinedH.heddle.mergeType}, 0 conflicts); merged result ${passedH.tests.passed}/${passedH.tests.passed} pass; landed tree is the tested combined tree; publication verified`);
+}
+
+// ── A clean Heddle merge of two correct edits that is wrong ────────────────────────────────────
+// A strips a leading pipe on line 2; B adds a line 3 that strips it too. Each is right alone. Git
+// conflicts on the adjacent lines; Heddle merges them cleanly and calls the result ready, but the
+// pipe is now stripped twice. Only tests on the merged state catch it, and landing is refused.
+{
+  const state3 = join(root, 'double-state'), canonical3 = join(root, 'double.git');
+  let ops = 0;
+  const call3 = (cmd, body = {}, expected = 0) => call(cmd, body, expected, state3);
+  const mutate3 = (cmd, body) => call3(cmd, { opId: `double-${++ops}`, ...body });
+  const seed3 = join(root, 'double-seed');
+  const parser = '// SPDX-License-Identifier: Apache-2.0\nexport function parseRow(row) {\n  let text = row.trim();\n  if (text.endsWith("|")) text = text.slice(0, -1);\n  return text.split("|").map(cell => cell.trim());\n}\n';
+  const files = { 'package.json': JSON.stringify({ type: 'module', scripts: { test: 'node --test' } }) + '\n', 'src/row.mjs': parser,
+    'test/row.test.mjs': '// SPDX-License-Identifier: Apache-2.0\nimport { test } from "node:test"; import assert from "node:assert/strict";\nimport { parseRow } from "../src/row.mjs";\ntest("splits cells", () => assert.deepEqual(parseRow("a | b |"), ["a", "b"]));\n' };
+  for (const [path, contents] of Object.entries(files)) { await mkdir(dirname(join(seed3, path)), { recursive: true }); await writeFile(join(seed3, path), contents); }
+  await git(seed3, ['init', '-b', 'main']); await git(seed3, ['add', '.']);
+  await git(seed3, ['-c', 'user.name=Seed', '-c', 'user.email=seed@example.invalid', 'commit', '-m', 'Row parser seed']);
+  await git(root, ['init', '--bare', '--initial-branch=main', canonical3]);
+  await mutate3('init', { project: 'd', canonical: { remote: canonical3 }, seed: { importUrl: seed3 } });
+  const lanes = { ana: 'leading-pipe-a', ben: 'leading-pipe-b' };
+  for (const task of Object.values(lanes)) await mutate3('task.create', { task, intent: 'Accept an optional leading pipe' });
+  for (const id of ['ana', 'ben', 'luke']) await mutate3('agent.enroll', { agent: { id, kind: id === 'luke' ? 'human' : 'agent', displayName: id } });
+  const ownTest = name => `// SPDX-License-Identifier: Apache-2.0\nimport { test } from "node:test"; import assert from "node:assert/strict";\nimport { parseRow } from "../src/row.mjs";\ntest("${name}: strips one leading pipe", () => assert.deepEqual(parseRow("| a | b |"), ["a", "b"]));\ntest("${name}: keeps an empty first cell", () => assert.deepEqual(parseRow("|| a | b |"), ["", "a", "b"]));\n`;
+  const changes = {
+    ana: { 'src/row.mjs': parser.replace('let text = row.trim();', 'let text = row.trim().replace(/^\\|/, "");'), 'test/ana.test.mjs': ownTest('ana') },
+    ben: { 'src/row.mjs': parser.replace('  let text = row.trim();\n', '  let text = row.trim();\n  if (text.startsWith("|")) text = text.slice(1);\n'), 'test/ben.test.mjs': ownTest('ben') },
+  };
+  const shas = {}, items = [];
+  for (const [id, task] of Object.entries(lanes)) {
+    const fork = join(root, `d--${task}--${id}.git`), co = join(root, `double-${id}`);
+    await git(root, ['clone', '--bare', canonical3, fork]); await mutate3('lane.open', { task, agent: id }); await git(root, ['clone', fork, co]);
+    for (const [path, contents] of Object.entries(changes[id])) await writeFile(join(co, path), contents);
+    await git(co, ['add', '.']); await git(co, ['-c', `user.name=${id}`, '-c', `user.email=${id}@example.invalid`, 'commit', '-m', `${id}: accept a leading pipe`]); await git(co, ['push', 'origin', 'HEAD:main']);
+    shas[id] = await git(co, ['rev-parse', 'HEAD']);
+    items.push({ task, agent: id, fork: { remote: fork }, ref: 'refs/heads/main', sha: shas[id] });
+  }
+  const sandbox = async (sha, treeSha) => {
+    const dir = await mkdtemp(join(root, 'sandbox-')), start = Date.now();
+    await git(dir, ['init', '-q']); await git(dir, ['fetch', '-q', '--no-tags', '--depth=1', canonical3, sha]); await git(dir, ['checkout', '-q', '--detach', sha]);
+    assert.equal(await git(dir, ['rev-parse', 'HEAD^{tree}']), treeSha);
+    const tested = await run(process.execPath, ['--test', '--test-reporter=tap'], { cwd: dir, allowFailure: true, env: { NO_COLOR: '1' } });
+    return { sourceSha: sha, treeSha, output: tested.stdout.toString() + tested.stderr.toString(), durationMs: Date.now() - start, installExitCode: 0, testExitCode: tested.code };
+  };
+  const captured = await mutate3('ingest', { items, runTests: true, isolateUnreviewed: true });
+  for (const { candidate } of captured.results) {
+    const tests = (await mutate3('tests.record', { task: candidate.task, agent: candidate.agent, sourceSha: candidate.sourceSha, run: await sandbox(candidate.sourceSha, candidate.treeSha) })).candidate.tests;
+    assert.equal(tests.status, 'pass', `${candidate.agent} is correct alone`); assert.equal(tests.passed, 3);
+  }
+  const decisionAna = await mutate3('decide', { task: 'leading-pipe-a', decider: 'luke', pick: 'ana', rationale: 'Strip the optional leading pipe.', expectHeads: (await call3('candidates', { task: 'leading-pipe-a' })).heads });
+  await mutate3('publish', { canonical: { remote: canonical3 } });
+  assert.equal((await run('git', ['--git-dir', canonical3, 'merge-tree', '--write-tree', 'main', shas.ben], { allowFailure: true })).code, 1, 'plain git merge conflicts on the adjacent lines');
+  const combined = (await mutate3('combine', { task: 'leading-pipe-b', isolate: true })).candidates[0].combined;
+  assert.equal(combined.heddle.conflictCount, 0); assert.equal(combined.heddle.status, 'ready'); assert.equal(combined.heddle.impact, 'none');
+  const merged = await git(canonical3, ['show', `${combined.sha}:src/row.mjs`]);
+  assert.match(merged, /replace\(\/\^\\\|\/, ""\);\n  if \(text\.startsWith\("\|"\)\) text = text\.slice\(1\);/, 'Heddle kept both edits: the pipe is stripped twice');
+  const failed = (await mutate3('tests.record', { task: 'leading-pipe-b', agent: 'ben', sourceSha: shas.ben, combined: { sha: combined.sha, mainSha: decisionAna.mainSha }, run: await sandbox(combined.sha, combined.treeSha) })).candidate.combined;
+  assert.equal(failed.status, 'fail'); assert.equal(failed.tests.failed, 2); assert.equal(failed.tests.passed, 3);
+  assert.deepEqual([...failed.tests.failures].sort(), ['ana: keeps an empty first cell', 'ben: keeps an empty first cell']);
+  const refused = await call3('decide', { opId: 'double-refused', task: 'leading-pipe-b', decider: 'luke', pick: 'ben', rationale: 'r', expectHeads: (await call3('candidates', { task: 'leading-pipe-b' })).heads }, 2);
+  assert.equal(refused.error.code, 'combined_failing');
+  console.log(`Silent merge break PASS: ana and ben each pass alone (3/3); git conflicts; Heddle merges cleanly and reports ${combined.heddle.status} (impact ${combined.heddle.impact}); the merged code strips the pipe twice and fails ${failed.tests.failed} tests (${failed.tests.failures.join('; ')}); landing ben is refused`);
+}
