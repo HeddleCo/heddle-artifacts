@@ -8,7 +8,7 @@ import { publish } from './lib/publish.mjs';
 export async function selftest() {
   const heddleVersion = (await run(process.env.HEDDLE_BIN || 'heddle', ['--version'])).stdout.toString().trim();
   const gitVersion = (await run('git', ['--version'])).stdout.toString().trim();
-  return { heddleVersion, gitVersion, ok: /^heddle 0\.30\.0\b/.test(heddleVersion) && /git version 2\.(?:4[5-9]|[5-9][0-9])\./.test(gitVersion) };
+  return { heddleVersion, gitVersion, ok: /^heddle 0\.31\.1\b/.test(heddleVersion) && /git version 2\.(?:4[5-9]|[5-9][0-9])\./.test(gitVersion) };
 }
 
 try {

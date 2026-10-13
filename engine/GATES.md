@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Heddle 0.30.0 gates
+# Heddle 0.31.1 gates
 
-Pinned CLI: `878fea434d2eed86865c0daf3f3b1ab7da6d2e4f` (`heddle 0.30.0`).
-Run: `HEDDLE_BIN=/home/scratch/heddle-0.30-bin/bin/heddle TMPDIR=/home/scratch node engine/test/gates.mjs`.
+Pinned CLI: `0b5eec40276510d2723a1572bdea0e9640e66e33` (`heddle 0.31.1`). The gates were first
+recorded on 0.30.0 (`878fea4`) and re-run unchanged on 0.31.1 on 2026-10-13; all pass.
+Run: `HEDDLE_BIN=/home/scratch/heddle-0.31.1-bin/bin/heddle TMPDIR=/home/scratch node engine/test/gates.mjs`.
 
 G1 passes. Hand-written, mode-0600 `device-identity.toml` files in separate
 `HEDDLE_HOME`s sign ordinary captures and `agent capture`. The engine verifies

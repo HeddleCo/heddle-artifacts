@@ -215,7 +215,7 @@ export async function main(args = process.argv.slice(2), ambient = process.env) 
       try {
         await access(env.HEDDLE_BIN, constants.X_OK);
         const version = await runProcess(env.HEDDLE_BIN, ['--version'], { env, timeoutMs: 5000 });
-        if (version.status !== 'passed' || !/\b0\.30\.0\b/.test(version.output)) throw new Error('HEDDLE_BIN must be a working Heddle 0.30.0 CLI.');
+        if (version.status !== 'passed' || !/\b0\.31\.1\b/.test(version.output)) throw new Error('HEDDLE_BIN must be a working Heddle 0.31.1 CLI.');
         report.heddle = { version: version.output.trim(), sha256: sha256(await readFile(env.HEDDLE_BIN)), sourcePin: '878fea434d2eed86865c0daf3f3b1ab7da6d2e4f', sourcePinMeaning: 'expected operator-supplied source; version alone does not attest this source revision' };
         for (const command of ['git', 'tar', 'zstd']) await executable(command, env.PATH);
       } catch (error) { nativeReady = false; report.nativePrerequisiteError = sanitizeLog(error.message, replacements); }
