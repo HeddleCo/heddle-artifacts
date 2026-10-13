@@ -9,6 +9,21 @@ A human picks one and writes why. The pick, the reason and the rejected alternat
 
 *The compare page, from the local fixture in [Try it (b)](#b-run-the-ui-locally-no-cloudflare-account).*
 
+## Built on Heddle
+
+The engine is [Heddle](https://github.com/HeddleCo/heddle), our open-source (Apache-2.0) version control for agent
+work. The engine Container builds the Heddle CLI from source at the 0.30.0 release commit
+([`878fea4`](https://github.com/HeddleCo/heddle/commit/878fea434d2eed86865c0daf3f3b1ab7da6d2e4f), see
+[`engine/Dockerfile`](engine/Dockerfile)) and runs it for every capture, merge, discussion, briefing and decision.
+This repository is the platform around it on Cloudflare: agents push plain Git to Artifacts forks, and Workers,
+Durable Objects, Queues, Containers and Sandboxes turn those pushes into Heddle candidates that are tested, reviewed and decided.
+
+The same CLI also runs on your own machine:
+
+```sh
+cargo install --locked --git https://github.com/HeddleCo/heddle --rev 878fea434d2eed86865c0daf3f3b1ab7da6d2e4f heddle-cli
+```
+
 ## Try it
 
 ### (a) Look: nothing to install
