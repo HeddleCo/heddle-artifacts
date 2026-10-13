@@ -2,7 +2,8 @@
 import { DurableObject, WorkerEntrypoint } from 'cloudflare:workers';
 import { decideTestEgress, type TestGrant } from './test-egress';
 import { Files } from '@cloudflare/sandbox';
-import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
+import { TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
+import { DEFAULT_TEST_RECIPE } from './test-recipe';
 import type { SandboxInput, SandboxRun, TestRunner } from './isolated-tests';
 
 const CA_PATH = '/etc/cloudflare/certs/cloudflare-containers-ca.crt';
@@ -32,8 +33,8 @@ export class TestOutbound extends WorkerEntrypoint<unknown, { grant?: TestGrant 
 export class CandidateTestSandbox extends DurableObject implements TestRunner {
   async destroy(): Promise<void> { await this.ctx.container?.destroy(); }
   async run(input: SandboxInput): Promise<SandboxRun> {
-    const start = Date.now(), container = this.ctx.container;
-    const result: SandboxRun = { sourceSha: input.sourceSha, treeSha: input.treeSha, output: '', durationMs: 0 };
+    const start = Date.now(), container = this.ctx.container, recipe = input.recipe ?? DEFAULT_TEST_RECIPE, budgetMs = recipe.budgetMs;
+    const result: SandboxRun = { sourceSha: input.sourceSha, treeSha: input.treeSha, output: '', durationMs: 0, ...(input.recipe ? { budgetMs } : {}) };
     if (!container) return { ...result, failure: 'sandbox' };
     // Never restart an already used candidate instance, including after eviction.
     const claimed = await this.ctx.blockConcurrencyWhile(async () => {
@@ -41,11 +42,11 @@ export class CandidateTestSandbox extends DurableObject implements TestRunner {
       await this.ctx.storage.put('used', true); return true;
     });
     if (!claimed) return { ...result, failure: 'sandbox' };
-    await this.ctx.storage.setAlarm(start + TEST_BUDGET_MS);
+    await this.ctx.storage.setAlarm(start + budgetMs);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let bytes = 0;
     const exec = async (argv: string[], options: ContainerExecOptions = {}) => {
-      const remaining = Math.max(1, Math.ceil((TEST_BUDGET_MS - (Date.now() - start)) / 1000));
+      const remaining = Math.max(1, Math.ceil((budgetMs - (Date.now() - start)) / 1000));
       const proc = await container.exec(['timeout', '--kill-after=1', String(remaining), ...argv], { ...options, stderr: 'combined' });
       // Teardown/output overflow may throw before the exit is awaited below.
       // Consume a later runtime rejection without losing the original failure.
@@ -83,12 +84,16 @@ export class CandidateTestSandbox extends DurableObject implements TestRunner {
         const tree = await exec(['git', 'rev-parse', 'HEAD^{tree}'], { cwd });
         if (sha.code || tree.code || sha.output.trim() !== input.sourceSha || tree.output.trim() !== input.treeSha) { result.failure = 'checkout'; throw new Error('tree'); }
         const env = { CI: '1', NO_COLOR: '1', HOME: '/tmp', NPM_CONFIG_UPDATE_NOTIFIER: 'false', ...TRUST_ENV };
-        result.installExitCode = (await exec(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd, env })).code;
-        if (result.installExitCode !== 0) return;
-        const test = await exec(['npm', 'test'], { cwd, env });
+        // Setup steps (install, generated files) stop at the first failure; only the test step's output is kept.
+        result.installExitCode = 0;
+        for (const step of recipe.setup) {
+          result.installExitCode = (await exec(step, { cwd, env })).code;
+          if (result.installExitCode !== 0) return;
+        }
+        const test = await exec(recipe.test, { cwd, env });
         result.testExitCode = test.code; result.output = test.output;
       };
-      await Promise.race([work(), new Promise<never>((_, reject) => { timer = setTimeout(() => { result.failure = 'timeout'; void container.destroy().catch(() => {}); reject(new Error('timeout')); }, Math.max(1, TEST_BUDGET_MS - (Date.now() - start))); })]);
+      await Promise.race([work(), new Promise<never>((_, reject) => { timer = setTimeout(() => { result.failure = 'timeout'; void container.destroy().catch(() => {}); reject(new Error('timeout')); }, Math.max(1, budgetMs - (Date.now() - start))); })]);
     } catch (error) {
       result.failure ||= 'sandbox';
       // Step codes only (init/fetch/checkout/tree/remote/sha/timeout/output or a runtime error name); no output, URLs or credentials.

@@ -14,13 +14,26 @@ credential enter the runner request. The container receives no Worker bindings,
 operator/API/write token or signing identity. Read authentication is process-local
 to `git fetch`, and is absent from npm's environment and Git configuration.
 
-The sandbox fetches the exact commit, verifies HEAD and tree, then runs
-`npm ci --ignore-scripts` and `npm test`. Fetch, installation and tests share a
-180-second deadline and a 64 KiB combined output budget. Every instance is claimed
-once, has a 30-second inactivity timeout, and is destroyed in `finally`; a failed
-destroy schedules a durable cleanup retry. ProjectDO starts at most three jobs at
-once. The platform also enforces `max_instances: 3` with the default Containers
-scheduling policy and a `lite` instance type.
+The sandbox fetches the exact commit, verifies HEAD and tree, then runs the
+project's test recipe. By default that is `npm ci --ignore-scripts` and `npm test`
+with a 180-second deadline. An operator can set a different recipe when creating a
+project (`tests` in `POST /api/projects`): setup steps and a test step, each an argv
+array for `npm`, `npx` or `node` (never a shell), and a budget of 30 to 600 seconds.
+Candidate code cannot change it, and it cannot be changed after creation. Setup
+stops at the first failing step; only the test step's output is parsed. For
+example, a pnpm workspace:
+
+```json
+"tests": { "setup": [["npx", "--yes", "pnpm@10", "install", "--frozen-lockfile", "--ignore-scripts"]],
+           "test": ["npx", "--yes", "pnpm@10", "test"], "budgetSeconds": 420 }
+```
+
+Fetch, setup and tests share the deadline and a 64 KiB combined output budget. Every
+instance is claimed once, has a 30-second inactivity timeout, and is destroyed in
+`finally`; a failed destroy schedules a durable cleanup retry. ProjectDO starts at
+most three jobs at once. The platform also enforces `max_instances: 3` with the
+default Containers scheduling policy and a `standard-1` instance type (half a vCPU,
+4 GiB), which a real repository's dependency install needs.
 
 The trusted Worker forwards bounded observations to the journaled `tests.record`
 engine command. The engine parses Node/Vitest totals from stdout, ignores any

@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 export const TEST_BUDGET_MS = 180000;
+// A project's operator-set test recipe may give its sandbox runs a longer wall-clock budget.
+export const MIN_TEST_BUDGET_MS = 30000, MAX_TEST_BUDGET_MS = 600000;
+export function testBudgetMs(run) {
+  const budget = run?.budgetMs;
+  return Number.isInteger(budget) && budget >= MIN_TEST_BUDGET_MS && budget <= MAX_TEST_BUDGET_MS ? budget : TEST_BUDGET_MS;
+}
 export const TEST_OUTPUT_BYTES = 64 * 1024;
 
 // Only parse runner stdout. Candidate-supplied JSON counts are never input.
@@ -33,9 +39,10 @@ export function failureDetails(output) {
 
 export function isolatedTestResult(run) {
   const provenance = run?.fixture ? 'isolated sandbox (local fixture)' : 'isolated sandbox';
-  const durationMs = Number.isFinite(run?.durationMs) ? Math.min(TEST_BUDGET_MS, Math.max(0, Math.round(run.durationMs))) : 0;
+  const budgetMs = testBudgetMs(run);
+  const durationMs = Number.isFinite(run?.durationMs) ? Math.min(budgetMs, Math.max(0, Math.round(run.durationMs))) : 0;
   const error = summary => ({ status: 'error', passed: 0, failed: 0, summary, durationMs, provenance, sourceSha: run?.sourceSha });
-  if (run?.failure === 'timeout' || run?.durationMs >= TEST_BUDGET_MS || [run?.installExitCode, run?.testExitCode].some(c => c === 124 || c === 137)) return error('Isolated sandbox exceeded 180 seconds');
+  if (run?.failure === 'timeout' || run?.durationMs >= budgetMs || [run?.installExitCode, run?.testExitCode].some(c => c === 124 || c === 137)) return error(`Isolated sandbox exceeded ${budgetMs / 1000} seconds`);
   if (run?.failure === 'output' || typeof run?.output !== 'string' || new TextEncoder().encode(run.output).length > TEST_OUTPUT_BYTES) return error('Isolated sandbox output limit exceeded');
   if (run.failure) return error('Isolated sandbox failed');
   if (run.installExitCode !== 0) return error('Isolated sandbox dependency install failed');

@@ -10,6 +10,7 @@ import { EngineClient } from './engine-client';
 import { DemoCredentials } from './credentials';
 import { sandboxId, type SandboxRun, type TestRunner } from './isolated-tests';
 import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
+import { parseTestRecipe, type TestRecipe } from './test-recipe';
 import { combinedRefusal } from '../engine/lib/combined-rule.mjs';
 
 type Task = { slug: string; intent: string; thread: string; baseSha: string; status: 'open' | 'decided' };
@@ -230,7 +231,12 @@ export class ProjectDO extends DurableObject<Env> {
   private sandboxJobs(): SandboxJob[] { return this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'isolated:%'").map(r => JSON.parse(r.data)); }
   private runner(id: string): TestRunner | undefined { return this.env.TEST_RUNNER?.get(id) ?? this.env.TEST_SANDBOX?.getByName(id); }
   private sandboxError(job: SandboxJob, failure: SandboxRun['failure'] = 'sandbox'): SandboxRun {
-    return { sourceSha: job.sourceSha, treeSha: job.treeSha, output: '', durationMs: Math.min(TEST_BUDGET_MS, Date.now() - (job.startedAt ?? Date.now())), failure, ...(this.env.DEV === '1' ? { fixture: true } : {}) };
+    const recipe = this.testRecipe(), budgetMs = recipe?.budgetMs ?? TEST_BUDGET_MS;
+    return { sourceSha: job.sourceSha, treeSha: job.treeSha, output: '', durationMs: Math.min(budgetMs, Date.now() - (job.startedAt ?? Date.now())), failure,
+      ...(recipe ? { budgetMs } : {}), ...(this.env.DEV === '1' ? { fixture: true } : {}) };
+  }
+  /** The operator's recipe for this project's sandbox tests, if it set one at creation. */
+  private testRecipe(): TestRecipe | undefined { return this.store.get<{ tests?: TestRecipe }>('meta', 'project')?.tests;
   }
   private async finishSandboxJob(job: SandboxJob) {
     if (!job.run) return;
@@ -277,12 +283,13 @@ export class ProjectDO extends DurableObject<Env> {
       if (!runner || !lane || lane.status !== 'active') throw new Error('sandbox_unavailable');
       token = await this.credentials.issue(repo, 'read', 'sandbox-read', job.agent, 240);
       this.credentials.assertOpen();
+      const recipe = this.testRecipe(), budgetMs = recipe?.budgetMs ?? TEST_BUDGET_MS;
       const result = await Promise.race([runner.run({ project: project.id, task: job.task, agent: job.agent,
-        sourceSha: job.sourceSha, treeSha: job.treeSha, remote, readCredential: token.plaintext }),
-        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('sandbox_timeout')), Math.max(1, TEST_BUDGET_MS - (Date.now() - job.startedAt!))); })]);
+        sourceSha: job.sourceSha, treeSha: job.treeSha, remote, readCredential: token.plaintext, ...(recipe ? { recipe } : {}) }),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('sandbox_timeout')), Math.max(1, budgetMs - (Date.now() - job.startedAt!))); })]);
       if (result.sourceSha !== job.sourceSha || result.treeSha !== job.treeSha) throw new Error('sandbox_binding');
       // Copy only observation fields; candidate output cannot supply test counts.
-      run = { sourceSha: job.sourceSha, treeSha: job.treeSha, output: result.output, durationMs: result.durationMs,
+      run = { sourceSha: job.sourceSha, treeSha: job.treeSha, output: result.output, durationMs: result.durationMs, ...(recipe ? { budgetMs } : {}),
         installExitCode: result.installExitCode, testExitCode: result.testExitCode, ...(result.failure ? { failure: result.failure } : {}), ...(this.env.DEV === '1' ? { fixture: true } : {}) };
       if (typeof run.output !== 'string' || new TextEncoder().encode(run.output).length > TEST_OUTPUT_BYTES) run = this.sandboxError(job, 'output');
     } catch (error) { run = this.sandboxError(job, error instanceof Error && error.message === 'sandbox_timeout' ? 'timeout' : 'sandbox'); }
@@ -510,14 +517,15 @@ export class ProjectDO extends DurableObject<Env> {
           const body = await jsonBody(request), seed = body.seed;
           if (body.id !== projectId || !(seed?.template === 'demo' || typeof seed?.importUrl === 'string')) throw new HttpError(400, 'invalid_seed');
           if (seed.importUrl) { const parsed = new URL(seed.importUrl); if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new HttpError(400, 'invalid_seed'); }
+          const tests = body.tests === undefined ? undefined : parseTestRecipe(body.tests);
           this.credentials.initialize(); await this.nextAlarm();
           let project = this.store.get('meta', 'project');
           if (!project) {
             let created = await existingRepository(this.env, projectId);
             if (created) this.credentials.noteExistingRepository(projectId);
             else created = await this.credentials.bootstrap(projectId, () => artifacts(this.env).create(projectId, { setDefaultBranch: 'main' }));
-            project = { id: projectId, canonicalRemote: created.remote }; this.store.put('meta', 'project', project);
-          }
+            project = { id: projectId, canonicalRemote: created.remote, ...(tests ? { tests } : {}) }; this.store.put('meta', 'project', project);
+          } else if (JSON.stringify(project.tests ?? null) !== JSON.stringify(tests ?? project.tests ?? null)) throw new HttpError(409, 'test_recipe_conflict');
           await this.engine.mutate('init', { opId: `init:${projectId}`, project: projectId, canonical: { remote: project.canonicalRemote }, seed });
           const token = await this.credentials.issue(projectId, 'read', 'canonical-read', 'operator');
           await this.nextAlarm();

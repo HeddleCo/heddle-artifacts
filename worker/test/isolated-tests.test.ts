@@ -7,9 +7,9 @@ import { memoryArtifacts } from '../../dev/memory-artifacts';
 const env = testEnv as unknown as Env;
 const sha = (n: number) => n.toString(16).padStart(40, '0');
 const api = (path: string, body?: any) => SELF.fetch(`https://heddle.test${path}`, { method: body ? 'POST' : 'GET', headers: { authorization: 'Bearer test-operator', 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
-async function fixture() {
+async function fixture(tests?: object) {
   const p = `isolated-${crypto.randomUUID().slice(0, 8)}`, base = `/api/projects/${p}`, task = `${base}/tasks/parser`;
-  expect((await api('/api/projects', { id: p, seed: { template: 'demo' } })).status).toBe(200);
+  expect((await api('/api/projects', { id: p, seed: { template: 'demo' }, ...(tests ? { tests } : {}) })).status).toBe(200);
   expect((await api(`${base}/tasks`, { slug: 'parser', intent: 'Improve parser' })).status).toBe(200);
   const join = await (await api(`${task}/agents`, { id: 'alice', kind: 'agent', displayName: 'Alice' })).json() as any;
   const project = env.PROJECT.getByName(p), engine = env.ENGINE.getByName(p) as any;
@@ -85,4 +85,29 @@ it('a superseded sandbox run never applies to a newer candidate, including the s
     expect(JSON.parse(recorded.find(r => JSON.parse(r.input).sourceSha === sha(1)).result).ignored).toBe(true);
   });
   expect(new Set(f.fake.inputs.map(i => i.id)).size).toBe(2); expect(f.fake.destroyed).toHaveLength(2);
+});
+it('a project test recipe reaches the sandbox, and its budget decides when a run is too slow', async () => {
+  const recipe = { setup: [['npx', '--yes', 'pnpm@10', 'install', '--frozen-lockfile', '--ignore-scripts']], test: ['npx', '--yes', 'pnpm@10', 'test'], budgetSeconds: 420 };
+  const f = await fixture(recipe); f.fake.durationMs = 200000;
+  await f.project.notePush(f.fork, 'refs/heads/main', sha(31), 'event');
+  const view = await waitFor(f.task, v => v.candidates[0]?.tests && v.candidates[0].tests.status !== 'pending');
+  expect(view.candidates[0].tests).toMatchObject({ status: 'pass', passed: 14 });
+  expect(f.fake.inputs[0].input.recipe).toEqual({ setup: recipe.setup, test: recipe.test, budgetMs: 420000 });
+  // The same 200-second run under the default recipe exceeds its 180 seconds.
+  const g = await fixture(); g.fake.durationMs = 200000;
+  await g.project.notePush(g.fork, 'refs/heads/main', sha(32), 'event');
+  const slow = await waitFor(g.task, v => v.candidates[0]?.tests && v.candidates[0].tests.status !== 'pending');
+  expect(slow.candidates[0].tests).toMatchObject({ status: 'error', summary: 'Isolated sandbox exceeded 180 seconds' });
+  expect(g.fake.inputs[0].input.recipe).toBeUndefined();
+});
+it('the test recipe is set once, at creation, by the operator', async () => {
+  const p = `recipe-${crypto.randomUUID().slice(0, 8)}`, recipe = { test: ['npm', 'test'], budgetSeconds: 300 };
+  const bad = await api('/api/projects', { id: p, seed: { template: 'demo' }, tests: { test: ['sh', '-c', 'npm test'] } });
+  expect(bad.status).toBe(400); expect(await bad.json()).toMatchObject({ error: 'invalid_test_recipe' });
+  expect((await api('/api/projects', { id: p, seed: { template: 'demo' }, tests: recipe })).status).toBe(200);
+  // Re-creating without a recipe keeps it; a different recipe is refused.
+  expect((await api('/api/projects', { id: p, seed: { template: 'demo' } })).status).toBe(200);
+  expect((await api('/api/projects', { id: p, seed: { template: 'demo' }, tests: { ...recipe, budgetSeconds: 600 } })).status).toBe(409);
+  const board = await (await api(`/api/projects/${p}`)).json() as any;
+  expect(board.project.tests).toEqual({ setup: [], test: ['npm', 'test'], budgetMs: 300000 });
 });

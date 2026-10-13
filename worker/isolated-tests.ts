@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { digest } from './auth';
 import type { Candidate } from '../contracts/types';
+import type { TestRecipe } from './test-recipe';
 export interface SandboxInput {
   project: string; task: string; agent: string; sourceSha: string; treeSha: string;
   remote: string; readCredential: string;
+  /** The project's operator-set recipe; absent means the default npm ci / npm test. */
+  recipe?: TestRecipe;
 }
 export interface SandboxRun {
-  sourceSha: string; treeSha: string; output: string; durationMs: number;
+  sourceSha: string; treeSha: string; output: string; durationMs: number; budgetMs?: number;
   installExitCode?: number; testExitCode?: number;
   failure?: 'timeout' | 'sandbox' | 'checkout' | 'output';
   fixture?: boolean;
