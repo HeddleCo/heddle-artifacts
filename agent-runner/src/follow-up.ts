@@ -6,6 +6,12 @@
 /** `git status --porcelain` and `git rev-list --count origin/main..HEAD`, as run in the lane's repository. */
 export interface WorkState { statusExit: number; status: string; aheadExit: number; ahead: string }
 
+// Dependency directories are installed, never authored: a repository without a .gitignore must not make
+// an agent's finished, pushed run look unfinished (or tempt it to commit node_modules).
+// -uall lists files, not collapsed directories, so a directory holding only node_modules is excluded too.
+export const STATUS_ARGV = ["git", "status", "--porcelain", "-uall", "--", ".", ":(exclude)node_modules/**", ":(exclude)**/node_modules/**"];
+export const AHEAD_ARGV = ["git", "rev-list", "--count", "origin/main..HEAD"];
+
 /** True when the repository holds work that has not reached the fork: changes, or local commits not on origin. */
 export function hasUnpushedWork(state: WorkState): boolean {
   // If git cannot answer, do not guess: a follow-up turn is only for work that is known to be there.

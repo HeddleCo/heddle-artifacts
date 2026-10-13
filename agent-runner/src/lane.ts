@@ -10,7 +10,7 @@ import type { z } from "zod";
 import type { Outbound } from "./outbound";
 import type { DiscussionTarget, LaneGrant } from "./policy";
 import { cleanAnnouncement } from "./announce";
-import { FOLLOW_UP_PROMPT, hasUnpushedWork } from "./follow-up";
+import { AHEAD_ARGV, FOLLOW_UP_PROMPT, STATUS_ARGV, hasUnpushedWork } from "./follow-up";
 
 const REPOSITORY_DIRECTORY = "/workspace/repo";
 const TASK_DIRECTORY = "/workspace/task";
@@ -267,8 +267,8 @@ export abstract class LaneSandbox extends DurableObject<RunnerEnv> {
   async #startFollowUp(firstResult: string): Promise<boolean> {
     const command = this.continueCommand(FOLLOW_UP_PROMPT, this.ctx.storage.kv.get<string>(MODEL_KEY));
     if (command === undefined) return false;
-    const status = await this.#run(["git", "status", "--porcelain"], REPOSITORY_DIRECTORY, {});
-    const ahead = await this.#run(["git", "rev-list", "--count", "origin/main..HEAD"], REPOSITORY_DIRECTORY, {});
+    const status = await this.#run(STATUS_ARGV, REPOSITORY_DIRECTORY, {});
+    const ahead = await this.#run(AHEAD_ARGV, REPOSITORY_DIRECTORY, {});
     if (!hasUnpushedWork({ statusExit: status.exitCode, status: status.stdout, aheadExit: ahead.exitCode, ahead: ahead.stdout })) return false;
     this.ctx.storage.kv.put(FOLLOW_UP_KEY, "started");
     this.ctx.storage.kv.put(FIRST_RESULT_KEY, firstResult);
