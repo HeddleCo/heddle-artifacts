@@ -268,10 +268,19 @@ export class ProjectDO extends DurableObject<Env> {
     for (const job of this.sandboxJobs()) {
       if (this.isolated.size >= 3) break;
       if (job.status !== 'queued' || this.isolated.has(job.id)) continue;
+      // An agent that pushes as it goes queues a test run per push. A run for a push that is no longer
+      // the agent's candidate would only be ignored when recorded, while holding one of three slots.
+      if (this.supersededJob(job)) { job.status = 'done'; this.store.put('meta', `isolated:${job.id}`, job); continue; }
       job.status = 'running'; job.startedAt = Date.now(); this.store.put('meta', `isolated:${job.id}`, job);
       const promise = this.runSandboxJob(job).catch(() => {}).finally(() => { this.isolated.delete(job.id); this.scheduleSandboxJobs(); });
       this.isolated.set(job.id, promise); this.ctx.waitUntil(promise);
     }
+  }
+  private supersededJob(job: SandboxJob): boolean {
+    const current = this.store.get<Candidate>('candidates', `${job.task}/${job.agent}`);
+    if (!current) return false;
+    if (job.combined) return current.sourceSha !== job.combined.candidateSha || current.combined?.sha !== job.sourceSha;
+    return current.sourceSha !== job.sourceSha;
   }
   private async runSandboxJob(job: SandboxJob) {
     const lane = this.store.get<Lane>('lanes', `${job.task}/${job.agent}`), runner = this.runner(job.id);
