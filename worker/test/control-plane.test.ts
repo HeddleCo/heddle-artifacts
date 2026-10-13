@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect } from 'vitest';
-import { SELF, env as testEnv, runInDurableObject, evictDurableObject } from 'cloudflare:test';
+import { SELF, env as testEnv, runInDurableObject, runDurableObjectAlarm, evictDurableObject } from 'cloudflare:test';
 import type { Env } from '../env';
 import { memoryArtifacts } from '../../dev/memory-artifacts';
 import { forkName } from '../artifacts';
@@ -293,6 +293,30 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     // A crash without a structured body still names a reason for the operator.
     const d = await (await api(`${base}/diagnostics`)).json() as any;
     expect(d.ops.find((o: any) => o.command === 'ingest')).toMatchObject({ status: 'failed', error: 'engine_failed', reason: 'engine_crash' });
+  });
+  it('a crashed ingest is retried later, twice, before the push counts as failed', async () => {
+    const { p, base, project, engine } = await setup();
+    const pushes = async () => ((await (await api(`${base}/diagnostics`)).json()) as any).pushes.map((x: any) => x.status);
+    const settle = async (status: string) => { for (let i = 0; i < 200 && !(await pushes()).includes(status); i++) await new Promise(r => setTimeout(r, 20)); };
+    // Bring every scheduled retry forward, then let the alarm drain.
+    const due = async () => { await runInDurableObject(project, instance => { for (const row of instance.store.rows<{ key: string; data: string }>("SELECT key,data FROM meta WHERE key LIKE 'pushRetry:%'")) instance.store.put('meta', row.key, { ...JSON.parse(row.data), notBefore: 0 }); }); await runDurableObjectAlarm(project).catch(() => {}); };
+    await engine.failNext('ingest', 3, false);
+    await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(530), 'event');
+    await settle('retry'); expect(await pushes()).toEqual(['retry']);
+    await runInDurableObject(project, instance => { const r = instance.store.get<any>('meta', `pushRetry:${instance.store.rows<{ id: string }>('SELECT id FROM pushes')[0].id}`); expect(r.count).toBe(1); expect(r.notBefore).toBeGreaterThan(Date.now() + 50000); });
+    await due(); await settle('done');
+    expect(await pushes()).toEqual(['done']); await waitCandidates(base, 1);
+    expect((await engine.stats()).calls.filter((c: any) => c.command === 'ingest')).toHaveLength(4);
+    // A push that keeps failing stops after two retries.
+    const second = await setup();
+    await second.engine.failNext('ingest', 9, false);
+    await second.project.notePush(`${second.p}--parser-escapes--agent-0`, 'refs/heads/main', sha(531), 'event');
+    const statuses = async () => ((await (await api(`${second.base}/diagnostics`)).json()) as any).pushes.map((x: any) => x.status);
+    const until = async (status: string) => { for (let i = 0; i < 200 && !(await statuses()).includes(status); i++) await new Promise(r => setTimeout(r, 20)); };
+    const bring = async () => { await runInDurableObject(second.project, instance => { for (const row of instance.store.rows<{ key: string; data: string }>("SELECT key,data FROM meta WHERE key LIKE 'pushRetry:%'")) instance.store.put('meta', row.key, { ...JSON.parse(row.data), notBefore: 0 }); }); await runDurableObjectAlarm(second.project).catch(() => {}); };
+    await until('retry'); await bring(); await new Promise(r => setTimeout(r, 300)); await until('retry'); await bring(); await until('failed');
+    expect(await statuses()).toEqual(['failed']);
+    expect((await second.engine.stats()).calls.filter((c: any) => c.command === 'ingest')).toHaveLength(9);
   });
   it('a failed op keeps the engine reason code and frames for diagnostics, and nothing else', async () => {
     const { p, base, project, engine } = await setup();
