@@ -24,6 +24,8 @@ engine/lib/**
 !engine/lib/git.mjs
 !engine/lib/why.mjs
 !engine/lib/signatures.mjs
+!engine/lib/combined.mjs
+!engine/lib/combined-rule.mjs
 !contracts/
 contracts/**
 !contracts/types.ts
