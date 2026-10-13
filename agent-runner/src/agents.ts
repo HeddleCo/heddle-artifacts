@@ -49,12 +49,16 @@ const claudeResult = z.object({ type: z.literal("result"), subtype: z.string(), 
 export class ClaudeLane extends LaneSandbox {
   protected readonly agent = "claude";
 
-  protected command(prompt: string): AgentCommand {
+  protected command(prompt: string, model?: string): AgentCommand { return this.#command([], prompt, model); }
+  // The session persists inside the sandbox (discarded afterwards), so a follow-up turn can continue it.
+  protected override continueCommand(prompt: string, model?: string): AgentCommand { return this.#command(["--continue"], prompt, model); }
+
+  #command(extra: string[], prompt: string, model?: string): AgentCommand {
     return {
       argv: [
-        "claude", "--print", "--output-format", "stream-json", "--verbose",
-        "--dangerously-skip-permissions", "--no-session-persistence",
-        "--model", this.env.CLAUDE_MODEL, "--", prompt,
+        "claude", ...extra, "--print", "--output-format", "stream-json", "--verbose",
+        "--dangerously-skip-permissions",
+        "--model", model ?? this.env.CLAUDE_MODEL, "--", prompt,
       ],
       env: {
         ANTHROPIC_BASE_URL: `https://${GATEWAY_HOST}/v1/${this.env.AI_GATEWAY_ACCOUNT_ID}/${this.env.AI_GATEWAY_ID}/anthropic`,
@@ -86,9 +90,12 @@ const opencodeEvent = z.union([
 export class OpencodeLane extends LaneSandbox {
   protected readonly agent = "opencode";
 
-  protected command(prompt: string, model?: string): AgentCommand {
+  protected command(prompt: string, model?: string): AgentCommand { return this.#command([], prompt, model); }
+  protected override continueCommand(prompt: string, model?: string): AgentCommand { return this.#command(["--continue"], prompt, model); }
+
+  #command(extra: string[], prompt: string, model?: string): AgentCommand {
     return {
-      argv: ["opencode", "run", "--format", "json", "--auto", "--model", model ?? this.env.OPENCODE_MODEL, "--", prompt],
+      argv: ["opencode", "run", ...extra, "--format", "json", "--auto", "--model", model ?? this.env.OPENCODE_MODEL, "--", prompt],
       env: {
         // OpenCode requires a key; the Worker replaces this placeholder on each request.
         CLOUDFLARE_API_KEY: "provided-by-worker",

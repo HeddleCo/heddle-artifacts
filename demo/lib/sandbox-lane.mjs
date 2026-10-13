@@ -16,12 +16,13 @@ try {
   const lane = new URL(`/lanes/${agent}/${name}`, base), headers = { authorization: `Bearer ${token}` };
   const who = name.split('-').at(-2);
   // DEMO_LANE_MODEL (set per lane by the harness) picks a Workers AI model for opencode lanes.
-  const model = process.env.DEMO_LANE_MODEL ? `cloudflare-workers-ai/${process.env.DEMO_LANE_MODEL}` : undefined;
+  const lane_model = process.env.DEMO_LANE_MODEL;
+  const model = !lane_model ? undefined : agent === 'opencode' ? `cloudflare-workers-ai/${lane_model}` : agent === 'claude' ? lane_model : undefined;
   // Heddle's briefing of earlier decisions leads the prompt, so the agent starts from recorded intent.
   const context = briefing?.annotations?.length ? `## Context from earlier decisions (Heddle briefing ${String(briefing.hash).slice(0, 12)})\n\n` +
     `People recorded these notes when they decided earlier work on this code. Treat them as part of your task: follow their guidance, including any follow-up they ask the next change to make, and say in your closing message what you did about each.\n\n` +
     briefing.annotations.map(a => `- ${a.target}${a.scope && a.scope !== 'file' ? ` (${a.scope})` : ''}, ${a.kind} by ${a.attribution}: ${a.content}`).join('\n') + '\n\n' : '';
-  const body = JSON.stringify({ grant, prompt: context + await readFile(briefPath, 'utf8'), author: { name: who, email: `${who}@heddle-artifacts.local` }, ...(agent === 'opencode' && model ? { model } : {}), ...(discussion ? { discussion } : {}) });
+  const body = JSON.stringify({ grant, prompt: context + await readFile(briefPath, 'utf8'), author: { name: who, email: `${who}@heddle-artifacts.local` }, ...(model ? { model } : {}), ...(discussion ? { discussion } : {}) });
   // A sandbox image's first start in a location can fail while it provisions; retry that, nothing else.
   let started;
   for (let attempt = 1; attempt <= 3; attempt++) {

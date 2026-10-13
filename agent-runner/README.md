@@ -9,10 +9,18 @@ fork write token and a canonical read token. The harness hands that grant to thi
 2. routes all of the sandbox's HTTP/HTTPS through `Outbound` ([`src/policy.ts`](src/policy.ts)), which allows only
    - this account's Workers AI inference (`api.cloudflare.com/client/v4/accounts/<id>/ai/v1/…`), adding the token and
      `cf-aig-gateway-id` so requests are logged by the gateway and billed as Workers AI (standard billing),
-   - this account's AI Gateway provider routes, for third-party models on Unified Billing (Claude Code lanes),
+   - this account's AI Gateway provider routes, for third-party models (Claude Code lanes), billed through the
+     gateway's Unified Billing or a provider key stored in the gateway,
    - this lane's own Artifacts fork (write token added) and the canonical repo (read token added, pushes refused),
    - the npm registry, read-only and without credentials;
 3. clones the fork, then runs the agent on the task brief. The agent tests, commits and runs `git push origin HEAD:main`.
+   If the agent's run ends successfully but leaves uncommitted changes or unpushed commits, the lane gets exactly
+   one follow-up turn in the same session (`opencode run --continue`, `claude --continue`) asking it to push or say
+   why not. The sandbox is discarded afterwards, so this keeps finished work from being lost; the runner never
+   commits or pushes on the agent's behalf.
+
+A lane may name its model: a `cloudflare-workers-ai/@cf/…` id on an OpenCode lane, or a `claude-…` id on a Claude
+Code lane (default `CLAUDE_MODEL`).
 
 The push reaches the control plane like any other: Artifacts event → Queue → Durable Object → engine capture.
 **No credential ever enters the sandbox.** The agent sees placeholder keys, and the Worker adds real ones per request.
