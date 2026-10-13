@@ -6,10 +6,11 @@ import { ApiError, diff, projectPath, request, taskPath } from './api';
 import type { ProjectView, TaskView, WhyView } from './api';
 import { updateBoard, updateTask } from './feed';
 import { publicationEvidence } from './verification';
-import { isPublished, decisionRequest, conflictMessage } from './decision';
+import { isPublished, decisionRequest, conflictMessage, combinedBlock, combinedText } from './decision';
 import { DecisionNotice } from './decision-notice';
 import { identifiers, InlineText, Narrative, parseReview, ReviewBody, RichText } from './rich-text';
 import { displayName, plural } from './format';
+import { CombinedLine, CombinedPanel } from './combined';
 
 
 const short = (s: string) => s.slice(0, 10);
@@ -92,6 +93,7 @@ function Board({ p }: { p: string }) {
         return <article class="lane-card" key={`${lane.agent}/${pulse[`${task.slug}/${lane.agent}`] || 0}`} data-testid={`lane-${lane.agent}`} data-push={pulse[`${task.slug}/${lane.agent}`] ? 'received' : 'idle'}>
           <div class={`push-pulse ${pulse[`${task.slug}/${lane.agent}`] ? 'pulsing' : ''}`}><span class="avatar">{lane.agent.slice(0, 1).toUpperCase()}</span><div><h3>{agent?.displayName || lane.agent}</h3><p class="muted">{agent?.provider || 'agent'} / {agent?.model || 'unspecified'}</p></div></div>
           <div class="card-status"><Badge candidate={candidate}/><span class="muted">{lane.status}</span></div>
+          {candidate && <CombinedLine candidate={candidate}/>}
           {lane.unbriefed && <p class="briefed"><span class="tag dashed control" title="Opened without a Heddle briefing, as a control">○ no briefing · control</span></p>}
           {!!lane.briefing?.annotations.length && <p class="briefed"><span class="tag dashed" title={`Heddle briefing ${lane.briefing.hash}`}>◆ briefed · {lane.briefing.annotations.length} earlier decision{lane.briefing.annotations.length === 1 ? '' : 's'}</span></p>}
           <p class="sha">Last push <code>{lane.lastSeenSha ? short(lane.lastSeenSha) : 'Waiting for a push'}</code></p>
@@ -196,6 +198,7 @@ function Compare({ p, t }: { p: string; t: string }) {
       <p class="candidate-stats"><code title={candidate.sourceSha}>{short(candidate.sourceSha)}</code><span>{candidate.diffstat.files} file · <b class="success-text">+{candidate.diffstat.insertions}</b> <b class="error-text">−{candidate.diffstat.deletions}</b></span></p>
       <p class="subject">{candidate.subject}</p>{candidate.tests && <p class="test-summary">{candidate.tests.summary} · {candidate.tests.durationMs} ms</p>}
       {candidate.conflicts.map(region => <p class="conflict-tag">⚑ <code>{region.path}{region.region ? `:${region.region}` : ''}</code> · with {region.with.join(', ')}</p>)}
+      <CombinedPanel candidate={candidate}/>
       <Diff p={p} t={t} candidate={candidate}/></section>; })}</div>
     {view && !view.candidates.length && <p class="notice">Waiting for candidate captures. This page updates live.</p>}
     {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
@@ -206,6 +209,9 @@ function Compare({ p, t }: { p: string; t: string }) {
           <label>Decide as<select required value={view.decision?.decider ?? who} onChange={e => setDecider(e.currentTarget.value)}><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
           <label>Why this candidate?<textarea required maxLength={10000} value={view.decision?.rationale ?? rationale} onInput={e => setRationale(e.currentTarget.value)} placeholder="Explain the tradeoff. This becomes part of the Git history."/></label>
         </fieldset><button class="land-button" disabled={!decisionRequest(view, { pick, rationale, decider: who }) || busy || changed || reviewing}>{busy ? view.decision ? 'Publishing…' : 'Landing…' : isPublished(view.decision) ? 'Decision landed' : view.decision ? 'Retry publication' : 'Land candidate →'}</button></form>
+        {!view.decision && (() => { const picked = view.candidates.find(c => c.agent === pick), blocked = combinedBlock(picked);
+          return blocked ? <p class="notice warning combined-block" role="status">{blocked}</p>
+            : picked?.combined?.status === 'pass' ? <p class="muted combined-note">{picked.agent} lands as Heddle's merge with main, the exact result that passed its tests.</p> : null; })()}
         {!humans.length && <p class="muted">Enroll a human identity through the project API to decide.</p>}
       </section>
       {lanes.some(l => l.briefing?.annotations.length) && <section class="panel context-supplied" aria-label="Context supplied"><p class="eyebrow">CONTEXT SUPPLIED</p>
@@ -214,7 +220,8 @@ function Compare({ p, t }: { p: string; t: string }) {
         {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
           <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span><span class="verdict-notes">“{a.content}”</span><span class="muted">— {displayName(a.attribution)}</span></li>)}</ul></div>)}
       </section>}
-      {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}</ul></section>}
+      {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}
+        {view.candidates.filter(c => c.combined).map(c => { const line = combinedText(c)!; return <li class={`check combined ${line.tone}`}><span class="check-mark" aria-hidden="true">{line.text.slice(0, 1)}</span><strong>{c.agent} + main</strong><span class="check-detail">{line.text.slice(2)}</span></li>; })}</ul></section>}
   {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p><InlineText text={view.review.summary}/></p>{view.review.recommendation && <p class="muted"><InlineText text={view.review.recommendation.why}/></p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p><InlineText text={c.notes}/></p></li>)}</ul></section>}
     </aside>}</div>
   </main></>;
