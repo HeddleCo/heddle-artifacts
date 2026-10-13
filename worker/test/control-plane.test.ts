@@ -24,7 +24,7 @@ async function setup(count = 1) {
   await ok(`${base}/tasks`, { slug: 'parser-escapes', intent: 'support escaped pipes' });
   const joins = [];
   for (let i = 0; i < count; i++) joins.push(await ok(`${base}/tasks/parser-escapes/agents`, { id: `agent-${i}`, kind: 'agent', displayName: `Agent ${i}` }));
-  return { p, base, joins, project: env.PROJECT.getByName(p), engine: env.ENGINE.getByName(p) as unknown as { stats(): Promise<any>; failNext(command: string, count?: number, after?: boolean): Promise<void>; loseDisk(): Promise<void>; delayNext(command: string, ms: number): Promise<void> } };
+  return { p, base, joins, project: env.PROJECT.getByName(p), engine: env.ENGINE.getByName(p) as unknown as { stats(): Promise<any>; failNext(command: string, count?: number, after?: boolean, body?: string): Promise<void>; loseDisk(): Promise<void>; delayNext(command: string, ms: number): Promise<void> } };
 }
 async function waitCandidates(base: string, count: number) {
   let result: any;
@@ -290,5 +290,24 @@ describe('Track A acceptance in real Workers + SQLite + R2 runtime', () => {
     for (let i = 0; i < 100 && !messages.some(e => e.type === 'engine.error'); i++) await new Promise(r => setTimeout(r, 20));
     expect(messages.some(e => e.type === 'engine.error' && e.code === 'crash')).toBe(true); expect((await engine.stats()).calls.filter((c: any) => c.command === 'ingest')).toHaveLength(3);
     socket.close();
+    // A crash without a structured body still names a reason for the operator.
+    const d = await (await api(`${base}/diagnostics`)).json() as any;
+    expect(d.ops.find((o: any) => o.command === 'ingest')).toMatchObject({ status: 'failed', error: 'engine_failed', reason: 'engine_crash' });
+  });
+  it('a failed op keeps the engine reason code and frames for diagnostics, and nothing else', async () => {
+    const { p, base, project, engine } = await setup();
+    const crash = (error: object) => JSON.stringify({ error: { code: 'engine_failure', message: 'Engine operation failed', ...error } });
+    await engine.failNext('ingest', 3, false, crash({ reason: 'git_push_auth', at: ['engine/lib/commands.mjs:204:23', 'https://user:leak@example.test/x.mjs:1:1'] }));
+    await project.notePush(`${p}--parser-escapes--agent-0`, 'refs/heads/main', sha(510), 'event');
+    const failed = async () => { for (let i = 0; i < 200; i++) { const d = await (await api(`${base}/diagnostics`)).json() as any; const o = d.ops.find((x: any) => x.command === 'ingest' && x.status === 'failed'); if (o) return o; await new Promise(r => setTimeout(r, 20)); } };
+    expect(await failed()).toMatchObject({ error: 'engine_failed', reason: 'git_push_auth', at: ['engine/lib/commands.mjs:204:23'] });
+    // A reason outside the fixed vocabulary is replaced, so stderr-like text never reaches the operator view.
+    const { p: q, base: other, project: second, engine: secondEngine } = await setup();
+    await secondEngine.failNext('ingest', 3, false, crash({ reason: 'Authorization: Bearer leaked-secret' }));
+    await second.notePush(`${q}--parser-escapes--agent-0`, 'refs/heads/main', sha(520), 'event');
+    let text = '';
+    for (let i = 0; i < 200 && !text.includes('"failed"'); i++) { text = await (await api(`${other}/diagnostics`)).text(); await new Promise(r => setTimeout(r, 20)); }
+    expect(JSON.parse(text).ops.find((o: any) => o.command === 'ingest')).toMatchObject({ status: 'failed', reason: 'engine_crash' });
+    expect(text).not.toContain('leaked-secret');
   });
 });

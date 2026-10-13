@@ -14,6 +14,22 @@ function canonical(value: any): string {
   if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
   return JSON.stringify(value);
 }
+/** Why an engine attempt failed: fixed reason codes and engine source frames only, never payloads or stderr. */
+export type EngineFailureDetail = { reason: string; at?: string[] };
+class EngineFailure extends Error { constructor(readonly detail: EngineFailureDetail) { super(detail.reason); } }
+const REASON = /^[a-z][a-z0-9_]{0,63}$/, FRAME = /^engine\/(?:lib\/)?[a-z-]+\.mjs:\d+:\d+$/;
+async function crashDetail(response: Response): Promise<EngineFailureDetail> {
+  if (response.status === 504) return { reason: 'engine_timeout' };
+  let error: any; try { error = JSON.parse((await response.text()).trim()).error; } catch { return { reason: 'engine_crash' }; }
+  const at = Array.isArray(error?.at) ? error.at.filter((f: unknown) => typeof f === 'string' && FRAME.test(f)).slice(0, 3) : [];
+  return { reason: typeof error?.reason === 'string' && REASON.test(error.reason) ? error.reason : 'engine_crash', ...(at.length ? { at } : {}) };
+}
+function failureDetail(error: unknown): EngineFailureDetail {
+  if (error instanceof EngineFailure) return error.detail;
+  // Worker-side failures in perform() throw fixed codes such as snapshot_failed; anything else stays opaque.
+  return { reason: error instanceof Error && REASON.test(error.message) ? error.message : 'worker_error' };
+}
+
 export class EngineClient {
   private tail: Promise<unknown> = Promise.resolve();
   constructor(private env: Env, private store: Store, private project: () => string, private apply: (cmd: string, input: any, result: any, context: any) => FeedEvent[], private emit: (e: FeedEvent) => void, private credentials = new DemoCredentials(env, store)) {}
@@ -34,7 +50,7 @@ export class EngineClient {
       // Combined-check refusals are state conflicts the decider resolves by waiting or re-briefing.
       throw new HttpError(code === 'stale' || code.startsWith('combined_') ? 409 : 422, code);
     }
-    if (!response.ok) throw new Error('engine_crash');
+    if (!response.ok) throw new EngineFailure(await crashDetail(response));
     const line = (await response.text()).trim();
     if (line.includes('\n')) throw new Error('engine_protocol');
     return JSON.parse(line);
@@ -86,6 +102,7 @@ export class EngineClient {
   }
   private async perform(op: Journal): Promise<any> {
     const input = JSON.parse(op.input), context = JSON.parse(op.context);
+    let failure: EngineFailureDetail = { reason: 'engine_crash' };
     for (let attempt = 0; attempt < 3; attempt++) {
       this.store.storage.sql.exec('UPDATE ops SET attempts=attempts+1 WHERE id=?', op.id);
       try {
@@ -113,10 +130,13 @@ export class EngineClient {
           this.store.storage.sql.exec("UPDATE ops SET status='rejected' WHERE id=?", op.id);
           throw error;
         }
+        failure = failureDetail(error);
         if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 100 * (2 ** attempt)));
       }
     }
-    this.store.storage.sql.exec("UPDATE ops SET status='failed' WHERE id=?", op.id);
+    // Keep the last attempt's reason for operator diagnostics and Workers Logs.
+    this.store.storage.sql.exec("UPDATE ops SET status='failed',result=? WHERE id=?", JSON.stringify({ error: 'engine_failed', ...failure }), op.id);
+    console.error(JSON.stringify({ event: 'engine_op_failed', op: op.id, command: op.command, ...failure }));
     this.emit({ type: 'engine.error', op: op.id, code: 'crash', message: 'Engine failed after three attempts; latest snapshot retained.' });
     throw new HttpError(503, 'engine_failed');
   }

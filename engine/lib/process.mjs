@@ -21,15 +21,45 @@ export function run(file, args, { cwd, env = {}, input, timeout = 120000, allowF
       clearTimeout(timer);
       const result = { code, stdout: Buffer.concat(out), stderr: Buffer.concat(err), timedOut, overflow };
       if (!allowFailure && (code !== 0 || timedOut || overflow)) {
-        // Never echo argv/env/stderr: Git errors can repeat authentication headers.
-        const error = new Error(`${file.split('/').pop()} failed (exit ${code}${timedOut ? ', timeout' : ''}${overflow ? ', output limit' : ''})`);
-        error.safeMessage = error.message;
+        // Never echo argv/env/stderr: Git errors can repeat authentication headers. Only a fixed reason code leaves.
+        const name = file.split('/').pop();
+        const error = new Error(`${name} failed (exit ${code}${timedOut ? ', timeout' : ''}${overflow ? ', output limit' : ''})`);
+        error.reason = failureReason(name, args, result);
+        error.safeMessage = `${error.message}: ${error.reason}`;
         reject(error);
       } else resolve(result);
     });
     child.stdin.on('error', () => {});
     child.stdin.end(input);
   });
+}
+
+// Fixed vocabulary for why a child process failed; the subcommand comes only from engine-chosen argv.
+const GIT_FAILURES = [
+  ['auth', /could not read (Username|Password)|Authentication failed|returned error: 40[13]\b/],
+  ['not_found', /Repository not found|repository '[^']*' not found|returned error: 404\b/i],
+  ['not_our_ref', /not our ref|unadvertised object/],
+  ['rejected', /\[(remote )?rejected\]|non-fast-forward|hook declined|failed to push some refs/],
+  ['server_error', /returned error: 5\d\d\b|RPC failed|early EOF|unexpected disconnect/],
+  ['network', /Could not resolve host|Failed to connect|Connection (refused|reset|timed out)|Operation timed out|SSL|TLS/],
+  ['missing_object', /couldn't find remote ref|bad object|missing object|unknown revision|not a valid object/],
+  ['ownership', /dubious ownership/],
+];
+export function failureReason(name, args, { timedOut, overflow, stderr }) {
+  const tool = /^[a-z][a-z0-9-]{0,15}$/.test(name) ? name.replace(/-/g, '_') : 'process';
+  const words = [];
+  for (let i = 0; i < args.length; i++) {
+    if (['-c', '-C', '--git-dir', '--work-tree'].includes(args[i])) { i++; continue; }
+    if (String(args[i]).startsWith('-')) continue;
+    words.push(String(args[i])); if (tool !== 'heddle' || words.length === 2) break;
+  }
+  const sub = words.filter(w => /^[a-z][a-z-]{0,19}$/.test(w)).join('_').replace(/-/g, '_');
+  const what = sub ? `${tool}_${sub}` : tool;
+  if (timedOut) return `${what}_timeout`;
+  if (overflow) return `${what}_output_limit`;
+  const text = String(stderr ?? '');
+  const match = tool === 'git' ? GIT_FAILURES.find(([, pattern]) => pattern.test(text)) : undefined;
+  return `${what}_${match ? match[0] : 'failed'}`;
 }
 
 export async function git(cwd, args, options = {}) {
