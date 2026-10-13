@@ -62,8 +62,12 @@ export function failureReason(name, args, { timedOut, overflow, stderr }) {
   return `${what}_${match ? match[0] : 'failed'}`;
 }
 
-export async function git(cwd, args, options = {}) {
-  const result = await run('git', ['-c', 'protocol.version=1', ...args], { cwd, ...options });
+// Artifacts accepts push over protocol v1 only, so v1 stays the default. Its v1 upload-pack answers some
+// multi-ack negotiations with a malformed reply ("protocol error: bad band"), so fetches from Artifacts
+// pass { protocol: 2 }, which it also supports.
+export async function git(cwd, args, { protocol = 1, ...options } = {}) {
+  if (protocol !== 1 && protocol !== 2) throw new Error('git protocol must be 1 or 2');
+  const result = await run('git', ['-c', `protocol.version=${protocol}`, ...args], { cwd, ...options });
   return result.stdout.toString().trim();
 }
 
