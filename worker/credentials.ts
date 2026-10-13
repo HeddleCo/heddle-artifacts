@@ -5,7 +5,8 @@ import { HttpError } from './auth';
 import { Store } from './store';
 
 export const MIN_DEMO_TTL = 120;
-export const MAX_DEMO_TTL = 7200;
+// Long enough for a real repository's agent lanes (60-100 minutes each) and the human's decision in one window.
+export const MAX_DEMO_TTL = 14400;
 /** Used when DEMO_CREDENTIAL_TTL_SECONDS is unset; long live runs opt into up to MAX_DEMO_TTL. */
 export const DEFAULT_DEMO_TTL = 3600;
 export const CLEANUP_BATCH = 100;

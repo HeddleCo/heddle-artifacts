@@ -33,7 +33,7 @@ Copy `wrangler.jsonc` to `wrangler.live.jsonc` (git-ignored; never commit accoun
 - `account_id`: your account ID;
 - `vars.CF_ACCOUNT_ID`: the same account ID;
 - `vars.EVENTS_QUEUE_ID`: the Queue ID from step 2;
-- `vars.DEMO_CREDENTIAL_TTL_SECONDS`: how long a project accepts work, 120–7200 seconds (default 3600);
+- `vars.DEMO_CREDENTIAL_TTL_SECONDS`: how long a project accepts work, 120–14400 seconds (default 3600);
 - `workers_dev: true`, if you want a `*.workers.dev` URL;
 - `containers[0].max_instances`: about 10. Each project uses its own engine container while active.
 
