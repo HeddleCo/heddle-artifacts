@@ -4,6 +4,7 @@ import { load, save, requestHash } from './lib/state.mjs';
 import { snapshot, restore, loadedToken } from './lib/snapshots.mjs';
 import { init, createTask, enroll, openLane, ingest, recordTests, candidates, diff, discuss, decide, combine } from './lib/commands.mjs';
 import { publish } from './lib/publish.mjs';
+import { captures } from './lib/captures.mjs';
 
 export async function selftest() {
   const heddleVersion = (await run(process.env.HEDDLE_BIN || 'heddle', ['--version'])).stdout.toString().trim();
@@ -14,7 +15,7 @@ export async function selftest() {
 try {
   const cmd = process.argv[2];
   const mutating = { init, 'task.create': createTask, 'agent.enroll': enroll, 'lane.open': openLane, ingest, 'tests.record': recordTests, combine, discuss, decide, publish };
-  if (![...Object.keys(mutating), 'selftest', 'snapshot', 'restore', 'loaded', 'candidates', 'diff', 'why'].includes(cmd)) throw new Rejection('unknown_command', 'Unknown engine command');
+  if (![...Object.keys(mutating), 'selftest', 'snapshot', 'restore', 'loaded', 'candidates', 'captures', 'diff', 'why'].includes(cmd)) throw new Rejection('unknown_command', 'Unknown engine command');
   const chunks = []; let bytes = 0;
   for await (const chunk of process.stdin) {
     bytes += chunk.length;
@@ -47,6 +48,7 @@ try {
           await save(state, { opId: request.opId, command: cmd, requestHash: fingerprint, result });
         }
       } else if (cmd === 'candidates') result = candidates(state, request.task);
+      else if (cmd === 'captures') result = await captures(state, request);
       else if (cmd === 'diff') result = await diff(state, request);
       else if (cmd === 'why') {
         const narrative = state.narratives[request.sha];

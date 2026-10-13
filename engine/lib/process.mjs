@@ -24,7 +24,7 @@ export function run(file, args, { cwd, env = {}, input, timeout = 120000, allowF
         // Never echo argv/env/stderr: Git errors can repeat authentication headers. Only a fixed reason code leaves.
         const name = file.split('/').pop();
         const error = new Error(`${name} failed (exit ${code}${timedOut ? ', timeout' : ''}${overflow ? ', output limit' : ''})`);
-        error.reason = failureReason(name, args, result);
+        error.reason = failureReason(name, args, result); error.timedOut = timedOut;
         error.safeMessage = `${error.message}: ${error.reason}`;
         reject(error);
       } else resolve(result);

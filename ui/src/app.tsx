@@ -11,6 +11,7 @@ import { DecisionNotice } from './decision-notice';
 import { identifiers, InlineText, Narrative, parseReview, ReviewBody, RichText } from './rich-text';
 import { displayName, plural } from './format';
 import { CombinedLine, CombinedPanel } from './combined';
+import { Captures } from './captures';
 
 
 const short = (s: string) => s.slice(0, 10);
@@ -135,6 +136,7 @@ function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; tur
     </form></section>;
 }
 function Compare({ p, t }: { p: string; t: string }) {
+  const [captureRefresh, setCaptureRefresh] = useState(0);
   const [view, setView] = useState<TaskView>(), [agents, setAgents] = useState<Agent[]>([]), [lanes, setLanes] = useState<Lane[]>([]), [error, setError] = useState('');
   const [pick, setPick] = useState(''), [rationale, setRationale] = useState(''), [decider, setDecider] = useState(''), [busy, setBusy] = useState(false), [changed, setChanged] = useState(false), [reviewing, setReviewing] = useState(false);
   const sending = useRef(false), version = useRef(0), hydrated = useRef(false), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
@@ -155,12 +157,14 @@ function Compare({ p, t }: { p: string; t: string }) {
   }, [p, t]);
   const live = useFeed(p, event => {
     if (loading.current) pending.current.push(event);
+    if (event.type === 'push.received' && event.task === t || event.type === 'candidate.ready' && event.candidate.task === t || event.type === 'tests.done' && event.task === t) setCaptureRefresh(n => n + 1);
     if (event.type === 'candidate.ready' && event.candidate.task === t) invalidate();
     if (event.type === 'decision.landed' && event.decision.task === t) stale.current = true;
     setView(v => v && updateTask(v, event));
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Review current candidates before retrying.`);
   }, reconnected => {
     feedAvailable.current = true;
+    setCaptureRefresh(n => n + 1);
     if (reconnected) { connectionEpoch.current++; invalidate(); if (!hydrated.current && !loading.current) void load(); }
     else { // Re-read after subscribing so a snapshot taken before the socket opened cannot miss updates.
       if (loading.current) reloadRequested.current = true; else { invalidate(); void load(true); }
@@ -201,6 +205,7 @@ function Compare({ p, t }: { p: string; t: string }) {
       <CombinedPanel candidate={candidate}/>
       <Diff p={p} t={t} candidate={candidate}/></section>; })}</div>
     {view && !view.candidates.length && <p class="notice">Waiting for candidate captures. This page updates live.</p>}
+    {view && <Captures key={`captures/${p}/${t}`} p={p} t={t} agents={agents} lanes={lanes} refresh={captureRefresh}/>}
     {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
     </div>
     {view && <aside class="rail" aria-label="Decision">

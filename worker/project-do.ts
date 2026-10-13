@@ -472,7 +472,7 @@ export class ProjectDO extends DurableObject<Env> {
       // The demo project is a public showcase: its board, task, diff and Why reads
       // need no session. Writes, credentials and the live feed stay authenticated.
       const publicRead = request.method === 'GET' && projectId === this.env.DEMO_PROJECT && (parts.length === 3 || parts[3] === 'why' ||
-        parts[3] === 'tasks' && (parts.length === 5 || parts.length === 8 && parts[5] === 'candidates' && parts[7] === 'diff'));
+        parts[3] === 'tasks' && (parts.length === 5 || parts.length === 6 && parts[5] === 'captures' || parts.length === 8 && parts[5] === 'candidates' && parts[7] === 'diff'));
       const anonymous = { op: false, agent: undefined };
       const actor = publicRead ? await this.authorize(request).catch(() => anonymous) : await this.authorize(request);
       const anonymousRead = publicRead && actor === anonymous;
@@ -618,6 +618,10 @@ export class ProjectDO extends DurableObject<Env> {
           await this.ctx.storage.sync(); this.expireAccess();
           const fork = await this.forkToken(lane); const read = await this.credentials.issue(projectId, 'read', 'canonical-read', id);
           await this.nextAlarm(); return Response.json({ agentKey, agentKeyExpiresAt, projectExpiresAt: this.credentials.lifetime()!.expiresAt, briefing: this.store.get<Lane>('lanes', `${taskId}/${id}`)?.briefing, fork: { remote: lane.forkRemote, ...fork }, upstream: { remote: this.store.get('meta', 'project').canonicalRemote, readToken: read.plaintext, expiresAt: read.expiresAt }, setup: setupScript(lane.forkRemote, fork.token, this.store.get('meta', 'project').canonicalRemote, read.plaintext) }, { headers: { 'cache-control': 'no-store' } });
+        }
+        if (parts.length === 6 && parts[5] === 'captures' && request.method === 'GET') {
+          // Stays inside this serial() block: the read can save engine.json and snapshot it (captures.test.ts).
+          return Response.json(await this.engine.captures(taskId), { headers: { 'cache-control': 'no-store' } });
         }
         if (parts[5] === 'candidates' && parts[7] === 'diff' && request.method === 'GET') {
           const agent = slug(parts[6]); if (!this.candidates(taskId).some(c => c.agent === agent)) throw new HttpError(404, 'candidate_not_found');

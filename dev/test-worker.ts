@@ -23,15 +23,25 @@ export class StubEngine extends DurableObject {
   markContainsMain(shas: string[]) { this.combinedFixture.containsMain = shas; }
   failures: { command: string; count: number; after: boolean; body: string } | undefined;
   async failNext(command: string, count = 1, after = true, body = 'crash fixture') { this.failures = { command, count, after, body }; }
-  stats() { return { calls: this.calls, state: this.state }; }
+  stats() { return { calls: this.calls, state: this.state, overlaps: this.overlaps }; }
   // A container restart: no state and no restore token.
   loseDisk() { this.state = emptyState(); this.loadedToken = null; }
   loadedToken: string | null = null;
+  // Commands executing right now, and every command that started while another was still executing.
+  // The real engine has no file lock: the coordinator's serial() queue is the only thing keeping them apart.
+  active: string[] = [];
+  overlaps: Array<{ command: string; during: string[] }> = [];
   async fetch(request: Request): Promise<Response> {
     const command = new URL(request.url).pathname.slice(1);
+    if (this.active.length) this.overlaps.push({ command, during: [...this.active] });
+    this.active.push(command);
+    try { return await this.execute(command, request); }
+    finally { this.active.splice(this.active.indexOf(command), 1); }
+  }
+  private async execute(command: string, request: Request): Promise<Response> {
     if (command === 'restore') { this.state = JSON.parse(await request.text()); this.calls.push({ command, input: {} }); this.loadedToken = crypto.randomUUID(); return Response.json({ generation: this.state.generation, loaded: this.loadedToken }); }
     if (command === 'loaded') { this.calls.push({ command, input: {} }); return Response.json({ loaded: this.loadedToken }); }
-    if (command === 'snapshot') return new Response(JSON.stringify(this.state));
+    if (command === 'snapshot') { this.calls.push({ command, input: {} }); return new Response(JSON.stringify(this.state)); }
     const input = await request.json();
     if (this.isolatedFixture) this.state.isolateUnreviewed = true;
     Object.assign(this.state, this.combinedFixture);
