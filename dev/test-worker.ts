@@ -23,6 +23,8 @@ export class StubEngine extends DurableObject {
   markContainsMain(shas: string[]) { this.combinedFixture.containsMain = shas; }
   failures: { command: string; count: number; after: boolean; body: string } | undefined;
   async failNext(command: string, count = 1, after = true, body = 'crash fixture') { this.failures = { command, count, after, body }; }
+  treeFilesFixture: Record<string, string[]> = {};
+  setTreeFiles(tree: string, files: string[]) { this.treeFilesFixture[tree] = files; }
   stats() { return { calls: this.calls, state: this.state }; }
   // A container restart: no state and no restore token.
   loseDisk() { this.state = emptyState(); this.loadedToken = null; }
@@ -35,6 +37,7 @@ export class StubEngine extends DurableObject {
     const input = await request.json();
     if (this.isolatedFixture) this.state.isolateUnreviewed = true;
     Object.assign(this.state, this.combinedFixture);
+    this.state.treeFiles = this.treeFilesFixture;
     const env = JSON.parse(request.headers.get('x-engine-env') ?? '{}');
     const reads = JSON.parse(env.ARTIFACTS_READ_TOKENS ?? '{}');
     this.calls.push({ command, input, hasCanonicalRead: command === 'publish' ? typeof reads[input.canonical.remote] === 'string' : undefined });

@@ -276,6 +276,22 @@
         "input"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "decision.validate"
+        },
+        "input": {
+          "$ref": "#/$defs/decision.validate.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
     }
   ],
   "$defs": {
@@ -636,6 +652,19 @@
             "state"
           ],
           "additionalProperties": false
+        },
+        "anchor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:/-]{1,64}$(?![\\s\\S])"
+          }
         }
       },
       "required": [
@@ -973,6 +1002,12 @@
                   },
                   "attribution": {
                     "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "required": [
@@ -1234,6 +1269,19 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "anchor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:/-]{1,64}$(?![\\s\\S])"
           }
         }
       },
@@ -1707,6 +1755,47 @@
       },
       "required": [
         "loaded"
+      ],
+      "additionalProperties": false
+    },
+    "decision.validate.input": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "pick": {
+          "type": "string"
+        },
+        "anchor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:/-]{1,64}$(?![\\s\\S])"
+          }
+        }
+      },
+      "required": [
+        "task",
+        "pick"
+      ],
+      "additionalProperties": false
+    },
+    "decision.validate.output": {
+      "type": "object",
+      "properties": {
+        "valid": {
+          "const": true
+        }
+      },
+      "required": [
+        "valid"
       ],
       "additionalProperties": false
     }

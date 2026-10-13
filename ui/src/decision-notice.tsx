@@ -8,6 +8,8 @@ export function DecisionNotice({ project, decision }: { project: string; decisio
     {!published && <p>Recorded choice: {decision.pick} · decided by {decision.decider}. The signed choice and rationale are preserved.</p>}
     {decision.combined && <p class="muted">Landed as Heddle's merge with main {decision.combined.mainSha.slice(0, 10)}, tested as {decision.combined.sha.slice(0, 10)}.</p>}
     <p>{decision.rationale}</p>
+    {decision.anchor && <p class="muted">Reason points at <code>{decision.anchor}</code></p>}
+    {!!decision.tags?.length && <p>Tags: {decision.tags.map(tag => <span class="tag" key={tag}>{tag}</span>)}</p>}
     {published ? <a href={`/p/${encodeURIComponent(project)}/why/${encodeURIComponent(decision.mainSha)}`}>See why {decision.mainSha.slice(0, 10)} landed →</a>
       : <p>Retry publication to publish this same decision. No published commit is available yet.</p>}
   </section>;

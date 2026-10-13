@@ -68,7 +68,7 @@ export function createMock(initial = 'conflict') {
         const existing = state.tasks.find(t => t.slug === slug)?.decision;
         if (existing && (existing.pick !== body.pick || existing.decider !== body.decider || existing.rationale !== body.rationale)) return json({ error: 'decision_in_progress' }, 409);
         if (existing?.mainSha) return json({ error: 'task_decided' }, 409);
-        const decision: Decision = existing ?? { ...decided.tasks[0].decision!, mainSha: '', task: slug, pick: body.pick as string, rationale: body.rationale, decider: body.decider as string, alternatives: task.candidates.filter(c => c.agent !== body.pick).map(c => c.agent) };
+        const decision: Decision = existing ?? { ...decided.tasks[0].decision!, mainSha: '', task: slug, pick: body.pick as string, rationale: body.rationale, ...(body.anchor !== undefined ? { anchor: body.anchor as string } : {}), ...(body.tags !== undefined ? { tags: body.tags as string[] } : {}), decider: body.decider as string, alternatives: task.candidates.filter(c => c.agent !== body.pick).map(c => c.agent) };
         if (decisionStatus >= 500) {
           state.tasks.find(t => t.slug === slug)!.decision = decision;
           return json({ error: 'engine_failure' }, decisionStatus);

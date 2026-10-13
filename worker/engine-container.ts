@@ -4,7 +4,7 @@ import { deadline, DeadlineError } from './deadline';
 export const ENGINE_COMMAND_MS = 180000;
 export const ENGINE_START_MS = 120000;
 /** Commands the container will exec; must cover every command engine/engine.mjs accepts (a test checks). */
-export const ENGINE_COMMANDS = ['restore', 'loaded', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'tests.record', 'combine', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'selftest'];
+export const ENGINE_COMMANDS = ['restore', 'loaded', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'tests.record', 'combine', 'candidates', 'diff', 'discuss', 'decide', 'publish', 'why', 'decision.validate', 'selftest'];
 export class HeddleEngine extends Container {
   // Bounded single-project demo: do not keep idle paid compute awake for hours.
   // Five minutes exceeds the per-command three-minute deadline below.

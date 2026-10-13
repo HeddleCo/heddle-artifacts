@@ -68,6 +68,39 @@ for (const status of [200, 403, 409]) test(`C-T3 decision exact body and ${statu
   }
 });
 
+test('decision sends optional symbol anchor and comma-separated tags, then displays both at 1920×1080', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await reset(request); await choose(page);
+  await expect(page.getByLabel('Point this reason at')).toHaveAttribute('placeholder', 'src/table.ts:parseRow');
+  await page.getByLabel('Point this reason at').fill('src/table.ts:parseRow');
+  await page.getByLabel('Tags', { exact: true }).fill('parseRow, whitespace');
+  await page.screenshot({ path: `${shots}/decision-anchor-tags-1920.png`, fullPage: true });
+  const posted = page.waitForRequest(r => r.url().endsWith('/decision') && r.method() === 'POST');
+  await page.getByRole('button', { name: 'Land candidate →' }).click();
+  expect((await posted).postDataJSON()).toEqual({ pick: 'bob', rationale: 'API stability matters more than the shorter regex.', decider: 'luke', expectHeads: ['state-alice-1', 'state-bob-1'], anchor: 'src/table.ts:parseRow', tags: ['parseRow', 'whitespace'] });
+  await expect(page.locator('.notice.landed')).toContainText('src/table.ts:parseRow');
+  await expect(page.locator('.notice.landed .tag')).toHaveText(['parseRow', 'whitespace']);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  await page.screenshot({ path: `${shots}/decision-anchor-tags-landed-1920.png`, fullPage: true });
+});
+
+test('Context supplied shows annotation symbol scope and tags', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await reset(request);
+  await page.route('**/api/projects/demo', async route => {
+    const response = await route.fetch(), board = await response.json();
+    board.tasks[0].lanes[0].briefing = { hash: 'b'.repeat(64), omitted: 0, annotations: [{ target: 'src/table.ts', scope: 'symbol:parseRow', annotationId: 'ann', revisionId: 'rev', kind: 'rationale', content: 'Preserve whitespace in parseRow.', tags: ['parseRow', 'whitespace'], attribution: 'Luke <luke@example.invalid>' }] };
+    await route.fulfill({ response, json: board });
+  });
+  await page.goto('/p/demo/t/parser-escapes');
+  const context = page.getByRole('region', { name: 'Context supplied' });
+  await expect(context).toContainText('src/table.ts · symbol:parseRow');
+  await expect(context.locator('li .tag')).toHaveText(['parseRow', 'whitespace']);
+  await expect(context).toContainText('Preserve whitespace in parseRow.');
+  await context.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${shots}/decision-context-tags-1920.png`, fullPage: true });
+});
+
 test('C-T3 required rationale and signed human discussion', async ({ page, request }) => {
   await reset(request); await page.goto('/p/demo/t/parser-escapes');
   await page.getByRole('radio', { name: /bob/ }).check();

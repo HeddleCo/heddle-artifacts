@@ -4,7 +4,7 @@ import type { TaskView } from './api';
 export function isPublished(decision?: Decision): boolean {
   return !!decision && /^[a-f0-9]{40}$/i.test(decision.mainSha);
 }
-export function decisionRequest(view: TaskView, draft: { pick: string; decider: string; rationale: string }) {
+export function decisionRequest(view: TaskView, draft: { pick: string; decider: string; rationale: string; anchor?: string; tags?: string[] }) {
   if (isPublished(view.decision)) return;
   if (view.candidates.some(c => c.tests?.status === 'pending')) return;
   // A recorded signature cannot be rewritten by draft fields or whitespace normalization.
@@ -12,7 +12,7 @@ export function decisionRequest(view: TaskView, draft: { pick: string; decider: 
   if (!choice.pick || !choice.decider || !choice.rationale.trim()) return;
   // A pick behind main lands only once its result combined with main passed.
   if (!view.decision && combinedBlock(view.candidates.find(c => c.agent === choice.pick))) return;
-  return { pick: choice.pick, decider: choice.decider, rationale: choice.rationale, expectHeads: [...view.heads] };
+  return { pick: choice.pick, decider: choice.decider, rationale: choice.rationale, ...(choice.anchor ? { anchor: choice.anchor } : {}), ...(choice.tags !== undefined ? { tags: [...choice.tags] } : {}), expectHeads: [...view.heads] };
 }
 export function conflictMessage(code?: string): string {
   if (code === 'tests_pending') return 'Isolated candidate tests are still pending. Refresh when they finish.';
