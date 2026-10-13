@@ -44,3 +44,27 @@ it('captures uses the public demo task read policy and still rejects unknown tas
   expect(await ok(`${base}/tasks/history/captures`, undefined, null)).toEqual({ task: 'history', lanes: [], pending: 0 });
   expect((await api(`${base}/tasks/missing/captures`, undefined, null)).status).toBe(404);
 });
+it('captures reads queue behind an in-flight mutating command instead of running beside it', async () => {
+  // The engine has no file lock: a captures read saves its semantic cache by rewriting engine.json whole, so a
+  // read running beside ingest/decide could overwrite that command's state and race its snapshot and generation.
+  const p = `captures-serial-${crypto.randomUUID().slice(0, 8)}`, base = `/api/projects/${p}`, task = `${base}/tasks/table`;
+  await ok('/api/projects', { id: p, seed: { template: 'demo' } });
+  await ok(`${base}/tasks`, { slug: 'table', intent: 'serial capture history' });
+  await ok(`${task}/agents`, { id: 'alice', kind: 'agent', displayName: 'Alice' });
+  const project = env.PROJECT.getByName(p), engine = env.ENGINE.getByName(p) as unknown as { stats(): Promise<any>; delayNext(command: string, ms: number): Promise<void> };
+  const push = (i: number) => runInDurableObject(project, instance => instance.engine.serial(() => instance.engine.mutate('ingest', { opId: `push-${i}`, items: [{ task: 'table', agent: 'alice', sha: String(i).repeat(40) }] })));
+  await push(1);
+  await engine.delayNext('ingest', 500);
+  const ingest = push(2);
+  for (let i = 0; i < 100; i++) {
+    if ((await engine.stats()).calls.some((c: any) => c.command === 'ingest' && c.input.opId === 'push-2')) break;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  const read = await ok(`${task}/captures`);
+  await ingest;
+  const { calls, overlaps } = await engine.stats();
+  expect(overlaps, 'no engine command, captures included, may start while another is executing').toEqual([]);
+  const ingested = calls.findIndex((c: any) => c.command === 'ingest' && c.input.opId === 'push-2'), captured = calls.findIndex((c: any) => c.command === 'captures');
+  expect(ingested).toBeGreaterThanOrEqual(0); expect(captured).toBeGreaterThan(ingested);
+  expect(read.lanes[0].captures.map((c: any) => c.sourceSha), 'the queued read sees the push that was in flight').toEqual([1, 2].map(i => String(i).repeat(40)));
+});

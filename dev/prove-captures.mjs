@@ -11,7 +11,8 @@ const run = () => new Promise((resolve, reject) => {
 });
 const mutations = [
   ['latest candidate only', 'Object.values(lane.seen || {})', '(lane.candidate ? [lane.candidate] : [])', 'all three pushes, not just the latest candidate'],
-  ['semantic diff disabled', "const result = await heddle(['diff',", "throw new Error('semantic_disabled'); const result = await heddle(['diff',", "'unavailable'"]
+  ['semantic diff disabled', "const result = await heddle(['diff',", "throw new Error('semantic_disabled'); const result = await heddle(['diff',", "'unavailable'"],
+  ['timeouts cached unavailable', 'if (error?.timedOut && timeouts + 1 < SEMANTIC_TIMEOUT_ATTEMPTS)', 'if (false)', 'is retried, not cached as unavailable']
 ];
 try {
   for (const [name, before, after, expected] of mutations) {

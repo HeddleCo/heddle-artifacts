@@ -620,6 +620,7 @@ export class ProjectDO extends DurableObject<Env> {
           await this.nextAlarm(); return Response.json({ agentKey, agentKeyExpiresAt, projectExpiresAt: this.credentials.lifetime()!.expiresAt, briefing: this.store.get<Lane>('lanes', `${taskId}/${id}`)?.briefing, fork: { remote: lane.forkRemote, ...fork }, upstream: { remote: this.store.get('meta', 'project').canonicalRemote, readToken: read.plaintext, expiresAt: read.expiresAt }, setup: setupScript(lane.forkRemote, fork.token, this.store.get('meta', 'project').canonicalRemote, read.plaintext) }, { headers: { 'cache-control': 'no-store' } });
         }
         if (parts.length === 6 && parts[5] === 'captures' && request.method === 'GET') {
+          // Stays inside this serial() block: the read can save engine.json and snapshot it (captures.test.ts).
           return Response.json(await this.engine.captures(taskId), { headers: { 'cache-control': 'no-store' } });
         }
         if (parts[5] === 'candidates' && parts[7] === 'diff' && request.method === 'GET') {
