@@ -36,7 +36,7 @@ export interface SemanticChange { change_type: string; description: string; path
   old_name?: string; new_name?: string; importance?: string; }
 export type CaptureSemantic = { status: 'ready'; changes: SemanticChange[] } | { status: 'pending' | 'unavailable' };
 export interface Capture extends Candidate { fromState: string; semantic: CaptureSemantic; }
-export interface CaptureHistory { task: string; lanes: Array<{ agent: string; captures: Capture[] }>; pending: number; }
+export interface CaptureHistory { task: string; lanes: Array<{ agent: string; openedAt?: string /* when the engine opened the lane; absent on older lanes */; captures: Capture[] }>; pending: number; }
 /** Internal hint: the worker snapshots newly computed semantic cache entries before returning. */
 export interface EngineCaptureHistory extends CaptureHistory { cacheChanged: boolean; }
 export interface Turn { id: string; task: string; author: string; kind: AgentKind; body: string; replyTo?: string;

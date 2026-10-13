@@ -2002,6 +2002,9 @@
               "agent": {
                 "type": "string"
               },
+              "openedAt": {
+                "type": "string"
+              },
               "captures": {
                 "type": "array",
                 "items": {

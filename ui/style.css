@@ -263,6 +263,7 @@ pre { margin: 0; overflow: auto; }
 .capture-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .capture-track-line { position: relative; height: 36px; background: linear-gradient(var(--stroke), var(--stroke)) center / 100% 1px no-repeat; }
 .capture-span { position: absolute; top: 14px; height: 8px; border-radius: 4px; background: var(--accent); opacity: .4; }
+.capture-working { position: absolute; top: 11px; height: 14px; min-width: 6px; border-radius: 7px; background: var(--accent); opacity: .14; }
 button.capture-dot { position: absolute; top: 4px; width: 28px; height: 28px; padding: 0; transform: translateX(-50%); border: 0; border-radius: 50%; background: transparent; justify-content: center; }
 button.capture-dot::after { content: ''; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--accent-deep); background: var(--panel); }
 button.capture-dot[aria-pressed=true]::after { background: var(--accent-deep); width: 16px; height: 16px; }

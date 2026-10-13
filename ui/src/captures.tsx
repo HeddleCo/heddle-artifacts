@@ -23,7 +23,9 @@ export function Captures({ p, t, agents, lanes, refresh }: { p: string; t: strin
   }, [p, t, refresh, retry]);
   const all = (history?.lanes.flatMap(l => l.captures) ?? []).sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt) || key(a).localeCompare(key(b)));
   const index = Math.max(0, all.findIndex(c => key(c) === selected)), current = all[index];
-  const start = all.length ? Date.parse(all[0].capturedAt) : 0, end = all.length ? Date.parse(all[all.length - 1].capturedAt) : 0;
+  // The axis spans every capture and every lane's opening, so a lane's working span fits on it.
+  const times = [...all.map(c => Date.parse(c.capturedAt)), ...(history?.lanes ?? []).flatMap(l => l.openedAt && Number.isFinite(Date.parse(l.openedAt)) ? [Date.parse(l.openedAt)] : [])];
+  const start = times.length ? Math.min(...times) : 0, end = times.length ? Math.max(...times) : 0;
   const position = (at: string) => end === start ? 50 : 3 + 94 * (Date.parse(at) - start) / (end - start);
   const step = (direction: number, focus = false) => {
     const next = all[Math.min(all.length - 1, Math.max(0, index + direction))];
@@ -35,16 +37,20 @@ export function Captures({ p, t, agents, lanes, refresh }: { p: string; t: strin
     <div class="captures-heading"><div><p class="eyebrow">SIGNED HEDDLE CAPTURES</p><h2>Captures <span class="count">{all.length}</span></h2></div>
       <div class="capture-navigation"><button class="quiet" disabled={!current || index === 0} onClick={() => step(-1)}>Previous</button><button class="quiet" disabled={!current || index === all.length - 1} onClick={() => step(1)}>Next</button></div>
     </div>
-    <p class="muted">Each dot is a capture. Spans show when agents worked in parallel. Use ← / → to step through time.</p>
+    <p class="muted">{history?.lanes.some(l => l.openedAt)
+      ? 'Each dot is a capture. Lighter spans run from when each lane opened to its latest capture, so overlapping spans show agents working in parallel. Use ← / → to step through time.'
+      : 'Each dot is a capture. Spans show when agents worked in parallel. Use ← / → to step through time.'}</p>
     {error && <p role="alert">{error} <button class="quiet small" onClick={() => setRetry(n => n + 1)}>Retry captures</button></p>}
     {!history && !error && <p role="status">Loading captures…</p>}
     {history && <div class="capture-timeline">
-      <div class="capture-axis"><span>Capture time</span><div>{all.length > 0 && [0, 0.5, 1].map((fraction, i) => <time key={i} style={{ left: `${3 + 94 * fraction}%` }}>{clock(new Date(start + (end - start) * fraction).toISOString())}</time>)}</div></div>
+      <div class="capture-axis"><span>Capture time</span><div>{times.length > 0 && [0, 0.5, 1].map((fraction, i) => <time key={i} style={{ left: `${3 + 94 * fraction}%` }}>{clock(new Date(start + (end - start) * fraction).toISOString())}</time>)}</div></div>
       {history.lanes.map(track => {
         const lane = lanes.find(l => l.agent === track.agent), agent = agents.find(a => a.id === track.agent), first = track.captures[0], last = track.captures[track.captures.length - 1];
+        const opened = track.openedAt && Number.isFinite(Date.parse(track.openedAt)) ? track.openedAt : undefined;
         return <div class="capture-track" key={track.agent} data-agent={track.agent}>
-          <div class="capture-label"><strong>{agent?.displayName || track.agent}</strong>{lane?.unbriefed ? <span class="tag dashed control">○ control</span> : lane?.briefing ? <span class="tag dashed">◆ briefed</span> : null}</div>
+          <div class="capture-label"><strong>{agent?.displayName || track.agent}</strong>{lane?.unbriefed ? <span class="tag dashed control">○ control</span> : lane?.briefing?.annotations.length ? <span class="tag dashed">◆ briefed</span> : null}</div>
           <div class="capture-track-line">
+            {opened && <span class="capture-working" aria-hidden="true" title={`Opened ${clock(opened)}`} style={{ left: `${position(opened)}%`, width: `${Math.max(0, (last ? position(last.capturedAt) : position(opened)) - position(opened))}%` }}/>}
             {first ? <><span class="capture-span" aria-hidden="true" style={{ left: `${position(first.capturedAt)}%`, width: `${position(last.capturedAt) - position(first.capturedAt)}%` }}/>
               {track.captures.map(c => <button key={key(c)} ref={el => { if (el) dots.current.set(key(c), el); else dots.current.delete(key(c)); }} class="capture-dot" style={{ left: `${position(c.capturedAt)}%` }} aria-pressed={current && key(c) === key(current)} aria-label={`${agent?.displayName || c.agent}, ${clock(c.capturedAt)}, ${c.sourceSha.slice(0, 10)}: ${c.subject}`} title={`${clock(c.capturedAt)} · ${c.subject}`} onClick={() => setSelected(key(c))}/>)}</>
               : <span class="muted capture-waiting">Waiting for a capture</span>}

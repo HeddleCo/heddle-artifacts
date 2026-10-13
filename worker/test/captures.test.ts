@@ -23,6 +23,7 @@ it('captures route returns all pushes, excludes reviewers, persists semantic cac
   expect((await api(`${task}/captures`, undefined, null)).status).toBe(403);
   const first = await ok(`${task}/captures`, undefined, join.agentKey);
   expect(first.lanes.map((l: any) => l.agent)).toEqual(['alice']);
+  expect(first.lanes[0].openedAt, 'the engine\'s lane opened time passes through').toBe('2026-10-10T11:59:00.000Z');
   expect(first.lanes[0].captures.map((c: any) => c.sourceSha)).toEqual([1, 2, 3].map(i => String(i).repeat(40)));
   expect(first.pending).toBe(2); expect(first.cacheChanged).toBeUndefined();
   expect((await ok(`${task}/captures`)).pending).toBe(1);

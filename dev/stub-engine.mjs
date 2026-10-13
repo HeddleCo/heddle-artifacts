@@ -33,7 +33,8 @@ export function executeFixture(state, command, input) {
     // Mirror the engine: agent lanes are briefed with earlier decisions' rationale.
     ...(state.agents?.[input.agent]?.kind === 'reviewer' || input.brief === false ? {} : { briefing: { hash: sha(`brief:${input.task}:${input.agent}`).padEnd(64, '0').slice(0, 64), omitted: 0,
       annotations: Object.values(state.decisions ?? {}).map((d, i) => ({ target: d.anchor?.split(':')[0] ?? 'src/table.ts', scope: d.anchor?.includes(':') ? `symbol:${d.anchor.split(':')[1]}` : 'file', tags: d.tags ?? [], annotationId: `ann-${i}`, revisionId: `rev-${i}`, kind: 'rationale', content: d.rationale, attribution: d.decider })) } }) };
-    state.lanes ??= {}; state.lanes[`${input.task}/${input.agent}`] = { task: input.task, agent: input.agent, seen: {} };
+    // Mirror the engine: a newly opened lane records when it opened (fixture time, before fixture captures).
+    state.lanes ??= {}; state.lanes[`${input.task}/${input.agent}`] = { task: input.task, agent: input.agent, seen: {}, openedAt: '2026-10-10T11:59:00.000Z' };
   }
   else if (command === 'ingest') {
     const results = [];
@@ -72,7 +73,7 @@ export function executeFixture(state, command, input) {
     let computed = 0, pending = 0; state.semanticDiffs ??= {};
     const lanes = Object.values(state.lanes ?? {}).filter(l => l.task === input.task && state.agents[l.agent].kind !== 'reviewer').sort((a, b) => a.agent.localeCompare(b.agent)).map(lane => {
       let from = state.tasks[input.task].baseState;
-      return { agent: lane.agent, captures: Object.values(lane.seen).sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt) || a.sourceSha.localeCompare(b.sourceSha)).map(c => {
+      return { agent: lane.agent, ...(lane.openedAt ? { openedAt: lane.openedAt } : {}), captures: Object.values(lane.seen).sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt) || a.sourceSha.localeCompare(b.sourceSha)).map(c => {
         const key = JSON.stringify([from, c.state]);
         if (!state.semanticDiffs[key] && computed < 1) { computed++; state.semanticDiffs[key] = { status: 'ready', changes: [{ change_type: 'function_modified', description: 'Function modified: parseRow in src/table.ts', path: 'src/table.ts', old_name: 'parseRow', importance: 'medium' }] }; }
         const semantic = state.semanticDiffs[key] ?? { status: 'pending' }; if (semantic.status === 'pending') pending++;
