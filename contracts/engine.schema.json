@@ -217,6 +217,22 @@
       "type": "object",
       "properties": {
         "command": {
+          "const": "loaded"
+        },
+        "input": {
+          "$ref": "#/$defs/loaded.input"
+        }
+      },
+      "required": [
+        "command",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
           "const": "snapshot"
         },
         "input": {
@@ -1360,6 +1376,11 @@
         "generation": {
           "type": "integer",
           "minimum": 0
+        },
+        "loaded": {
+          "type": "string",
+          "pattern": "^[0-9a-f-]{36}$",
+          "description": "Token marking this restore; the Worker compares it with `loaded` before skipping a restore."
         }
       },
       "required": [
@@ -1664,6 +1685,28 @@
       "required": [
         "task",
         "candidates"
+      ],
+      "additionalProperties": false
+    },
+    "loaded.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "loaded.output": {
+      "type": "object",
+      "properties": {
+        "loaded": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Token of the restore the container's state came from; null after a container restart."
+        }
+      },
+      "required": [
+        "loaded"
       ],
       "additionalProperties": false
     }

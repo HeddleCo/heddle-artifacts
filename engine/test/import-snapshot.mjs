@@ -32,6 +32,7 @@ const canonical = join(root, 'fixture.git');
 await git(root, ['init', '--bare', '--initial-branch=main', canonical]);
 const started = Date.now();
 const init = await call('init', { opId: 'init', project: 'fixture', canonical: { remote: canonical }, seed: { importUrl: `file://${seed}`, snapshot: true } });
+assert.deepEqual(await call('loaded', {}), { loaded: null }, 'state that was never restored carries no restore token');
 assert.deepEqual(init.imported, { url: `file://${seed}`, sha: tip, tree });
 assert.equal(await git(canonical, ['rev-parse', 'main']), init.mainSha);
 assert.equal(await git(canonical, ['rev-parse', 'main^{tree}']), tree, 'the seed commit holds the source tip tree exactly');
@@ -43,4 +44,16 @@ await call('agent.enroll', { opId: 'enroll', agent: { id: 'alice', kind: 'agent'
 const fork = join(root, 'fixture--grow--alice.git');
 await git(root, ['clone', '--bare', canonical, fork]);
 await call('lane.open', { opId: 'lane', task: 'grow', agent: 'alice' });
-console.log(`Import snapshot PASS: one commit with the source tree (${tree.slice(0, 12)}), 40-file checkouts complete (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+// A restore marks the state with a fresh token that `loaded` reports; snapshots never carry it.
+const snap = await run(process.execPath, [engine, 'snapshot'], { env, input: '{}', maxBytes: 256 * 1024 * 1024 });
+const listing = (await run('tar', ['--zstd', '-tf', '-'], { input: snap.stdout, maxBytes: 64 * 1024 * 1024 })).stdout.toString().split('\n');
+const restore = async () => JSON.parse((await run(process.execPath, [engine, 'restore'], { env, input: snap.stdout })).stdout);
+const first = await restore();
+assert.match(first.loaded, /^[0-9a-f-]{36}$/);
+assert.deepEqual(await call('loaded', {}), { loaded: first.loaded });
+const second = await restore();
+assert.notEqual(second.loaded, first.loaded, 'every restore gets a new token');
+const resnap = await run(process.execPath, [engine, 'snapshot'], { env, input: '{}', maxBytes: 256 * 1024 * 1024 });
+assert.ok(!(await run('tar', ['--zstd', '-tf', '-'], { input: resnap.stdout, maxBytes: 64 * 1024 * 1024 })).stdout.toString().split('\n').some(p => p.endsWith('.loaded')), 'snapshots never carry the restore token');
+assert.ok(!listing.some(p => p.endsWith('.loaded')));
+console.log(`Import snapshot PASS: one commit with the source tree (${tree.slice(0, 12)}), 40-file checkouts complete, restore tokens are fresh and never snapshotted (${((Date.now() - started) / 1000).toFixed(1)}s)`);
