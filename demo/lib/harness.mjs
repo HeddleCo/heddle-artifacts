@@ -2,7 +2,7 @@
 import { mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { request, command, joinProject, enrollment, projectURL, identifier, gitAuth, remoteURL } from '../../cli/ha.mjs';
+import { request, requestText, command, joinProject, enrollment, projectURL, identifier, gitAuth, remoteURL } from '../../cli/ha.mjs';
 const demoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pause = ms => new Promise(r => setTimeout(r, ms));
 const tasks = [
@@ -86,6 +86,10 @@ async function waitFor(opts, predicate, message) {
   const end = Date.now() + opts.timeout * 1000;
   do { const result = await predicate(); if (result) return result; await pause(1000); } while (Date.now() < end);
   throw new Error(`Timed out: ${message}`);
+}
+/** A candidate's diff. The endpoint answers `text/x-diff`, not JSON. */
+export function candidateDiff(opts, task, agent, token = process.env.OPERATOR_TOKEN) {
+  return requestText(`${opts.api}/tasks/${task}/candidates/${agent}/diff`, token);
 }
 async function views(opts) {
   return Promise.all(tasks.map(t => request(`${opts.api}/tasks/${t.slug}`, process.env.OPERATOR_TOKEN)));
@@ -339,7 +343,7 @@ async function revisionRound(opts, runDir, kept) {
       const paths = { brief: join(dir, `${agent}.md`), grant: join(dir, `${agent}.grant.json`), marker: join(dir, `${agent}.exit`) };
       await writeFile(paths.brief, brief, { mode: 0o600 });
       await writeFile(paths.grant, JSON.stringify(lane.grant), { mode: 0o600 });
-      await writeFile(join(dir, `${agent}.before.diff`), (await request(`${opts.api}/tasks/${slug}/candidates/${agent}/diff`, token).catch(() => ({ diff: '' }))).diff ?? '');
+      await writeFile(join(dir, `${agent}.before.diff`), await candidateDiff(opts, slug, agent, token).catch(() => ''));
       lanes.push({ agent, slug, model: lane.model, fork: [lane.grant.forkRemote, lane.grant.forkToken], ...paths, name: `${opts.project}-${agent}-r${generation}` });
       console.log(`Revision round: ${agent} briefed with the ${view.review.model} review (verdict: ${view.review.perCandidate.find(r => r.agent === agent).verdict}) and ${view.turns.filter(t => t.kind === 'agent' && t.author !== agent).length} teammate note(s).`);
     }
@@ -380,7 +384,7 @@ async function revisionRound(opts, runDir, kept) {
     const v = views[lane.slug], c = v.candidates.find(x => x.agent === lane.agent), was = before[lane.slug].sha[lane.agent];
     const turn = v.turns.filter(t => t.author === lane.agent && t.kind === 'agent' && !before[lane.slug].turns.has(t.id)).at(-1);
     const verdict = reviewCurrent(v) ? v.review.perCandidate.find(r => r.agent === lane.agent) : undefined;
-    if (c && c.sourceSha !== was) await writeFile(join(dir, `${lane.agent}.after.diff`), (await request(`${opts.api}/tasks/${lane.slug}/candidates/${lane.agent}/diff`, token).catch(() => ({ diff: '' }))).diff ?? '');
+    if (c && c.sourceSha !== was) await writeFile(join(dir, `${lane.agent}.after.diff`), await candidateDiff(opts, lane.slug, lane.agent, token).catch(() => ''));
     rows.push({ agent: lane.agent, task: lane.slug, lane: lane.name, exit: exits[lane.agent], outcome: !c ? 'no candidate' : c.sourceSha !== was ? 'revised' : 'kept',
       before: was, after: c?.sourceSha, tests: c?.tests ? `${c.tests.status} ${c.tests.passed}/${c.tests.passed + c.tests.failed}` : 'none',
       review: verdict ? `${v.review.model}: ${verdict.verdict}` : 'not re-reviewed', turn: turn ? { id: turn.id, signedBy: turn.signedBy, revisionPrefix: turn.body.startsWith('Revision:'), body: turn.body } : null });
@@ -529,7 +533,7 @@ async function experiment(opts) {
   const rows = [];
   for (const lane of lanes) {
     const candidate = view.candidates.find(c => c.agent === lane.id), exit = (await readFile(lane.marker, 'utf8')).trim();
-    const diff = candidate ? (await request(`${opts.api}/tasks/${FOLLOW_UP.slug}/candidates/${lane.id}/diff`, token)).diff : '';
+    const diff = candidate ? await candidateDiff(opts, FOLLOW_UP.slug, lane.id, token) : '';
     const regexes = candidate ? regexAdditions(diff) : [];
     rows.push({ agent: lane.id, arm: lane.arm, exit, candidate: Boolean(candidate), tests: candidate?.tests ? `${candidate.tests.status} ${candidate.tests.passed}/${candidate.tests.passed + candidate.tests.failed}` : 'none', regexAdded: regexes.length > 0, regexes });
   }

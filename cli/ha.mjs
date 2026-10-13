@@ -30,7 +30,7 @@ export function remoteURL(value, api) {
 }
 // A project's first engine call boots its Container; live cold starts measured 10-57 s.
 export const API_TIMEOUT_MS = 150000;
-export async function request(url, token, body, method = body === undefined ? 'GET' : 'POST') {
+async function respond(url, token, body, method) {
   if (token && /[\r\n]/.test(token)) throw new Error('Invalid credential');
   let response;
   try {
@@ -47,8 +47,14 @@ export async function request(url, token, body, method = body === undefined ? 'G
   }
   const text = await response.text();
   if (text.length > 2 * 1024 * 1024) throw new Error('API response exceeds 2 MiB');
+  return text;
+}
+export async function request(url, token, body, method = body === undefined ? 'GET' : 'POST') {
+  const text = await respond(url, token, body, method);
   try { return JSON.parse(text); } catch { throw new Error('API returned invalid JSON'); }
 }
+/** A plain-text API response, such as a candidate's `text/x-diff`. */
+export async function requestText(url, token) { return respond(url, token, undefined, 'GET'); }
 export function command(program, args, { cwd, env = {}, input, timeout = 60000 } = {}) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(program, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'] });
