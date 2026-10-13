@@ -44,7 +44,26 @@ export async function init(state, request) {
   await mkdir(repoRoot, { recursive: true });
   await heddle(['init', '--no-harness-install']);
   const seed = join(stateRoot, 'seed.git');
-  if (request.seed?.importUrl) {
+  let imported;
+  if (request.seed?.importUrl && request.seed.snapshot === true) {
+    // Heddle 0.30's `bridge git export` rewalks all history on every export (over a minute for a
+    // few hundred commits), so a real repository is seeded as one commit with its tip's exact tree.
+    // Heddle refuses shallow repositories, so the tip's objects move into a fresh, complete one.
+    const source = remote(request.seed.importUrl), shallow = join(stateRoot, 'seed-shallow.git');
+    await git(stateRoot, ['clone', '--bare', '--depth', '1', '--no-tags', '--', source, shallow], { env: gitAuth(source) });
+    const sha = await git(shallow, ['rev-parse', 'HEAD^{commit}']), tree = await git(shallow, ['rev-parse', 'HEAD^{tree}']);
+    const message = `Import ${source} at ${sha}\n\nThis commit holds the source's tree at ${sha} exactly; its history stays at the source.\n`;
+    const commit = await git(shallow, ['commit-tree', tree], { input: message, env: fixedIdentity() });
+    const objects = await run('git', ['--git-dir', shallow, 'rev-list', '--objects', commit], { maxBytes: 64 * 1024 * 1024 });
+    const pack = await run('git', ['--git-dir', shallow, 'pack-objects', '--stdout', '-q'], { input: objects.stdout, maxBytes: 512 * 1024 * 1024 });
+    await git(stateRoot, ['init', '--quiet', '--bare', seed]);
+    await run('git', ['--git-dir', seed, 'index-pack', '--stdin', '--fix-thin'], { input: pack.stdout });
+    await git(seed, ['update-ref', 'refs/heads/main', commit]);
+    await git(seed, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
+    if (await git(seed, ['rev-parse', 'main^{tree}']) !== tree) throw new Rejection('import_tree_mismatch', 'The imported tree differs from the source');
+    await rm(shallow, { recursive: true, force: true });
+    imported = { url: source, sha, tree };
+  } else if (request.seed?.importUrl) {
     const source = remote(request.seed.importUrl);
     await git(stateRoot, ['clone', '--bare', '--', source, seed], { env: gitAuth(source) });
   } else if (request.seed?.template === 'demo') {
@@ -67,7 +86,8 @@ export async function init(state, request) {
   state.mainSha = mainSha; state.mainState = main.state_id_full;
   await git(exportRoot, ['push', state.canonical, 'refs/heads/main:refs/heads/main'], { env: gitAuth(state.canonical, true) });
   await rm(seed, { recursive: true, force: true });
-  return { mainState: state.mainState, mainSha };
+  if (imported) state.imported = imported;
+  return { mainState: state.mainState, mainSha, ...(imported ? { imported } : {}) };
 }
 export async function createTask(state, request) {
   slug(request.task);
