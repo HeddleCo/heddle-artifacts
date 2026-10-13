@@ -4,7 +4,7 @@ import { DemoCredentials } from './credentials';
 import { HttpError } from './auth';
 import { streamSnapshot } from './snapshot';
 import { Store } from './store';
-import type { FeedEvent, Lane } from '../contracts/types';
+import type { CaptureHistory, EngineCaptureHistory, FeedEvent, Lane } from '../contracts/types';
 
 type Journal = { id: string; command: string; input: string; context: string; status: string; result: string | null; attempts: number };
 // Compare the JSON actually persisted in the journal, independent of object-key
@@ -100,6 +100,24 @@ export class EngineClient {
     await this.restore();
     try { return await this.parsed(await this.transport(command, JSON.stringify(input))); }
     catch (error) { this.loaded = undefined; throw error; }
+  }
+  /** Called within serial(): even this read can add a durable semantic cache to the engine. */
+  async captures(task: string): Promise<CaptureHistory> {
+    try {
+      const { cacheChanged, ...history } = await this.read('captures', { task }) as EngineCaptureHistory;
+      if (cacheChanged) {
+        const generation = this.store.get<number>('meta', 'stateGeneration') ?? 0;
+        const response = await this.transport('snapshot', '{}');
+        if (!response.ok || !response.body) throw new Error('snapshot_failed');
+        await streamSnapshot(this.env.STATE, `projects/${this.project()}/gen-${generation + 1}.tar.zst`, response.body);
+        this.store.storage.transactionSync(() => {
+          if ((this.store.get<number>('meta', 'stateGeneration') ?? 0) !== generation) throw new Error('generation_conflict');
+          this.store.put('meta', 'stateGeneration', generation + 1);
+        });
+        if (this.loaded?.generation === generation) this.loaded = { generation: generation + 1, token: this.loaded.token };
+      }
+      return history;
+    } catch (error) { this.loaded = undefined; throw error; }
   }
   async replay(): Promise<void> {
     if (!this.credentials.isOpen()) return;

@@ -31,7 +31,7 @@ export class StubEngine extends DurableObject {
     const command = new URL(request.url).pathname.slice(1);
     if (command === 'restore') { this.state = JSON.parse(await request.text()); this.calls.push({ command, input: {} }); this.loadedToken = crypto.randomUUID(); return Response.json({ generation: this.state.generation, loaded: this.loadedToken }); }
     if (command === 'loaded') { this.calls.push({ command, input: {} }); return Response.json({ loaded: this.loadedToken }); }
-    if (command === 'snapshot') return new Response(JSON.stringify(this.state));
+    if (command === 'snapshot') { this.calls.push({ command, input: {} }); return new Response(JSON.stringify(this.state)); }
     const input = await request.json();
     if (this.isolatedFixture) this.state.isolateUnreviewed = true;
     Object.assign(this.state, this.combinedFixture);
