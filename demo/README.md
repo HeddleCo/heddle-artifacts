@@ -88,6 +88,31 @@ The agent may revise and push, or keep its candidate and say why. Its closing tu
 harness prints each agent's outcome. It writes the briefs, the before and after diffs, and `result.json`
 to `<dir>/<generation>/revision-<n>/`. The round must finish inside the project's one-hour write window.
 
+### Combined with main
+
+`demo/run.sh combined` runs two sandbox agents on two tasks from the same main: erin's
+`cell-whitespace` (cells keep their whitespace, so code tables keep their indentation) and finn's
+`table-header` (a new `readTable(markdown)` returning `{ header, rows }`). The briefs are independent;
+neither mentions the other task or a combined result. Once both candidates are tested alone, the
+harness waits for the human to land erin's in the UI (`DEMO_COMBINED_AUTOLAND=1` lands it for a
+rehearsal). Main has then moved past finn's base. The platform has Heddle merge finn's candidate with
+the new main in a scratch thread, records Heddle's verdict, and tests the merged commit in an isolated
+sandbox. The board shows, for example, "✓ 22/22 alone · ✕ 3 failing combined with main", and landing
+finn is refused while it fails. If it fails, finn gets one more turn whose brief quotes the decision
+that moved main (with its reason), the failing tests and the sandbox output, and points at the merged
+commit (`refs/heads/combined/<task>/<agent>/<sha>` on the read-only upstream) to fast-forward to. Its
+fixed push contains main, so its own tests are the combined result, and the human can land it. If the
+merged result passes instead, the human can land Heddle's merge directly.
+
+Why this pair breaks reliably: finn's new tests are written against the trimming parser finn started
+from, so they expect `["Name", "Age"]`; erin's task removes that trimming, so on main the same table
+reads `[" Name ", " Age "]`. finn adds a new function and a new test file, so the two edits do not
+touch the same lines and merge cleanly; only running the tests on the merged result shows the break.
+`demo/test/combined-scenario.test.mjs` checks this with representative implementations on the real
+seed and its Vitest suite: each passes alone, the merge is clean, the merged code fails 3 tests.
+`DEMO_COMBINED_AGENT` (`opencode`, `codex` or `claude`) and `DEMO_COMBINED_MODEL` pick the sandbox
+agent; evidence is written to `<dir>/combined-<generation>/`.
+
 ## Independent local contract test
 
 Until Track A's fake-artifacts plus wrangler and Track B's engine are available:
