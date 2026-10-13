@@ -19,7 +19,7 @@ try {
   const model = process.env.DEMO_LANE_MODEL ? `cloudflare-workers-ai/${process.env.DEMO_LANE_MODEL}` : undefined;
   // Heddle's briefing of earlier decisions leads the prompt, so the agent starts from recorded intent.
   const context = briefing?.annotations?.length ? `## Context from earlier decisions (Heddle briefing ${String(briefing.hash).slice(0, 12)})\n\n` +
-    `Earlier decisions on this code recorded these. Respect them, and say in your closing message how your change does.\n\n` +
+    `People recorded these notes when they decided earlier work on this code. Treat them as part of your task: follow their guidance, including any follow-up they ask the next change to make, and say in your closing message what you did about each.\n\n` +
     briefing.annotations.map(a => `- ${a.target}${a.scope && a.scope !== 'file' ? ` (${a.scope})` : ''}, ${a.kind} by ${a.attribution}: ${a.content}`).join('\n') + '\n\n' : '';
   const body = JSON.stringify({ grant, prompt: context + await readFile(briefPath, 'utf8'), author: { name: who, email: `${who}@heddle-artifacts.local` }, ...(agent === 'opencode' && model ? { model } : {}), ...(discussion ? { discussion } : {}) });
   // A sandbox image's first start in a location can fail while it provisions; retry that, nothing else.
