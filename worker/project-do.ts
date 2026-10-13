@@ -11,6 +11,8 @@ import { DemoCredentials } from './credentials';
 import { sandboxId, type SandboxRun, type TestRunner } from './isolated-tests';
 import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
 import { parseTestRecipe, type TestRecipe } from './test-recipe';
+// A failed ingest is retried twice, a minute and then two minutes later, before the push counts as failed.
+export const PUSH_RETRIES = 2, PUSH_RETRY_MS = 60000;
 import { combinedRefusal } from '../engine/lib/combined-rule.mjs';
 
 type Task = { slug: string; intent: string; thread: string; baseSha: string; status: 'open' | 'decided' };
@@ -99,7 +101,7 @@ export class ProjectDO extends DurableObject<Env> {
     }
     return events;
   }
-  private pendingPush(task: string): boolean { return this.store.rows<any>("SELECT id FROM pushes WHERE status='pending' AND json_extract(data, '$.task')=? LIMIT 1", task).length > 0; }
+  private pendingPush(task: string): boolean { return this.store.rows<any>("SELECT id FROM pushes WHERE status IN ('pending','retry') AND json_extract(data, '$.task')=? LIMIT 1", task).length > 0; }
   private candidates(task: string): Candidate[] { return this.store.all<Candidate>('candidates').filter(c => c.task === task); }
   private awaitingLanes(task: string, candidates: Candidate[]): boolean {
     const agents = new Set(this.store.all<Agent>('agents').filter(a => a.kind === 'agent').map(a => a.id));
@@ -152,8 +154,9 @@ export class ProjectDO extends DurableObject<Env> {
     const active = open && this.store.all<Lane>('lanes').some(l => l.status === 'active');
     const reviews = open ? this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'reviewDue:%'").map(r => JSON.parse(r.data) as number) : [];
     const pending = open && this.store.rows<any>("SELECT id FROM pushes WHERE status='pending' LIMIT 1").length > 0;
+    const retries = open ? this.store.rows<{ id: string }>("SELECT id FROM pushes WHERE status='retry'").map(r => this.pushRetry(r.id)?.notBefore ?? Date.now()) : [];
     const jobs = open && this.sandboxJobs().some(j => j.status !== 'done');
-    const when = Math.min(credentialCheck ?? Infinity, active || pending || jobs ? Date.now() + 3000 : Infinity, ...reviews);
+    const when = Math.min(credentialCheck ?? Infinity, active || pending || jobs ? Date.now() + 3000 : Infinity, ...reviews, ...retries);
     if (Number.isFinite(when)) await this.ctx.storage.setAlarm(Math.max(Date.now() + 100, when));
     else await this.ctx.storage.deleteAlarm();
   }
@@ -303,16 +306,31 @@ export class ProjectDO extends DurableObject<Env> {
       if (this.expireAccess()) { await this.finishSandboxJob(job); await this.nextAlarm(); }
     });
   }
+  /** A push whose ingest failed (not was rejected) is retried later: a transient Artifacts or engine failure must not lose a candidate. */
+  private pushRetry(id: string): { count: number; notBefore: number } | undefined { return this.store.get('meta', `pushRetry:${id}`); }
+  private requeueDuePushes(): void {
+    for (const row of this.store.rows<{ id: string }>("SELECT id FROM pushes WHERE status='retry'")) {
+      if ((this.pushRetry(row.id)?.notBefore ?? 0) <= Date.now()) this.store.storage.sql.exec("UPDATE pushes SET status='pending' WHERE id=?", row.id);
+    }
+  }
   private async drain() {
     if (!this.expireAccess()) return;
+    this.requeueDuePushes();
     for (let batch = 0; batch < 10; batch++) {
     const rows = this.store.rows<{ id: string; data: string }>("SELECT id,data FROM pushes WHERE status='pending' ORDER BY rowid LIMIT 100");
     if (!rows.length) return;
-    const opId = `ingest:${await digest(rows.map(r => r.id).join('\n'))}`;
+    // A retry is a new operation: the failed one stays failed in the journal.
+    const opId = `ingest:${await digest(rows.map(r => { const n = this.pushRetry(r.id)?.count; return n ? `${r.id}#retry${n}` : r.id; }).join('\n'))}`;
     try { await this.engine.mutate('ingest', { opId, items: rows.map(r => JSON.parse(r.data)), runTests: true, isolateUnreviewed: true }); }
     catch (error) {
       const terminal = this.store.rows<{ status: string }>('SELECT status FROM ops WHERE id=?', opId)[0];
-      if (terminal && ['failed', 'rejected'].includes(terminal.status)) for (const row of rows) this.store.storage.sql.exec("UPDATE pushes SET status='failed' WHERE id=?", row.id);
+      if (terminal?.status === 'rejected') for (const row of rows) this.store.storage.sql.exec("UPDATE pushes SET status='failed' WHERE id=?", row.id);
+      else if (terminal?.status === 'failed') for (const row of rows) {
+        const count = this.pushRetry(row.id)?.count ?? 0;
+        if (count >= PUSH_RETRIES) { this.store.storage.sql.exec("UPDATE pushes SET status='failed' WHERE id=?", row.id); continue; }
+        this.store.put('meta', `pushRetry:${row.id}`, { count: count + 1, notBefore: Date.now() + PUSH_RETRY_MS * 2 ** count });
+        this.store.storage.sql.exec("UPDATE pushes SET status='retry' WHERE id=?", row.id);
+      }
       throw error;
     }
     await this.syncCandidates();
