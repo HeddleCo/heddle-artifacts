@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SELF, env as testEnv, runInDurableObject, evictDurableObject } from 'cloudflare:test';
 import type { Env, RepoToken } from '../env';
-import { DemoCredentials, demoTtl, MAX_DEMO_TTL } from '../credentials';
+import { DemoCredentials, demoTtl, DEFAULT_DEMO_TTL, MAX_DEMO_TTL } from '../credentials';
 import type { Store } from '../store';
 import { memoryArtifacts } from '../../dev/memory-artifacts';
 
@@ -78,8 +78,8 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('independent credential ledger adversarial review', () => {
   it('defaults to one hour and rejects unbounded or malformed configuration', () => {
-    expect(demoTtl({})).toBe(MAX_DEMO_TTL);
-    for (const value of ['0', '59', '3601', 'Infinity', '-1', '60.5', '', 'NaN']) {
+    expect(demoTtl({})).toBe(DEFAULT_DEMO_TTL); expect(demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: String(MAX_DEMO_TTL) })).toBe(7200);
+    for (const value of ['0', '59', '7201', 'Infinity', '-1', '60.5', '', 'NaN']) {
       expect(() => demoTtl({ DEMO_CREDENTIAL_TTL_SECONDS: value })).toThrow('invalid_demo_credential_ttl');
     }
   });

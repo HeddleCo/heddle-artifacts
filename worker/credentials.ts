@@ -5,7 +5,9 @@ import { HttpError } from './auth';
 import { Store } from './store';
 
 export const MIN_DEMO_TTL = 120;
-export const MAX_DEMO_TTL = 3600;
+export const MAX_DEMO_TTL = 7200;
+/** Used when DEMO_CREDENTIAL_TTL_SECONDS is unset; long live runs opt into up to MAX_DEMO_TTL. */
+export const DEFAULT_DEMO_TTL = 3600;
 export const CLEANUP_BATCH = 100;
 type Lifetime = { createdAt: string; expiresAt: string; closedAt?: string; reason?: string };
 export type CredentialRecord = {
@@ -16,7 +18,7 @@ export type CredentialRecord = {
 };
 export function demoTtl(env: Pick<Env, 'DEMO_CREDENTIAL_TTL_SECONDS'>): number {
   const raw = env.DEMO_CREDENTIAL_TTL_SECONDS;
-  if (raw === undefined) return MAX_DEMO_TTL;
+  if (raw === undefined) return DEFAULT_DEMO_TTL;
   if (!/^[0-9]+$/.test(raw) || !Number.isSafeInteger(Number(raw)) || Number(raw) < MIN_DEMO_TTL || Number(raw) > MAX_DEMO_TTL) throw new HttpError(503, 'invalid_demo_credential_ttl');
   return Number(raw);
 }
