@@ -9,12 +9,17 @@ export class FakeTestRunner {
   installExitCode = 0;
   testExitCode = 0;
   delayMs = 0;
+  // Runs wait here while a test holds them, so slot use is deterministic.
+  #held: Promise<void> | undefined; #release = () => {};
+  hold() { this.#held = new Promise(r => { this.#release = r; }); }
+  release() { this.#release(); this.#held = undefined; }
   durationMs = 5;
   reject = false;
   get(id: string): TestRunner {
     return {
       run: async input => {
         this.inputs.push({ id, input: structuredClone(input) });
+        if (this.#held) await this.#held;
         if (this.delayMs) await new Promise(r => setTimeout(r, this.delayMs));
         if (this.reject) throw new Error('fake sandbox failure');
         return { sourceSha: input.sourceSha, treeSha: input.treeSha, output: this.output, durationMs: this.durationMs,

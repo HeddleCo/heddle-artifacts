@@ -15,7 +15,7 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectDO", "HeddleEngine"] },
     { "tag": "v2-isolated-candidate-tests", "new_sqlite_classes": ["CandidateTestSandbox"] }],
   "containers": [{ "class_name": "HeddleEngine", "image": "./engine/Dockerfile", "image_build_context": ".", "instance_type": "standard-1", "max_instances": 1 },
-    { "class_name": "CandidateTestSandbox", "image": "./sandbox/Dockerfile", "image_build_context": "./sandbox", "instance_type": "standard-1", "max_instances": 3 }],
+    { "class_name": "CandidateTestSandbox", "image": "./sandbox/Dockerfile", "image_build_context": "./sandbox", "instance_type": "standard-4", "max_instances": 3 }],
   "queues": {
     "producers": [{ "binding": "EVENTS", "queue": "artifacts-events" }],
     "consumers": [{ "queue": "artifacts-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3 }]

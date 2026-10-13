@@ -111,3 +111,17 @@ it('the test recipe is set once, at creation, by the operator', async () => {
   const board = await (await api(`/api/projects/${p}`)).json() as any;
   expect(board.project.tests).toEqual({ setup: [], test: ['npm', 'test'], budgetMs: 300000 });
 });
+it('a push that is no longer the candidate does not take a test slot', async () => {
+  const f = await fixture(); f.fake.hold();
+  const current = async (n: number) => waitFor(f.task, v => v.candidates[0]?.sourceSha === sha(n));
+  const started = async (count: number) => { for (let i = 0; i < 300 && f.fake.inputs.length < count; i++) await new Promise(r => setTimeout(r, 10)); expect(f.fake.inputs).toHaveLength(count); };
+  // Three held runs fill every slot; the next two pushes queue behind them.
+  for (const n of [41, 42, 43]) { await f.project.notePush(f.fork, 'refs/heads/main', sha(n), 'event'); await current(n); }
+  await started(3);
+  for (const n of [44, 45]) { await f.project.notePush(f.fork, 'refs/heads/main', sha(n), 'event'); await current(n); }
+  f.fake.release();
+  const view = await waitFor(f.task, v => v.candidates[0]?.sourceSha === sha(45) && v.candidates[0].tests && v.candidates[0].tests.status !== 'pending');
+  expect(view.candidates[0].tests).toMatchObject({ status: 'pass', sourceSha: sha(45) });
+  // sha(44) was queued, then superseded by sha(45) before a slot freed: it never ran.
+  expect(f.fake.inputs.map(i => i.input.sourceSha)).toEqual([sha(41), sha(42), sha(43), sha(45)]);
+});
