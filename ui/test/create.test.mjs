@@ -43,10 +43,12 @@ test('task and human bodies carry only what the API takes', () => {
   assert.throws(() => humanBody({ displayName: '###' }), /name/i);
 });
 
-test('the join command uses the operator token from the environment and never contains one', () => {
+test('the join command sets the operator token for that one command only and never contains one', () => {
   const cmd = joinCommand({ origin: 'https://demo.example.dev', project: 'my-app', task: 'fix-parser', agent: 'ada' });
-  assert.match(cmd, /^node cli\/ha\.mjs join https:\/\/demo\.example\.dev\/p\/my-app --task fix-parser --as ada --dir \.\/ada$/m);
-  assert.match(cmd, /export OPERATOR_TOKEN=/); assert.doesNotMatch(cmd, /OPERATOR_TOKEN=[A-Za-z0-9]{8,}/);
+  assert.match(cmd, /^OPERATOR_TOKEN=… node cli\/ha\.mjs join https:\/\/demo\.example\.dev\/p\/my-app --task fix-parser --as ada --dir \.\/ada$/m);
+  assert.doesNotMatch(cmd, /OPERATOR_TOKEN=[A-Za-z0-9]{8,}/);
+  assert.doesNotMatch(cmd, /\bexport\b/, 'the token must not be exported into the shell the agent will run in');
+  assert.match(cmd, /this one command only/i);
   assert.match(cmd, /git push origin HEAD:main/);
 });
 

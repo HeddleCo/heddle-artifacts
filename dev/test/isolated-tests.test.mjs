@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parseTestCounts, isolatedTestResult, TEST_OUTPUT_BYTES } from '../../engine/lib/isolated-tests.mjs';
+import { parseTestCounts, isolatedTestResult, TEST_OUTPUT_BYTES, PENDING_SUMMARY, COMBINED_PENDING_SUMMARY } from '../../engine/lib/isolated-tests.mjs';
 
 const root = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'isolated-tests-'));
 process.env.ENGINE_STATE_DIR = join(root, 'engine');
@@ -92,3 +92,19 @@ test('unreviewed candidate never invokes npm in the signing engine', async () =>
   } finally { process.env.PATH = previous; }
 });
 test.after(async () => { await rm(root, { recursive: true, force: true }); });
+
+test('every summary names where the tests ran, in every outcome: pass, fail, timeout, output limit, runner failure, install failure, no counts', () => {
+  const cases = {
+    pass: run({}), fail: run({ output: '# pass 3\n# fail 1\n', testExitCode: 1 }), timeout: run({ failure: 'timeout' }), output: run({ failure: 'output' }),
+    runner: run({ failure: 'sandbox' }), install: run({ installExitCode: 1 }), counts: run({ output: 'no totals here\n' }),
+  };
+  for (const [name, base] of Object.entries(cases)) {
+    const local = isolatedTestResult({ ...base, local: true }).summary, sandbox = isolatedTestResult(base).summary, fixture = isolatedTestResult({ ...base, fixture: true }).summary;
+    assert.match(local, /^Local run \(not isolated\)/, `local ${name}: ${local}`); assert.doesNotMatch(local, /isolated sandbox/i, `local ${name}: ${local}`);
+    assert.match(sandbox, /^Isolated sandbox\b/, `sandbox ${name}: ${sandbox}`); assert.doesNotMatch(sandbox, /local/i, `sandbox ${name}: ${sandbox}`);
+    assert.match(fixture, /^Isolated sandbox \(local fixture\)/, `fixture ${name}: ${fixture}`);
+  }
+});
+test('a test that has not run yet does not claim where it will run', () => {
+  for (const text of [PENDING_SUMMARY, COMBINED_PENDING_SUMMARY]) assert.doesNotMatch(text, /sandbox|isolated|local|fixture/i, text);
+});
