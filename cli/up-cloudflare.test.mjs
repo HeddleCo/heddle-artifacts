@@ -11,8 +11,9 @@ const exampleText = await readFile(new URL('../wrangler.example.jsonc', import.m
 const example = JSON.parse(exampleText.replace(/^\s*\/\/.*$/gm, ''));
 
 /** A scripted wrangler/docker/npm: answers by argv prefix and records every call. */
-function world({ loggedIn = true, accounts = [{ id: ACCOUNT, name: 'Acme' }], docker = true, existing = [], failOn = [], containers = [], loginAfter = 0 } = {}) {
-  const calls = [], resources = new Set(existing);
+function world({ loggedIn = true, accounts = [{ id: ACCOUNT, name: 'Acme' }], docker = true, existing = [], failOn = [], containers = [], bucketHasObjects = false } = {}) {
+  const calls = [], resources = new Set(existing); let consumer = true, worker = false, emptied = false;
+  const noise = msg => ({ code: 1, output: `\u001b[31m✘ [ERROR]\u001b[0m A request failed.\n  ${msg} [code: 1]\n  If you think this is a bug, please open an issue\n🪵  Logs were written to "/x.log"` });
   const run = async (argv, opts = {}) => {
     const line = argv.join(' '); calls.push({ argv, line, opts: { ...opts, env: undefined } });
     for (const f of failOn) if (line.includes(f)) return { code: 1, output: `boom ${f}` };
@@ -22,7 +23,12 @@ function world({ loggedIn = true, accounts = [{ id: ACCOUNT, name: 'Acme' }], do
     if (line.includes('queues create')) { const n = argv.at(-1); if (resources.has(`q:${n}`)) return { code: 1, output: 'Queue already exists (11009)' }; resources.add(`q:${n}`); return { code: 0, output: 'Created' }; }
     if (line.includes('queues info')) return { code: 0, output: `Queue Name: ${argv.at(-1)}\nQueue ID: ${QUEUE_ID}\n` };
     if (line.includes('containers list')) return { code: 0, output: containers.map(c => `│ ${c.id} │ ${c.name} │ ready │ 0 │ x │`).join('\n') };
-    if (line.includes(' deploy ')) return { code: 0, output: 'Uploaded\n  https://my-app.acme.workers.dev\nCurrent Version ID: 1' };
+    if (line.includes(' deploy ')) { worker = true; return { code: 0, output: 'Uploaded\n  https://my-app.acme.workers.dev\nCurrent Version ID: 1' }; }
+    if (line.includes('queues consumer')) { consumer = false; return { code: 0, output: 'Removed' }; }
+    if (/wrangler delete /.test(line)) { if (consumer) return noise('Cannot delete this Worker as it is a consumer for a Queue. Remove it from the Queue\'s consumers first, then retry.'); worker = false; return { code: 0, output: 'Deleted' }; }
+    if (line.includes('queues delete')) { if (worker) return noise('Cannot delete queue that is still referenced by a binding in a Worker.'); return { code: 0, output: 'Deleted' }; }
+    if (line.includes('r2 bucket delete')) { if (bucketHasObjects && !emptied) return noise('The bucket you tried to delete is not empty (10008).'); return { code: 0, output: 'Deleted' }; }
+    if (line.includes('r2 bucket lifecycle add')) { emptied = true; return { code: 0, output: 'Added rule' }; }
     return { code: 0, output: '' };
   };
   return { calls, run, resources };
@@ -168,4 +174,40 @@ test('teardown refuses a name this command did not create, and asks first withou
   await upCloudflare(s.options, s.deps); s.w.calls.length = 0;
   const asked = await destroyCloudflare({ ...s.options, destroy: true, yes: false }, s.deps);
   assert.equal(asked.code, 1); assert.deepEqual(s.w.calls.filter(c => /delete/.test(c.line)), []);
+});
+
+test('teardown follows the order Cloudflare enforces: consumer off, Worker, containers, queue, bucket', async t => {
+  const s = await setup({ containers: [{ id: 'id-1', name: 'my-app-heddleengine' }] }, ['--yes']); t.after(s.done);
+  await upCloudflare(s.options, s.deps); s.w.calls.length = 0;
+  assert.equal((await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps)).code, 0, s.logs.join('\n'));
+  const lines = s.w.calls.map(c => c.line), at = re => lines.findIndex(l => re.test(l));
+  assert.ok(at(/queues consumer worker remove my-app-events my-app/) >= 0, 'consumer removed');
+  assert.ok(at(/queues consumer/) < at(/wrangler delete my-app/) && at(/wrangler delete my-app/) < at(/queues delete/) && at(/queues delete/) < at(/r2 bucket delete/));
+});
+
+test('a bucket that still holds data is scheduled to empty itself, the rest is removed, and the record is kept for a second pass', async t => {
+  const s = await setup({ bucketHasObjects: true }, ['--yes']); t.after(s.done);
+  await upCloudflare(s.options, s.deps); s.w.calls.length = 0; s.logs.length = 0;
+  const first = await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps);
+  assert.equal(first.code, 0, 'a bucket that is expiring is a handled condition, not a failure');
+  assert.ok(s.w.calls.some(c => /r2 bucket lifecycle add my-app-state .*--expire-days 1/.test(c.line)), 'expiry rule added');
+  assert.match(s.logs.join('\n'), /24 hours/); assert.match(s.logs.join('\n'), /--destroy/);
+  assert.ok(await stat(join(s.state, 'my-app', 'created.json')).then(() => true, () => false), 'record kept');
+  assert.equal(await stat(join(s.state, 'my-app', 'operator-token')).then(() => true, () => false), false, 'the token goes: the Worker it unlocked is gone');
+  s.w.calls.length = 0;
+  const second = await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps);
+  assert.equal(second.code, 0); const lines = s.w.calls.map(c => c.line);
+  assert.ok(lines.some(l => /r2 bucket delete my-app-state/.test(l)));
+  assert.ok(!lines.some(l => /wrangler delete my-app|queues delete/.test(l)), 'already-removed parts are not retried');
+  await assert.rejects(() => stat(join(s.state, 'my-app')), /ENOENT/, 'state removed once everything is gone');
+});
+
+test('when something cannot be removed, the reason shown is wrangler\'s real error, not its "logs were written" footer', async t => {
+  const s = await setup({}, ['--yes']); t.after(s.done);
+  await upCloudflare(s.options, s.deps);
+  const run = s.deps.run; s.deps.run = async (argv, opts) => /wrangler delete /.test(argv.join(' ')) ? { code: 1, output: '\u001b[31m✘ [ERROR]\u001b[0m failed\n  Cannot delete this Worker: because reasons [code: 10064]\n  If you think this is a bug, please open an issue\n🪵  Logs were written to "/x.log"' } : run(argv, opts);
+  s.logs.length = 0;
+  const result = await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps);
+  assert.equal(result.code, 1); const out = s.logs.join('\n');
+  assert.match(out, /because reasons \[code: 10064\]/); assert.doesNotMatch(out, /Logs were written|\u001b/);
 });
