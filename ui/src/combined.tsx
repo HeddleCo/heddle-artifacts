@@ -3,6 +3,7 @@
 // Heddle, and that merged result's isolated tests. Shown next to (never instead of) its own tests.
 import type { Candidate } from '../../contracts/types';
 import { aloneText, combinedText } from './decision';
+import { combinedTestedNote } from './format';
 
 const short = (s: string) => s.slice(0, 10);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -25,7 +26,7 @@ export function CombinedPanel({ candidate }: { candidate: Candidate }) {
     {combined.status === 'conflict'
       ? <><p>Heddle could not merge this candidate with main: {plural(verdict.conflictCount || combined.conflicts.length, 'conflict')}.</p>
         <ul class="combined-conflicts">{combined.conflicts.map(c => <li><code>{c.path}</code>{c.symbol && <> · <code>{c.symbol}</code></>}{c.lines && <span class="muted"> · lines {c.lines[0]}–{c.lines[1]}</span>}</li>)}</ul></>
-      : <p class="muted">Heddle merged it with main cleanly ({verdict.mergeType}, {plural(verdict.conflictCount, 'conflict')}){combined.sha && <> as <code title={combined.sha}>{short(combined.sha)}</code></>}. The merged result is tested in an isolated sandbox.</p>}
+      : <p class="muted">Heddle merged it with main cleanly ({verdict.mergeType}, {plural(verdict.conflictCount, 'conflict')}){combined.sha && <> as <code title={combined.sha}>{short(combined.sha)}</code></>}. {combinedTestedNote(t)}</p>}
     {!!verdict.blockers.length && combined.status === 'conflict' && <ul class="muted">{verdict.blockers.map(b => <li>{b}</li>)}</ul>}
     {t && t.status !== 'pending' && t.status !== 'skipped' && <p class="test-summary">{t.summary} · {t.durationMs} ms{t.observation ? ' · signed observation' : ''}</p>}
     {!!t?.failures?.length && <><p><strong>Failing combined with main</strong></p><ul class="combined-failures">{t.failures.map(name => <li><code>{name}</code></li>)}</ul></>}

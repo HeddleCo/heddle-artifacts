@@ -9,7 +9,7 @@ import { publicationEvidence } from './verification';
 import { isPublished, decisionRequest, conflictMessage, combinedBlock, combinedText } from './decision';
 import { DecisionNotice } from './decision-notice';
 import { identifiers, InlineText, Narrative, parseReview, ReviewBody, RichText } from './rich-text';
-import { plural } from './format';
+import { plural, runnerLabel } from './format';
 import { CombinedLine, CombinedPanel } from './combined';
 import { Captures } from './captures';
 import { AnchorChip, AnnotationCard } from './annotation-card';
@@ -27,7 +27,7 @@ const message = (e: unknown) => e instanceof ApiError ? e.message : 'Could not r
 function ErrorNotice({ text }: { text: string }) { return <p class="notice error" role="alert">{text} <a href="/login">Sign in</a></p>; }
 function Badge({ candidate }: { candidate?: Candidate }) {
   const tests = candidate?.tests;
-  return <span class={`badge ${tests?.status || 'pending'}`}>{tests ? `${tests.status === 'pass' ? '✓' : tests.status === 'fail' ? '✕' : '○'} ${tests.status} · ${tests.passed}/${tests.passed + tests.failed}${tests.provenance ? ` · ${tests.provenance}` : ''}` : '○ Tests pending'}</span>;
+  return <span class={`badge ${tests?.status || 'pending'}`}>{tests ? `${tests.status === 'pass' ? '✓' : tests.status === 'fail' ? '✕' : '○'} ${tests.status} · ${tests.passed}/${tests.passed + tests.failed}${runnerLabel(tests) ? ` · ${runnerLabel(tests)}` : ''}` : '○ Tests pending'}</span>;
 }
 function Signature({ signedBy, agent }: { signedBy: string; agent?: Agent }) {
   const matches = agent?.publicKey === signedBy;
@@ -312,7 +312,7 @@ function Compare({ p, t }: { p: string; t: string }) {
             : picked?.combined?.status === 'pass' ? <p class="muted combined-note">{picked.agent} lands as Heddle's merge with main, the exact result that passed its tests.</p> : null; })()}
         {!humans.length && <HumanPrompt p={p} what="decide" onHuman={addHuman}/>}
       </section>
-      {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}
+      {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{runnerLabel(c.tests) && <span class="tag dashed">{runnerLabel(c.tests)}</span>}</li>)}
         {view.candidates.filter(c => c.combined).map(c => { const line = combinedText(c)!; return <li class={`check combined ${line.tone}`}><span class="check-mark" aria-hidden="true">{line.text.slice(0, 1)}</span><strong>{c.agent} + main</strong><span class="check-detail">{line.text.slice(2)}</span></li>; })}</ul></section>}
     </>}</aside>
   </main></>;

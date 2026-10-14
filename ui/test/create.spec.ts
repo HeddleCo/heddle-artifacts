@@ -76,8 +76,8 @@ test('an operator gets the exact command to put their own agent on a task, with 
   await page.goto('/p/demo/t/parser-escapes');
   await page.getByTestId('add-agent').locator('summary').click();
   const command = page.locator('.join-command');
-  await expect(command).toContainText(`node cli/ha.mjs join ${new URL(page.url()).origin}/p/demo --task parser-escapes --as agent-1 --dir ./agent-1`);
-  await expect(command).toContainText('export OPERATOR_TOKEN=…');
+  await expect(command).toContainText(`OPERATOR_TOKEN=… node cli/ha.mjs join ${new URL(page.url()).origin}/p/demo --task parser-escapes --as agent-1 --dir ./agent-1`);
+  expect(await command.textContent()).not.toMatch(/\bexport\b/);
   expect(await command.textContent()).not.toContain('fixture-operator');
   await page.getByTestId('add-agent').getByLabel('Agent name').fill('my agent; rm -rf ~');
   await expect(command).toHaveCount(0);

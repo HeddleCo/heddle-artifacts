@@ -14,6 +14,8 @@ export class FakeTestRunner {
   hold() { this.#held = new Promise(r => { this.#release = r; }); }
   release() { this.#release(); this.#held = undefined; }
   durationMs = 5;
+  /** Pretend to be the local runner: its results say so themselves. */
+  local = false;
   reject = false;
   get(id: string): TestRunner {
     return {
@@ -23,7 +25,7 @@ export class FakeTestRunner {
         if (this.delayMs) await new Promise(r => setTimeout(r, this.delayMs));
         if (this.reject) throw new Error('fake sandbox failure');
         return { sourceSha: input.sourceSha, treeSha: input.treeSha, output: this.output, durationMs: this.durationMs,
-          installExitCode: this.installExitCode, testExitCode: this.testExitCode, ...(this.failure ? { failure: this.failure } : {}) };
+          installExitCode: this.installExitCode, testExitCode: this.testExitCode, ...(this.local ? { local: true } : {}), ...(this.failure ? { failure: this.failure } : {}) };
       },
       destroy: async () => { this.destroyed.push(id); },
     };

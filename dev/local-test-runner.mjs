@@ -13,6 +13,9 @@ import { TEST_OUTPUT_BYTES, TEST_BUDGET_MS } from '../engine/lib/isolated-tests.
 const PROGRAMS = new Set(['npm', 'npx', 'node']);
 const DEFAULT_RECIPE = { setup: [['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund']], test: ['npm', 'test'], budgetMs: TEST_BUDGET_MS };
 const SHA = /^[a-f0-9]{40}$/;
+// Every candidate process group that is running right now, so shutting the runner down can stop them.
+const liveGroups = new Set();
+function killLive() { for (const pid of liveGroups) { try { process.kill(-pid, 'SIGKILL'); } catch { /* already gone */ } } liveGroups.clear(); }
 
 function argv(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 48 || !PROGRAMS.has(value[0]) ||
@@ -36,13 +39,14 @@ function checkRemote(remote, allowFileRemotes) {
 function exec(args, { cwd, env, deadline, cap = TEST_OUTPUT_BYTES + 1 }) {
   return new Promise(resolve => {
     const child = spawn(args[0], args.slice(1), { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    if (child.pid) liveGroups.add(child.pid);
     const chunks = []; let size = 0, overflow = false, timedOut = false;
     const killGroup = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
     const timer = setTimeout(() => { timedOut = true; killGroup(); }, Math.max(1, deadline - Date.now()));
     const take = chunk => { if (size >= cap) { overflow = true; return; } chunks.push(chunk); size += chunk.length; };
     child.stdout.on('data', take); child.stderr.on('data', take);
-    child.on('error', () => { clearTimeout(timer); resolve({ code: 127, output: '', timedOut, overflow }); });
-    child.on('close', code => { clearTimeout(timer); killGroup(); resolve({ code: timedOut ? 124 : code ?? 1, output: Buffer.concat(chunks).toString('utf8'), timedOut, overflow }); });
+    child.on('error', () => { clearTimeout(timer); liveGroups.delete(child.pid); resolve({ code: 127, output: '', timedOut, overflow }); });
+    child.on('close', code => { clearTimeout(timer); killGroup(); liveGroups.delete(child.pid); resolve({ code: timedOut ? 124 : code ?? 1, output: Buffer.concat(chunks).toString('utf8'), timedOut, overflow }); });
   });
 }
 
@@ -50,18 +54,20 @@ function exec(args, { cwd, env, deadline, cap = TEST_OUTPUT_BYTES + 1 }) {
  * input: { sourceSha, treeSha, remote, readCredential, recipe? } as for the Sandbox runner (worker/isolated-tests.ts).
  * Returns the same SandboxRun shape, so the coordinator and the UI treat it exactly like a sandbox result.
  */
-export async function runCandidateLocally(input, { root = join(tmpdir(), 'heddle-local-tests'), allowFileRemotes = false } = {}) {
+export async function runCandidateLocally(input, { root, allowFileRemotes = false } = {}) {
+  if (!root) throw new Error('A private work directory is required (no shared default: a predictable path in /tmp can be taken over)');
   const recipe = checkRecipe(input.recipe);
   if (!SHA.test(input.sourceSha) || !SHA.test(input.treeSha)) throw new Error('invalid sha');
   const { local } = checkRemote(input.remote, allowFileRemotes);
   const start = Date.now(), deadline = start + recipe.budgetMs;
-  const result = { sourceSha: input.sourceSha, treeSha: input.treeSha, output: '', durationMs: 0, ...(input.recipe ? { budgetMs: recipe.budgetMs } : {}) };
+  // `local` is this runner saying what it is, so the board labels the result from the runner and not from a setting.
+  const result = { sourceSha: input.sourceSha, treeSha: input.treeSha, output: '', durationMs: 0, local: true, ...(input.recipe ? { budgetMs: recipe.budgetMs } : {}) };
   await mkdir(root, { recursive: true, mode: 0o700 });
   const dir = await mkdtemp(join(root, 'run-')), cwd = join(dir, 'candidate'), home = join(dir, 'home');
   try {
     await mkdir(cwd); await mkdir(home);
     // Git gets the credential through its own environment config; the candidate's steps never do.
-    const gitEnv = { PATH: process.env.PATH, HOME: home, GIT_TERMINAL_PROMPT: '0',
+    const gitEnv = { PATH: process.env.PATH, HOME: home, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1',
       ...(local ? {} : { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraHeader', GIT_CONFIG_VALUE_0: `Authorization: Bearer ${input.readCredential}` }) };
     const step = async (args, env = gitEnv) => exec(args, { cwd, env, deadline });
     if ((await step(['git', 'init', cwd])).code !== 0) throw new Error('init');
@@ -71,7 +77,7 @@ export async function runCandidateLocally(input, { root = join(tmpdir(), 'heddle
     if ((await step(['git', 'checkout', '--detach', input.sourceSha])).code !== 0) throw new Error('checkout');
     const sha = await step(['git', 'rev-parse', 'HEAD']), tree = await step(['git', 'rev-parse', 'HEAD^{tree}']);
     if (sha.output.trim() !== input.sourceSha || tree.output.trim() !== input.treeSha) { result.failure = 'checkout'; return result; }
-    const env = { PATH: process.env.PATH, CI: '1', NO_COLOR: '1', HOME: home, TMPDIR: home, NPM_CONFIG_UPDATE_NOTIFIER: 'false' };
+    const env = { PATH: process.env.PATH, CI: '1', NO_COLOR: '1', HOME: home, TMPDIR: home, NPM_CONFIG_UPDATE_NOTIFIER: 'false', GIT_CONFIG_NOSYSTEM: '1' };
     for (const args of recipe.setup) {
       const run = await exec(args, { cwd, env, deadline });
       result.installExitCode = run.code;
@@ -91,22 +97,40 @@ export async function runCandidateLocally(input, { root = join(tmpdir(), 'heddle
   }
 }
 
-/** A loopback-only HTTP wrapper for the Worker: POST /run with the shared secret header. At most `slots` runs at once. */
-export async function startLocalTestRunner({ port = 0, root, secret, slots = 2, allowFileRemotes = false } = {}) {
+/**
+ * A loopback-only HTTP wrapper for the Worker: POST /run with the shared secret header.
+ * At most `slots` runs at once; further requests wait in a queue of at most `maxQueue` (then 429 "busy"), so a burst of pushes is
+ * tested in turn instead of some candidates being reported as errors for tests that never ran.
+ * Without `root` the runner makes a private (0700) directory of its own and removes it on close.
+ */
+export async function startLocalTestRunner({ port = 0, root, secret, slots = 2, maxQueue = 64, allowFileRemotes = false } = {}) {
   if (!secret || secret.length < 24) throw new Error('A runner secret of at least 24 characters is required');
-  const want = Buffer.from(secret); let active = 0;
+  const own = !root; root ??= await mkdtemp(join(tmpdir(), 'heddle-local-tests-'));
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const want = Buffer.from(secret), waiters = []; let running = 0, closing = false;
+  const acquire = () => { if (closing) return Promise.resolve(false); if (running < slots) { running++; return Promise.resolve(true); } return waiters.length < maxQueue ? new Promise(res => waiters.push(res)) : undefined; };
+  const release = () => { const next = waiters.shift(); if (next) next(true); else running--; };
   const server = createServer(async (req, res) => {
-    const end = (status, body) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body)); };
+    const end = (status, body) => { if (!res.writableEnded) res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body)); };
     try {
       const got = Buffer.from(String(req.headers['x-runner-secret'] ?? ''));
       if (req.method !== 'POST' || req.url !== '/run' || got.length !== want.length || !timingSafeEqual(got, want)) return end(404, { error: 'not_found' });
       if (!/^application\/json/.test(req.headers['content-type'] ?? '')) return end(415, { error: 'json_required' });
-      if (active >= slots) return end(429, { error: 'busy' });
       let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 65536) return end(413, { error: 'too_large' }); }
-      active++;
-      try { end(200, await runCandidateLocally(JSON.parse(text), { root, allowFileRemotes })); } finally { active--; }
+      const input = JSON.parse(text), slot = acquire();
+      if (!slot) return end(429, { error: 'busy' });
+      if (!(await slot)) return end(503, { error: 'shutting_down' });
+      try { end(200, await runCandidateLocally(input, { root, allowFileRemotes })); } finally { release(); }
     } catch (error) { end(400, { error: /^invalid (recipe|remote|sha)/.test(error?.message) ? error.message : 'bad_request' }); }
   });
   await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));
-  return { origin: `http://127.0.0.1:${server.address().port}`, close: () => new Promise(resolve => server.close(resolve)) };
+  return {
+    origin: `http://127.0.0.1:${server.address().port}`, root,
+    async close() {
+      closing = true; for (const w of waiters.splice(0)) w(false);
+      killLive(); server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+      if (own) await rm(root, { recursive: true, force: true });
+    },
+  };
 }

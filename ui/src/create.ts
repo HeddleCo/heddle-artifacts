@@ -57,9 +57,9 @@ export function joinCommand(input: { origin: string; project: string; task: stri
   if (origin.username || origin.password || origin.search || origin.hash || !['https:', 'http:'].includes(origin.protocol)) throw new Error('Unusable origin');
   const project = id(input.project, 'project'), task = id(input.task, 'task'), agent = id(input.agent, 'agent');
   return [
-    '# In a clone of heddle-artifacts, with your operator token in the environment (never in a URL):',
-    'export OPERATOR_TOKEN=…',
-    `node cli/ha.mjs join ${origin.origin}/p/${project} --task ${task} --as ${agent} --dir ./${agent}`,
+    '# In a clone of heddle-artifacts. Put your operator token where … is (never in a URL). It is set for this one command only,',
+    '# so the agent you start afterwards does not inherit it and cannot decide or land on your behalf:',
+    `OPERATOR_TOKEN=… node cli/ha.mjs join ${origin.origin}/p/${project} --task ${task} --as ${agent} --dir ./${agent}`,
     `cd ${agent}`,
     '# Point your agent at this folder (Claude Code, Codex, OpenCode or plain git), then:',
     'git push origin HEAD:main',

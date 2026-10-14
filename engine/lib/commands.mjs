@@ -11,7 +11,7 @@ import { testCandidate } from './tests.mjs';
 import { narrative } from './why.mjs';
 import { exportProjection } from './projection.mjs';
 import { attestOperation, attestTests } from './attestations.mjs';
-import { isolatedTestResult } from './isolated-tests.mjs';
+import { isolatedTestResult, PENDING_SUMMARY } from './isolated-tests.mjs';
 import { freezePublicationInput } from './publication-input.mjs';
 import { refreshCombined, combinedRejection, containsMain, integrateMain, descendsFrom, nativeTrees } from './combined.mjs';
 
@@ -213,7 +213,7 @@ export async function ingest(state, request) {
       tests: request.runTests ? await testCandidate(lane.path) : { status: 'skipped', passed: 0, failed: 0, summary: 'Tests not requested', durationMs: 0 },
       conflicts: [], signedBy, capturedAt: shown.created_at };
     if (request.runTests && request.isolateUnreviewed && candidate.tests.status === 'skipped') {
-      candidate.tests = { status: 'pending', passed: 0, failed: 0, summary: 'Isolated sandbox tests pending', durationMs: 0, provenance: 'isolated sandbox', sourceSha: item.sha };
+      candidate.tests = { status: 'pending', passed: 0, failed: 0, summary: PENDING_SUMMARY, durationMs: 0, provenance: 'isolated sandbox', sourceSha: item.sha }; // provenance is the marker for 'a test job is queued', not a claim about where it will run
     } else if (candidate.tests.status !== 'skipped') candidate.tests.provenance = 'reviewed fixture';
     lane.candidate = candidate; lane.seen[item.sha] = candidate;
     await git(exportRoot, ['update-ref', `refs/heads/candidates/${item.task}/${item.agent}`, item.sha]);

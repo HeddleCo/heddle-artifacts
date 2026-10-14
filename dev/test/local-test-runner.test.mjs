@@ -28,7 +28,7 @@ const withRoot = async fn => { const root = await mkdtemp(join(tmpdir(), 'local-
 test('a passing candidate is actually executed and reports its own counts', () => withRoot(async root => {
   const c = await candidate(root, 'pass', "import test from 'node:test'; test('one', () => {}); test('two', () => {});");
   const run = await runCandidateLocally(input(c), opts(root));
-  assert.equal(run.testExitCode, 0);
+  assert.equal(run.testExitCode, 0); assert.equal(run.local, true, 'the runner says what it is, so the board labels the result from it');
   assert.equal(run.sourceSha, c.sourceSha); assert.equal(run.treeSha, c.treeSha);
   assert.match(run.output, /^(?:#|ℹ) pass 2$/m); assert.match(run.output, /^(?:#|ℹ) fail 0$/m);
 }));
@@ -129,5 +129,5 @@ test('the runner works in a private directory it creates itself, and removes it 
   const dir = runner.root; assert.ok(dir, 'the runner reports where it works');
   assert.equal((await stat(dir)).mode & 0o777, 0o700);
   await runner.close(); await assert.rejects(() => stat(dir), /ENOENT/);
-  await assert.rejects(() => runCandidateLocally(input({ remote: '/x', sourceSha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })), /root/i, 'no shared, predictable default directory');
+  await assert.rejects(() => runCandidateLocally(input({ remote: '/x', sourceSha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })), /private work directory/, 'no shared, predictable default directory');
 });

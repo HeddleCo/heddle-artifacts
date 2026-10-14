@@ -37,20 +37,26 @@ export function failureDetails(output) {
   return { failures: names, excerpt };
 }
 
+// Tests that have not run yet name no runner: where they run is decided when they run.
+export const PENDING_SUMMARY = 'Tests pending';
+export const COMBINED_PENDING_SUMMARY = 'Combined tests pending';
+/** Who ran it, for every sentence about the result. The recorded provenance and the summary must never disagree. */
+const where = run => run?.local ? 'Local run (not isolated)' : run?.fixture ? 'Isolated sandbox (local fixture)' : 'Isolated sandbox';
+
 export function isolatedTestResult(run) {
   const provenance = run?.local ? 'local run (not isolated)' : run?.fixture ? 'isolated sandbox (local fixture)' : 'isolated sandbox';
   const budgetMs = testBudgetMs(run);
   const durationMs = Number.isFinite(run?.durationMs) ? Math.min(budgetMs, Math.max(0, Math.round(run.durationMs))) : 0;
   const error = summary => ({ status: 'error', passed: 0, failed: 0, summary, durationMs, provenance, sourceSha: run?.sourceSha });
-  if (run?.failure === 'timeout' || run?.durationMs >= budgetMs || [run?.installExitCode, run?.testExitCode].some(c => c === 124 || c === 137)) return error(`Isolated sandbox exceeded ${budgetMs / 1000} seconds`);
-  if (run?.failure === 'output' || typeof run?.output !== 'string' || new TextEncoder().encode(run.output).length > TEST_OUTPUT_BYTES) return error('Isolated sandbox output limit exceeded');
-  if (run.failure) return error('Isolated sandbox failed');
-  if (run.installExitCode !== 0) return error('Isolated sandbox dependency install failed');
-  if (!Number.isInteger(run.testExitCode) || run.testExitCode < 0) return error('Isolated sandbox failed');
+  if (run?.failure === 'timeout' || run?.durationMs >= budgetMs || [run?.installExitCode, run?.testExitCode].some(c => c === 124 || c === 137)) return error(`${where(run)} exceeded ${budgetMs / 1000} seconds`);
+  if (run?.failure === 'output' || typeof run?.output !== 'string' || new TextEncoder().encode(run.output).length > TEST_OUTPUT_BYTES) return error(`${where(run)} output limit exceeded`);
+  if (run.failure) return error(`${where(run)} failed`);
+  if (run.installExitCode !== 0) return error(`${where(run)} dependency install failed`);
+  if (!Number.isInteger(run.testExitCode) || run.testExitCode < 0) return error(`${where(run)} failed`);
   const counts = parseTestCounts(run.output);
-  if (!counts || counts.passed + counts.failed === 0) return error('Isolated sandbox test counts unavailable');
+  if (!counts || counts.passed + counts.failed === 0) return error(`${where(run)} test counts unavailable`);
   const status = run.testExitCode === 0 && counts.failed === 0 ? 'pass' : 'fail';
   return { status, ...counts,
-    summary: `${run.local ? 'Local run (not isolated)' : run.fixture ? 'Isolated sandbox (local fixture)' : 'Isolated sandbox'}: ${counts.passed} passed, ${counts.failed} failed`, durationMs, provenance, sourceSha: run.sourceSha,
+    summary: `${where(run)}: ${counts.passed} passed, ${counts.failed} failed`, durationMs, provenance, sourceSha: run.sourceSha,
     ...(status === 'fail' ? failureDetails(run.output) : {}) };
 }
