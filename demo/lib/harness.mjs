@@ -11,7 +11,7 @@ const tasks = [
 ];
 export function demoDecider(env = process.env) {
   return { id: env.DEMO_DECIDER_ID ?? 'luke', displayName: env.DEMO_DECIDER_NAME ?? 'Luke',
-    ...(env.DEMO_DECIDER_EMAIL !== undefined ? { email: env.DEMO_DECIDER_EMAIL } : {}) };
+    ...(env.DEMO_DECIDER_EMAIL !== undefined ? { email: env.DEMO_DECIDER_EMAIL, sponsor: true } : {}) };
 }
 
 export function options(args, action = 'run') {
