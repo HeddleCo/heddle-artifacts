@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, open, link, unlink, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from '../cli/ha.mjs';
 import { assertPrivateDirectory } from './smoke-auth.mjs';
 import { LIMITS, makePlan } from './smoke-safety.mjs';
 
@@ -217,4 +217,4 @@ export async function bridgeMain(argv = process.argv.slice(2), { stdin = process
     return 0;
   } catch { log('BRIDGE BLOCKED: invalid, expired, or unavailable request/response'); return 2; }
 }
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) process.exitCode = await bridgeMain();
+if (isMain(import.meta.url)) process.exitCode = await bridgeMain();

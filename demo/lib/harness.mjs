@@ -2,7 +2,7 @@
 import { mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { request, requestText, command, joinProject, enrollment, projectURL, identifier, gitAuth, remoteURL } from '../../cli/ha.mjs';
+import { request, requestText, command, joinProject, enrollment, projectURL, identifier, gitAuth, remoteURL, isMain } from '../../cli/ha.mjs';
 const demoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pause = ms => new Promise(r => setTimeout(r, ms));
 const tasks = [
@@ -827,7 +827,7 @@ async function task(opts) {
   console.log(`Compare: ${opts.projectUrl}/t/${slug}`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   const [action, ...args] = process.argv.slice(2);
   Promise.resolve().then(() => { const opts = options(args, action);
     if (action === 'reset') return reset(opts); if (action === 'run') return run(opts); if (action === 'verify') return verify(opts); if (action === 'followup') return followup(opts); if (action === 'experiment') return experiment(opts);

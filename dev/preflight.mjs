@@ -7,7 +7,8 @@ import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, delimiter, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { isMain } from '../cli/ha.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -266,6 +267,6 @@ export async function main(args = process.argv.slice(2), ambient = process.env) 
   return report.exitCode;
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+if (isMain(import.meta.url)) {
   main().then(code => { process.exitCode = code; }).catch(error => { console.error(`Preflight refused: ${error.message}`); process.exitCode = 2; });
 }

@@ -5,7 +5,7 @@ import { performance } from 'node:perf_hooks';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from '../cli/ha.mjs';
 import { startFakeArtifacts } from './fake-artifacts/server.mjs';
 import { LIMITS, makePlan, validateLivePlan, boundedGit, validateRemote, createLedger, safeFailure, createGitNetworkBudget } from './smoke-safety.mjs';
 import { createControlPlane } from './smoke-control.mjs';
@@ -250,7 +250,7 @@ export async function smoke({ local = false, missingRef = false, plan, runId, le
     catch { record('CLEANUP FAIL: local_temp_cleanup'); exitCode = 1; }
     measurements.run = { elapsed_ms: Math.max(0, Math.round((performance.now() - startedMonotonic) * 1000) / 1000),
       outcome: exitCode === 0 ? 'success' : 'failure', includes_cleanup: true,
-      fresh_process: import.meta.url === pathToFileURL(process.argv[1] ?? '').href,
+      fresh_process: isMain(import.meta.url),
       service_cache_state: 'unknown', sample_count: 1 };
     if (ledger) {
       ledger.state.status = exitCode === 0 ? 'passed_and_cleaned' : 'failed_or_cleanup_incomplete'; ledger.state.failure = failure ?? null;
@@ -283,4 +283,4 @@ export async function main(argv = process.argv.slice(2), { log = console.log, en
       gitTransportConfig: options.gitTransportConfig, gitTransportLoader, env, fetchImpl, oauthTokenProvider, bridgeFactory, log });
   } catch (error) { log(`A-S1 BLOCKED: ${safeFailure(error)}. Live mode requires a reviewed, unexpired plan, exact run ID and persistent ledger directory.`); return 2; }
 }
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) process.exitCode = await main();
+if (isMain(import.meta.url)) process.exitCode = await main();

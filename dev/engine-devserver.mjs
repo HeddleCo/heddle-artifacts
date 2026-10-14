@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from '../cli/ha.mjs';
 import { emptyState, executeFixture } from './stub-engine.mjs';
 const commands = new Set(['restore', 'loaded', 'snapshot', 'init', 'task.create', 'agent.enroll', 'lane.open', 'ingest', 'tests.record', 'combine', 'candidates', 'captures', 'diff', 'discuss', 'decide', 'publish', 'why', 'decision.validate', 'selftest']);
 export async function startEngineDevserver({ port = Number(process.env.ENGINE_DEV_PORT ?? 8789), engine = process.env.ENGINE_SCRIPT ?? resolve('engine/engine.mjs'), root = process.env.ENGINE_STATE_ROOT ?? '/home/scratch/heddle-engine-dev', stub = process.env.ENGINE_STUB === '1' } = {}) {
@@ -48,4 +48,4 @@ export async function startEngineDevserver({ port = Number(process.env.ENGINE_DE
   await new Promise(r => server.listen(port, '127.0.0.1', r));
   return { server, origin: `http://127.0.0.1:${server.address().port}`, close: () => new Promise(r => { server.close(r); server.closeAllConnections(); }) };
 }
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) { const { origin } = await startEngineDevserver(); console.log(`engine-devserver listening ${origin}; fixture=${process.env.ENGINE_STUB === '1'}`); }
+if (isMain(import.meta.url)) { const { origin } = await startEngineDevserver(); console.log(`engine-devserver listening ${origin}; fixture=${process.env.ENGINE_STUB === '1'}`); }

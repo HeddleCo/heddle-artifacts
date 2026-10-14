@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { isMain } from '../../cli/ha.mjs';
 import { FakeArtifacts } from './binding.mjs';
 
 export async function startFakeArtifacts({ root = process.env.FAKE_ARTIFACTS_ROOT ?? '/home/scratch/heddle-fake-artifacts', port = Number(process.env.FAKE_ARTIFACTS_PORT ?? 8788), eventUrl = process.env.EVENT_URL, now, advertiseAtomic = true } = {}) {
@@ -47,6 +47,6 @@ export async function startFakeArtifacts({ root = process.env.FAKE_ARTIFACTS_ROO
   binding.origin = `http://127.0.0.1:${server.address().port}`;
   return { binding, server, origin: binding.origin, close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (isMain(import.meta.url)) {
   const { origin } = await startFakeArtifacts(); console.log(`fake-artifacts listening ${origin}`);
 }
