@@ -41,17 +41,23 @@ The public `demo` project on the live app is read-only:
 One command starts the real stack locally: the Heddle engine, a git server standing in for Artifacts, the Worker and
 the UI. You bring a repository and your own agents; nothing here is a canned example.
 
-Needs Node 22+, Git, `tar`, `zstd`, and the Heddle 0.31.1 CLI (the command checks and tells you exactly what is
-missing; it never installs or builds Heddle for you, though it builds the UI itself the first time and whenever the UI sources are newer than the build). Installing Heddle needs Rust and takes several minutes:
+Needs Node 22+, Git, `tar`, `zstd`, a Rust toolchain, and the Heddle 0.31.1 CLI (the command checks and tells you exactly what is
+missing; it never installs or builds Heddle for you, though it builds the UI itself the first time and whenever the UI sources are newer than the build).
+On Debian/Ubuntu: `sudo apt-get install zstd`; on macOS: `brew install zstd`. Rust comes from <https://rustup.rs> (then `rustup default stable`).
+
+Installing Heddle compiles it from source. The final link peaks at about 6 GB of memory, so have about 8 GB free (or swap)
+and allow about 20 minutes. `CARGO_BUILD_JOBS=2` keeps the earlier steps from piling on top of that:
 
 ```sh
-cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec40276510d2723a1572bdea0e9640e66e33 heddle-cli
+CARGO_BUILD_JOBS=2 cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec40276510d2723a1572bdea0e9640e66e33 heddle-cli
 git clone https://github.com/HeddleCo/heddle-artifacts.git && cd heddle-artifacts
 npm ci && npm ci --prefix ui
 node cli/up.mjs local
 ```
 
-It prints a URL and where your operator token is stored (`cat` that file to sign in). Then, in the app:
+It prints a URL and where your operator token is stored (`cat` that file to sign in).
+A local stack starts empty: the `demo` project and `/p/demo` exist only on the hosted app. For the same sample locally,
+pick **The sample project** in step 1, name it `demo`, and add a task such as `parser-escapes` in step 2. Then, in the app:
 
 1. **Create a project**: from a public repository address, or the small sample project. Add a test command if it is
    not `npm test` (npm, npx and node only).
@@ -67,6 +73,10 @@ candidates' results. Use this only for your own agents' work, never for code you
 own Cloudflare account tests in a keyless Sandbox instead; see (d).) Up to two candidates are tested at a time; the rest
 wait their turn. State lives in `~/.heddle-artifacts/local` (`--state DIR` to change, `--port N` to pin the port); Ctrl-C
 stops everything, at any point.
+
+Two `cli/ha.mjs` details: `node cli/ha.mjs why <sha>` needs the full 40-character commit SHA, and `join` also takes
+`--provider` and `--model` (for example `--provider anthropic --model claude-code`); without them the Why page lists the agent as
+`unknown / unknown`.
 
 ### (c) Preview the UI only (canned data)
 
