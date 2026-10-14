@@ -3,7 +3,7 @@ import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Agent, Candidate, Decision, FeedEvent, Lane, Turn } from '../../contracts/types';
 import { ApiError, diff, projectPath, request, taskPath } from './api';
-import type { ProjectView, TaskView, WhyView } from './api';
+import type { ProjectView, Task, TaskView, WhyView } from './api';
 import { updateBoard, updateTask } from './feed';
 import { publicationEvidence } from './verification';
 import { isPublished, decisionRequest, conflictMessage, combinedBlock, combinedText } from './decision';
@@ -61,7 +61,37 @@ function Header({ p, live }: { p?: string; live?: string }) {
 function PageTitle({ eyebrow, title, children }: { eyebrow: string; title: string; children?: preact.ComponentChildren }) {
   return <div class="page-title"><p class="eyebrow">{eyebrow}</p><h1>{title}</h1>{children}</div>;
 }
+const views = ['Needs a decision', 'In progress', 'Landed', 'All tasks'] as const;
+type BoardFilter = typeof views[number];
+function taskGroup(task: Pick<Task, 'candidates' | 'decision'>): BoardFilter {
+  return isPublished(task.decision) ? 'Landed' : task.decision || task.candidates.length ? 'Needs a decision' : 'In progress';
+}
+function TaskIcon() {
+  return <span class="task-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>;
+}
+function Facts({ rows }: { rows: [string, preact.ComponentChildren][] }) {
+  return <dl class="facts">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
+}
+function RepositoryLink({ remote }: { remote?: string }) {
+  // Metadata can contain an arbitrary remote; only navigate to ordinary HTTPS URLs.
+  try { const url = new URL(remote || ''); if (url.protocol === 'https:' && !url.username && !url.password) return <a href={url.href} title={remote}>Canonical repo ↗</a>; } catch { /* No link until metadata is available. */ }
+  return <span class="muted">Unavailable</span>;
+}
+function TaskTabs({ ready }: { ready: boolean }) {
+  const sections = ['Candidates', 'Captures', 'Discussion', 'Context'];
+  const [active, setActive] = useState('candidates');
+  useEffect(() => {
+    const sync = () => { const id = location.hash.slice(1); setActive(sections.some(s => s.toLowerCase() === id) ? id : 'candidates'); };
+    sync(); window.addEventListener('hashchange', sync);
+    // The task arrives after the browser's initial fragment scroll.
+    if (ready && location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+    return () => window.removeEventListener('hashchange', sync);
+  }, [ready]);
+  return <nav class="task-tabs" aria-label="Task sections">{sections.map(section => <a key={section} href={`#${section.toLowerCase()}`} aria-current={active === section.toLowerCase() ? 'location' : undefined} onClick={() => setActive(section.toLowerCase())}>{section}</a>)}</nav>;
+}
+type Activity = { task: string; agent: string; sha: string; kind: 'Push received' | 'Captured'; at: string };
 function Board({ p }: { p: string }) {
+  const [filter, setFilter] = useState<BoardFilter>('All tasks'), [activity, setActivity] = useState<Activity[]>([]);
   const [view, setView] = useState<ProjectView>(), [error, setError] = useState(''), [pulse, setPulse] = useState<Record<string, number>>({}), [refreshing, setRefreshing] = useState(false);
   const version = useRef(0), loading = useRef(false), reloadRequested = useRef(false), pending = useRef<FeedEvent[]>([]);
   const load = async () => {
@@ -71,25 +101,34 @@ function Board({ p }: { p: string }) {
     catch(e) { if (n === version.current) setError(message(e)); }
     finally { if (n === version.current) { loading.current = false; setRefreshing(false); pending.current = []; if (reloadRequested.current) { reloadRequested.current = false; void load(); } } }
   };
-  useEffect(() => { setView(undefined); setError(''); setPulse({}); void load();
+  useEffect(() => { setView(undefined); setError(''); setPulse({}); setFilter('All tasks'); setActivity([]); void load();
     return () => { version.current++; loading.current = false; reloadRequested.current = false; pending.current = []; };
   }, [p]);
   const live = useFeed(p, event => {
     if (loading.current) pending.current.push(event); // Replay events that arrived after the snapshot request began.
     setView(v => v && updateBoard(v, event));
     if (event.type === 'push.received') setPulse(v => ({ ...v, [`${event.task}/${event.agent}`]: Date.now() }));
+    if (event.type === 'push.received' || event.type === 'candidate.ready') {
+      const item: Activity = event.type === 'push.received' ? { task: event.task, agent: event.agent, sha: event.sha, kind: 'Push received', at: new Date().toISOString() } : { task: event.candidate.task, agent: event.candidate.agent, sha: event.candidate.sourceSha, kind: 'Captured', at: event.candidate.capturedAt };
+      setActivity(items => [item, ...items.filter(i => !(i.task === item.task && i.agent === item.agent && i.sha === item.sha))].slice(0, 6));
+    }
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Refresh to check progress.`);
   }, () => { if (loading.current) reloadRequested.current = true; else void load(); });
   const agents = new Map(view?.agents.map(a => [a.id, a]));
   const ready = view?.tasks.reduce((n, t) => n + t.candidates.length, 0) || 0;
-  return <><Header p={p} live={live}/><main><PageTitle eyebrow={`PROJECT / ${p}`} title="Tasks"><p>Each agent pushes to its own fork. Its latest push shows here as a candidate.</p></PageTitle>
+  const counts = (name: BoardFilter) => view?.tasks.filter(task => name === 'All tasks' || taskGroup(task) === name).length || 0;
+  const recent = activity.length ? activity : (view?.tasks.flatMap(task => task.candidates.map(c => ({ task: task.slug, agent: c.agent, sha: c.sourceSha, kind: 'Captured' as const, at: c.capturedAt }))) || []).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 6);
+  return <><Header p={p} live={live}/><main class="app-shell dashboard">
+    <aside class="rail-card left-rail" aria-label="Views"><h2 class="rail-title">Views</h2><nav class="view-list" aria-label="Task views">{views.map(name => <button class="view-row" key={name} aria-pressed={filter === name} onClick={() => setFilter(name)}><span>{name}</span><span class="count">{counts(name)}</span></button>)}</nav><p class="rail-note">Each agent works in its own lane. You decide what lands.</p></aside>
+    <div class="page-centre"><div class="page-title"><p class="date-line">{new Date().toLocaleDateString('en', { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>{p}</h1><p class="path-line"><code>artifacts / {p}</code></p><p class="intent">Each agent pushes to its own fork. Its latest push shows here as a candidate.</p></div>
     {error && <ErrorNotice text={error}/>}
     <div class="toolbar"><span>{view?.tasks.length || 0} tasks <span class="separator">/</span> {view?.agents.filter(a => a.kind === 'agent').length || 0} agents <span class="separator">/</span> {ready} candidates</span><button class="quiet" disabled={refreshing} onClick={load}>{refreshing ? 'Refreshing…' : 'Refresh board'}</button></div>
-    {!view ? <p role="status">Loading project…</p> : <div class="board">{view.tasks.map(task => <section class="task-column" key={task.slug} aria-label={task.slug}>
-      <div class="column-heading"><span class="eyebrow">{isPublished(task.decision) ? 'LANDED' : task.decision ? 'PUBLICATION PENDING' : task.candidates.some(c => c.conflicts.length) ? 'NEEDS A DECISION' : 'IN PROGRESS'}</span><span>{plural(task.lanes.filter(l => agents.get(l.agent)?.kind !== 'reviewer').length, 'lane')}</span></div>
-      <h2><a href={link(p, task.slug)}>{task.slug}</a></h2><p class="intent">{task.intent}</p>
+    {!view ? <p role="status">Loading project…</p> : <div class="board">{views.filter(name => name !== 'All tasks' && (filter === 'All tasks' || filter === name)).map(group => <section class="task-group" key={group} aria-label={`${group} tasks`}><h2>{group} <span class="count">{counts(group)}</span></h2>
+    {view.tasks.filter(task => taskGroup(task) === group).map(task => <section class={`task-column ${group === 'Needs a decision' ? 'needs-decision' : ''}`} key={task.slug} aria-label={task.slug}>
+      <div class="task-row-heading"><TaskIcon/><div><h3><a href={link(p, task.slug)}>{task.slug}</a></h3><p class="intent">{task.intent}</p></div><span class="task-status">{task.decision && !isPublished(task.decision) ? 'PUBLICATION PENDING' : group === 'Needs a decision' ? 'Awaiting your choice' : group === 'Landed' ? 'Landed on main' : 'Agents working'}</span></div>
+      <div class="column-heading"><span>{plural(task.lanes.filter(l => agents.get(l.agent)?.kind !== 'reviewer').length, 'lane')}</span></div>
       {task.lanes.filter(l => agents.get(l.agent)?.kind === 'reviewer').map(l => <p class="reviewed-by" key={`reviewer/${l.agent}`}>Reviewed by <span class="tag">{agents.get(l.agent)?.model || l.agent}</span></p>)}
-      {task.lanes.filter(l => agents.get(l.agent)?.kind !== 'reviewer').map(lane => {
+      <div class="lanes">{task.lanes.filter(l => agents.get(l.agent)?.kind !== 'reviewer').map(lane => {
         const agent = agents.get(lane.agent), candidate = task.candidates.find(c => c.agent === lane.agent);
         return <article class="lane-card" key={`${lane.agent}/${pulse[`${task.slug}/${lane.agent}`] || 0}`} data-testid={`lane-${lane.agent}`} data-push={pulse[`${task.slug}/${lane.agent}`] ? 'received' : 'idle'}>
           <div class={`push-pulse ${pulse[`${task.slug}/${lane.agent}`] ? 'pulsing' : ''}`}><span class="avatar">{lane.agent.slice(0, 1).toUpperCase()}</span><div><h3>{agent?.displayName || lane.agent}</h3><p class="muted">{agent?.provider || 'agent'} / {agent?.model || 'unspecified'}</p></div></div>
@@ -100,12 +139,16 @@ function Board({ p }: { p: string }) {
           <p class="sha">Last push <code>{lane.lastSeenSha ? short(lane.lastSeenSha) : 'Waiting for a push'}</code></p>
           {candidate && <><p class="subject">{candidate.subject}</p><div class="card-footer"><span class={candidate.conflicts.length ? 'conflict-text' : 'success-text'}>{candidate.conflicts.length ? `⚑ ${candidate.conflicts.length} conflict region` : '✓ Clean candidate'}</span><span>+{candidate.diffstat.insertions} −{candidate.diffstat.deletions}</span></div></>}
         </article>;
-      })}
+      })}</div>
       <a class="button compare-link" href={link(p, task.slug)}>{isPublished(task.decision) ? 'View decision' : task.decision ? 'Retry publication' : 'Compare candidates'} <span aria-hidden="true">→</span></a>
       {task.decision && isPublished(task.decision) && <a class="why-link" href={whyLink(p, task.decision.mainSha)}>Why {short(task.decision.mainSha)} landed →</a>}
-    </section>)}</div>}
+    </section>)}{!counts(group) && <p class="empty-state">{group === 'Needs a decision' ? 'Nothing needs a decision right now.' : `No ${group.toLowerCase()} tasks.`}</p>}</section>)}</div>}
     {view && !view.tasks.length && <p>No tasks yet. Create a task through the project API.</p>}
-    <footer>Artifacts holds the Git. Heddle holds the decisions.</footer></main></>;
+    <footer>Artifacts holds the Git. Heddle holds the decisions.</footer></div>
+    <aside class="rail-card right-rail" aria-label="Project activity and facts"><section><h2 class="rail-title">Live</h2>{!recent.length ? <p class="muted">Nothing moving right now.</p> : <ol class="activity-list">{recent.map(item => <li key={`${item.task}/${item.agent}/${item.sha}`}><span class="activity-dot" aria-hidden="true"/><div><a href={link(p, item.task)}>{item.agent} <span class="muted">· {item.kind}</span></a><p class="activity-path"><code>{item.task}</code></p><p class="muted"><code>{short(item.sha)}</code> · <time dateTime={item.at}>{new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></p></div></li>)}</ol>}</section>
+    <section><h2 class="rail-title">About</h2><Facts rows={[
+      ['Project', p], ['Agents', view?.agents.filter(a => a.kind === 'agent').length || 0], ['Tasks', view?.tasks.length || 0], ['Candidates', ready], ['Repository', <RepositoryLink remote={typeof view?.project === 'object' ? view.project.canonicalRemote : undefined}/>]
+    ]}/></section></aside></main></>;
 }
 function Diff({ p, t, candidate }: { p: string; t: string; candidate: Candidate }) {
   const [text, setText] = useState('Loading diff…'), [error, setError] = useState(''), [retry, setRetry] = useState(0);
@@ -126,7 +169,7 @@ function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; tur
     try { const turn = await request<Turn>(`${taskPath(p, t)}/turns`, { body: body.trim(), as: author, ...(replyTo ? { replyTo } : {}) }); if (n === lifecycle.current) { onTurn(turn); setBody(''); setReplyTo(''); } }
     catch(e) { if (n === lifecycle.current) setError(message(e)); } finally { if (n === lifecycle.current) { sending.current = false; setBusy(false); } }
   };
-  return <section class="panel discussion"><h2>Discussion <span class="count">{turns.length}</span></h2>
+  return <section id="discussion" class="panel discussion"><h2>Discussion <span class="count">{turns.length}</span></h2>
     {turns.length ? turns.map(turn => <article class="turn" key={turn.id}><div class="turn-heading"><strong>{turn.author}</strong><span class="muted">{turn.kind} · <time dateTime={turn.at}>{new Date(turn.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></span></div>{(() => { const review = turn.kind === 'reviewer' ? parseReview(turn.body) : undefined; return review ? <ReviewBody review={review}/> : <RichText text={turn.body}/>; })()}<Signature signedBy={turn.signedBy}/>{turn.replyTo && <p class="muted">Reply to {turn.replyTo}</p>}<button class="quiet small" disabled={busy} onClick={() => setReplyTo(turn.id)}>Reply to {turn.author}</button></article>) : <p class="muted">No discussion yet. Add the context that should travel with the code.</p>}
     <form onSubmit={submit}><label>Speak as<select disabled={busy} value={author} onChange={e => setAs(e.currentTarget.value)} required><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
       <label>Your reply<textarea disabled={busy} required maxLength={10000} value={body} onInput={e => setBody(e.currentTarget.value)} placeholder="What should the team consider?"/></label>
@@ -136,7 +179,7 @@ function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; tur
     </form></section>;
 }
 function Compare({ p, t }: { p: string; t: string }) {
-  const [captureRefresh, setCaptureRefresh] = useState(0);
+  const [captureRefresh, setCaptureRefresh] = useState(0), [project, setProject] = useState<ProjectView>();
   const [view, setView] = useState<TaskView>(), [agents, setAgents] = useState<Agent[]>([]), [lanes, setLanes] = useState<Lane[]>([]), [error, setError] = useState('');
   const [pick, setPick] = useState(''), [rationale, setRationale] = useState(''), [anchor, setAnchor] = useState(''), [tags, setTags] = useState(''), [decider, setDecider] = useState(''), [busy, setBusy] = useState(false), [changed, setChanged] = useState(false), [reviewing, setReviewing] = useState(false);
   const sending = useRef(false), version = useRef(0), hydrated = useRef(false), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
@@ -146,12 +189,12 @@ function Compare({ p, t }: { p: string; t: string }) {
     if (loading.current) return;
     const n = ++version.current, epoch = connectionEpoch.current; setReviewing(true); loading.current = true; pending.current = [];
     try { const [task, project] = await Promise.all([request<TaskView>(taskPath(p, t)), request<ProjectView>(projectPath(p))]);
-      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setLanes(project.tasks.find(x => x.slug === t)?.lanes ?? []); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current); if (reviewAgain) setPick(''); } hydrated.current = true; }
+      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setProject(project); setLanes(project.tasks.find(x => x.slug === t)?.lanes ?? []); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current); if (reviewAgain) setPick(''); } hydrated.current = true; }
     } catch(e) { if (n === version.current) setError(message(e)); } finally { if (n === version.current) { setReviewing(false); loading.current = false; pending.current = []; if (reloadRequested.current) { reloadRequested.current = false; void load(true); } } }
   };
   useEffect(() => {
     if (previousProject.current !== p) { feedAvailable.current = false; previousProject.current = p; }
-    setView(undefined); setAgents([]); setError(''); setPick(''); setRationale(''); setAnchor(''); setTags(''); setDecider(''); setBusy(false); setChanged(false);
+    setView(undefined); setProject(undefined); setAgents([]); setError(''); setPick(''); setRationale(''); setAnchor(''); setTags(''); setDecider(''); setBusy(false); setChanged(false);
     hydrated.current = false; sending.current = false; stale.current = true; void load();
     return () => { version.current++; lifecycle.current++; loading.current = false; reloadRequested.current = false; pending.current = []; };
   }, [p, t]);
@@ -161,6 +204,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     if (event.type === 'candidate.ready' && event.candidate.task === t) invalidate();
     if (event.type === 'decision.landed' && event.decision.task === t) stale.current = true;
     setView(v => v && updateTask(v, event));
+    setProject(v => v && updateBoard(v, event));
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Review current candidates before retrying.`);
   }, reconnected => {
     feedAvailable.current = true;
@@ -190,26 +234,42 @@ function Compare({ p, t }: { p: string; t: string }) {
   };
   const regions = new Map<string, Set<string>>();
   for (const c of view?.candidates || []) for (const region of c.conflicts) { const key = `${region.path}${region.region ? `:${region.region}` : ''}`; regions.set(key, new Set([...(regions.get(key) || []), c.agent, ...region.with])); }
-  return <><Header p={p} live={live}/><main><a class="breadcrumb" href={link(p)}>← {p} / board</a><PageTitle eyebrow="COMPARE & DECIDE" title={t}><p>{view?.task.intent || 'Loading task…'}</p></PageTitle>
+  const base = view?.task.baseSha || view?.candidates[0]?.parentSha;
+  return <><Header p={p} live={live}/><main class="app-shell spool">
+    <aside class="rail-card left-rail" aria-label="Project tasks"><h2 class="rail-title">Tasks</h2><a class="tree-project" href={link(p)}>{p}<span class="count">{project?.tasks.length || 0}</span></a><nav class="task-tree" aria-label="Tasks">{project?.tasks.map(task => <a key={task.slug} href={link(p, task.slug)} aria-current={task.slug === t ? 'page' : undefined}><span class="tree-label">{task.slug}<span class={`tree-status ${taskGroup(task) === 'Landed' ? 'success-text' : ''}`} aria-hidden="true">{taskGroup(task) === 'Landed' ? '✓' : taskGroup(task) === 'Needs a decision' ? '◌' : '·'}</span></span><span class="muted">{taskGroup(task)}</span></a>)}</nav><a class="rail-back" href={link(p)}>← Back to dashboard</a></aside>
+    <div class="page-centre"><div class="page-title"><h1>{t}</h1><p class="path-line"><code>{view?.task.thread || `${p} / ${t}`} <span class="separator">/</span> base {base ? short(base) : 'awaiting capture'}</code></p><p class="intent">{view?.task.intent || 'Loading task…'}</p></div>
+    <TaskTabs ready={!!view}/><a class="mobile-decision-link" href="#decision">Go to decision ↓</a>
     {error && <ErrorNotice text={error}/>}
     {changed && <div class="notice warning" role="status">Review the latest task state before continuing. <button class="quiet" disabled={reviewing} onClick={() => load(true)}>{view?.decision ? 'Refresh recorded decision' : 'Review current candidates'}</button></div>}
     {view?.decision && <DecisionNotice project={p} decision={view.decision}/>}
     {!!regions.size && <section class="conflict-banner" aria-label="Conflict regions"><strong>⚑ Overlapping work, preserved as alternatives</strong>{[...regions].map(([region, ids]) => <p><code>{region}</code><span>{[...ids].join(' ↔ ')}</span></p>)}</section>}
-    <div class="compare-layout"><div class="compare-main">
+    <div class="compare-main"><section id="candidates" class="candidates-section" aria-label="Candidates"><h2 class="section-title">Candidates <span class="count">{view?.candidates.length || 0}</span></h2>
     <div class="candidate-grid" style={{'--candidate-count': Math.min(view?.candidates.length || 1, 3)}}>{view?.candidates.map(candidate => { const agent = agents.find(a => a.id === candidate.agent); return <section class="candidate panel" key={candidate.agent} aria-label={`${candidate.agent} candidate`}>
       <div class="candidate-heading"><div><p class="eyebrow">CANDIDATE / {candidate.agent}</p><h2>{agent?.displayName || candidate.agent}</h2></div><Badge candidate={candidate}/></div>
-      <p class="muted">{agent?.provider || 'unknown provider'} / {agent?.model || 'unspecified model'}</p><Signature signedBy={candidate.signedBy} agent={agent}/>
+      <p class="muted">{agent?.provider || 'unknown provider'} / {agent?.model || 'unspecified model'}</p>
       <p class="candidate-stats"><code title={candidate.sourceSha}>{short(candidate.sourceSha)}</code><span>{candidate.diffstat.files} file · <b class="success-text">+{candidate.diffstat.insertions}</b> <b class="error-text">−{candidate.diffstat.deletions}</b></span></p>
       <p class="subject">{candidate.subject}</p>{candidate.tests && <p class="test-summary">{candidate.tests.summary} · {candidate.tests.durationMs} ms</p>}
       {candidate.conflicts.map(region => <p class="conflict-tag">⚑ <code>{region.path}{region.region ? `:${region.region}` : ''}</code> · with {region.with.join(', ')}</p>)}
       <CombinedPanel candidate={candidate}/>
-      <Diff p={p} t={t} candidate={candidate}/></section>; })}</div>
+      <Diff p={p} t={t} candidate={candidate}/><Signature signedBy={candidate.signedBy} agent={agent}/></section>; })}</div>
     {view && !view.candidates.length && <p class="notice">Waiting for candidate captures. This page updates live.</p>}
+  {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p><InlineText text={view.review.summary}/></p>{view.review.recommendation && <p class="muted"><InlineText text={view.review.recommendation.why}/></p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p><InlineText text={c.notes}/></p></li>)}</ul></section>}
+    </section>
     {view && <Captures key={`captures/${p}/${t}`} p={p} t={t} agents={agents} lanes={lanes} refresh={captureRefresh}/>}
     {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
-    </div>
-    {view && <aside class="rail" aria-label="Decision">
-      <section class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">Your reason is saved with the decision on main.</p>
+      {view && <section id="context" class="panel context-supplied" aria-label="Context supplied"><h2>Context supplied</h2>
+        <p class="muted">{lanes.some(l => l.briefing?.annotations.length) ? "Heddle briefed each agent with earlier decisions on this code before it started." : "No earlier decisions were supplied to these lanes."}</p>
+        {lanes.some(l => l.unbriefed) && <p class="muted control-note">Not briefed, as a control: {lanes.filter(l => l.unbriefed).map(l => l.agent).join(', ')}.</p>}
+        {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
+          <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span>{a.tags?.map(tag => <span class="tag" key={tag}>{tag}</span>)}<span class="verdict-notes">“{a.content}”</span><span class="muted">— {displayName(a.attribution)}</span></li>)}</ul></div>)}
+      </section>}
+    </div></div>
+    <aside class="rail-card right-rail rail" aria-label="Decision"><section class="task-facts"><h2 class="rail-title">About</h2><Facts rows={[
+      ['Status', view ? taskGroup(view) : 'Loading…'], ['Base', base ? <code title={base}>{short(base)}</code> : 'Awaiting capture'], ['Candidates', view?.candidates.length || 0], ['Tests', `${view?.candidates.filter(c => c.tests?.status === 'pass').length || 0} / ${view?.candidates.length || 0} passing`]
+    ]}/></section>
+    {view && <>
+
+      <section id="decision" class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">Your reason is saved with the decision on main.</p>
         <form onSubmit={submit}><fieldset disabled={busy || !!view.decision || changed || reviewing}><legend>Candidate to land</legend>{view.candidates.map(c => <label class="radio-choice"><input type="radio" name="pick" value={c.agent} required checked={(view.decision?.pick ?? pick) === c.agent} onChange={() => setPick(c.agent)}/><span>{c.agent}</span><Badge candidate={c}/></label>)}
           <label>Decide as<select required value={view.decision?.decider ?? who} onChange={e => setDecider(e.currentTarget.value)}><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
           <label>Why this candidate?<textarea required maxLength={10000} value={view.decision?.rationale ?? rationale} onInput={e => setRationale(e.currentTarget.value)} placeholder="Explain the tradeoff. This becomes part of the Git history."/></label>
@@ -221,16 +281,9 @@ function Compare({ p, t }: { p: string; t: string }) {
             : picked?.combined?.status === 'pass' ? <p class="muted combined-note">{picked.agent} lands as Heddle's merge with main, the exact result that passed its tests.</p> : null; })()}
         {!humans.length && <p class="muted">Enroll a human identity through the project API to decide.</p>}
       </section>
-      {lanes.some(l => l.briefing?.annotations.length) && <section class="panel context-supplied" aria-label="Context supplied"><p class="eyebrow">CONTEXT SUPPLIED</p>
-        <p class="muted">Heddle briefed each agent with earlier decisions on this code before it started.</p>
-        {lanes.some(l => l.unbriefed) && <p class="muted control-note">Not briefed, as a control: {lanes.filter(l => l.unbriefed).map(l => l.agent).join(', ')}.</p>}
-        {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
-          <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span>{a.tags?.map(tag => <span class="tag" key={tag}>{tag}</span>)}<span class="verdict-notes">“{a.content}”</span><span class="muted">— {displayName(a.attribution)}</span></li>)}</ul></div>)}
-      </section>}
       {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}
         {view.candidates.filter(c => c.combined).map(c => { const line = combinedText(c)!; return <li class={`check combined ${line.tone}`}><span class="check-mark" aria-hidden="true">{line.text.slice(0, 1)}</span><strong>{c.agent} + main</strong><span class="check-detail">{line.text.slice(2)}</span></li>; })}</ul></section>}
-  {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p><InlineText text={view.review.summary}/></p>{view.review.recommendation && <p class="muted"><InlineText text={view.review.recommendation.why}/></p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p><InlineText text={c.notes}/></p></li>)}</ul></section>}
-    </aside>}</div>
+    </>}</aside>
   </main></>;
 }
 function Verification({ view, sha, proof }: { view?: WhyView; sha: string; proof: string }) {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Agent, Lane, Candidate, Turn, Review, Decision } from '../../contracts/types';
 // These are §7.2 response envelopes; §7.1 defines their nested domain types.
-export interface Task { slug: string; intent: string; status: string; lanes: Lane[]; candidates: Candidate[]; decision?: Decision }
+export interface Task { slug: string; intent: string; status: string; thread?: string; baseSha?: string; lanes: Lane[]; candidates: Candidate[]; decision?: Decision }
 export interface ProjectView { project: { id: string; canonicalRemote?: string } | string; agents: Agent[]; tasks: Task[] }
-export interface TaskView { task: Pick<Task, 'slug' | 'intent' | 'status'>; candidates: Candidate[]; turns: Turn[]; review?: Review; decision?: Decision; heads: string[] }
+export interface TaskView { task: Pick<Task, 'slug' | 'intent' | 'status' | 'thread' | 'baseSha'>; candidates: Candidate[]; turns: Turn[]; review?: Review; decision?: Decision; heads: string[] }
 export interface PublicationVerification { sha: string; exportRoundTrip: boolean; treeMatch: boolean; fsck: boolean; checkedAt: string }
 export interface WhyView { sha: string; narrative: string; decision?: Decision; candidate?: Candidate; verify?: PublicationVerification }
 export class ApiError extends Error { constructor(public status: number, public code?: string) { super(status === 403 || status === 401 ? 'Access denied. Sign in with an operator session.' : code === 'invalid_anchor' ? 'Point this reason at a file in the tree being landed, optionally followed by :symbol (a plain identifier).' : code === 'invalid_tags' ? 'Use at most 8 tags, each 1–64 characters of A–Z, a–z, 0–9, _ . : / -.' : `Request failed (${status}). Try again.`); } }
