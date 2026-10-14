@@ -56,10 +56,20 @@ test('board: repeated refresh is single-flight and retains buffered events', asy
   gate.resolve(Response.json(project())); await Promise.all([first, second]); await flush(root);
   assert.equal(count, 1); assert.match(textOf(root.tree), /Fresh buffered candidate/);
 });
+for (const failureBeforeRead of [true, false]) test(`compare: read-only feed never opens (${failureBeforeRead ? 'before' : 'after'} snapshot)`, async () => {
+  root = mount(Compare, { p: 'demo', t: 'parser-escapes' });
+  if (!failureBeforeRead) await flush(root);
+  FakeSocket.all[0].error(); FakeSocket.all[0].disconnect(); await flush(root);
+  assert.equal(nodes(root.tree, n => n.props?.class === 'notice warning').length, 0);
+  assert.equal(nodes(root.tree, n => n.props?.id === 'decision').length, 1);
+  const submit = choose(); await submit(submitEvent()); assert.equal(posts().length, 0);
+  assert.equal(button(root, 'Land candidate →').props.disabled, true);
+});
 test('compare: disconnect blocks even a pre-render submit', async () => {
   await compare(); const submit = choose(); FakeSocket.all[0].disconnect();
   await submit(submitEvent()); assert.equal(posts().length, 0);
   root.render(); assert.equal(button(root, 'Land candidate →').props.disabled, true);
+  assert.match(textOf(one(root, n => n.props?.class === 'notice warning')), /Review the latest task state before continuing/);
 });
 test('compare: candidate arrival invalidates same-turn selection', async () => {
   await compare(); const submit = choose();

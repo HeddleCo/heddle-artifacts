@@ -183,17 +183,18 @@ function Compare({ p, t }: { p: string; t: string }) {
   const [view, setView] = useState<TaskView>(), [agents, setAgents] = useState<Agent[]>([]), [lanes, setLanes] = useState<Lane[]>([]), [error, setError] = useState('');
   const [pick, setPick] = useState(''), [rationale, setRationale] = useState(''), [anchor, setAnchor] = useState(''), [tags, setTags] = useState(''), [decider, setDecider] = useState(''), [busy, setBusy] = useState(false), [changed, setChanged] = useState(false), [reviewing, setReviewing] = useState(false);
   const sending = useRef(false), version = useRef(0), hydrated = useRef(false), loading = useRef(false), pending = useRef<FeedEvent[]>([]);
+  // No subscription still blocks decisions; a positive epoch records a previously opened feed's loss.
   const stale = useRef(false), feedAvailable = useRef(false), connectionEpoch = useRef(0), reloadRequested = useRef(false), previousProject = useRef(p), lifecycle = useRef(0);
   const invalidate = () => { stale.current = true; setChanged(true); };
   const load = async (reviewAgain = false) => {
     if (loading.current) return;
     const n = ++version.current, epoch = connectionEpoch.current; setReviewing(true); loading.current = true; pending.current = [];
     try { const [task, project] = await Promise.all([request<TaskView>(taskPath(p, t)), request<ProjectView>(projectPath(p))]);
-      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setProject(pending.current.reduce(updateBoard, project)); setLanes(project.tasks.find(x => x.slug === t)?.lanes ?? []); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current); if (reviewAgain) setPick(''); } hydrated.current = true; }
+      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setProject(pending.current.reduce(updateBoard, project)); setLanes(project.tasks.find(x => x.slug === t)?.lanes ?? []); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current && (feedAvailable.current || connectionEpoch.current > 0)); if (reviewAgain) setPick(''); } hydrated.current = true; }
     } catch(e) { if (n === version.current) setError(message(e)); } finally { if (n === version.current) { setReviewing(false); loading.current = false; pending.current = []; if (reloadRequested.current) { reloadRequested.current = false; void load(true); } } }
   };
   useEffect(() => {
-    if (previousProject.current !== p) { feedAvailable.current = false; previousProject.current = p; }
+    if (previousProject.current !== p) { feedAvailable.current = false; connectionEpoch.current = 0; previousProject.current = p; }
     setView(undefined); setProject(undefined); setAgents([]); setError(''); setPick(''); setRationale(''); setAnchor(''); setTags(''); setDecider(''); setBusy(false); setChanged(false);
     hydrated.current = false; sending.current = false; stale.current = true; void load();
     return () => { version.current++; lifecycle.current++; loading.current = false; reloadRequested.current = false; pending.current = []; };
@@ -214,7 +215,7 @@ function Compare({ p, t }: { p: string; t: string }) {
       if (loading.current) reloadRequested.current = true; else { invalidate(); void load(true); }
     }
   },
-  () => { feedAvailable.current = false; connectionEpoch.current++; invalidate(); });
+  () => { if (!feedAvailable.current) return; feedAvailable.current = false; connectionEpoch.current++; invalidate(); });
   const humans = agents.filter(a => a.kind === 'human'), who = decider || humans[0]?.id || '';
   const submit = async (e: Event) => { e.preventDefault(); if (!view || sending.current || busy || stale.current || loading.current || changed || reviewing) return;
     const body = decisionRequest(view, { pick, rationale, decider: who, ...(anchor.trim() ? { anchor: anchor.trim() } : {}), ...(tags.trim() ? { tags: tags.split(',').map(t => t.trim()) } : {}) }); if (!body) return; const n = lifecycle.current; sending.current = true; setBusy(true); setError('');
@@ -271,12 +272,12 @@ function Compare({ p, t }: { p: string; t: string }) {
     {view && <>
 
       <section id="decision" tabIndex={-1} class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">Your reason is saved with the decision on main.</p>
-        <form onSubmit={submit}><fieldset disabled={busy || !!view.decision || changed || reviewing}><legend>Candidate to land</legend>{view.candidates.map(c => <label class="radio-choice"><input type="radio" name="pick" value={c.agent} required checked={(view.decision?.pick ?? pick) === c.agent} onChange={() => setPick(c.agent)}/><span>{c.agent}</span><Badge candidate={c}/></label>)}
+        <form onSubmit={submit}><fieldset disabled={busy || !!view.decision || stale.current || changed || reviewing}><legend>Candidate to land</legend>{view.candidates.map(c => <label class="radio-choice"><input type="radio" name="pick" value={c.agent} required checked={(view.decision?.pick ?? pick) === c.agent} onChange={() => setPick(c.agent)}/><span>{c.agent}</span><Badge candidate={c}/></label>)}
           <label>Decide as<select required value={view.decision?.decider ?? who} onChange={e => setDecider(e.currentTarget.value)}><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
           <label>Why this candidate?<textarea required maxLength={10000} value={view.decision?.rationale ?? rationale} onInput={e => setRationale(e.currentTarget.value)} placeholder="Explain the tradeoff. This becomes part of the Git history."/></label>
           <label>Point this reason at<input type="text" value={view.decision?.anchor ?? anchor} onInput={e => setAnchor(e.currentTarget.value)} placeholder="src/table.ts:parseRow"/></label>
           <label>Tags<input type="text" value={view.decision?.tags?.join(', ') ?? tags} onInput={e => setTags(e.currentTarget.value)} placeholder="parseRow, whitespace"/></label><p class="muted">Optional, comma-separated · up to 8 tags</p>
-        </fieldset><button class="land-button" disabled={!decisionRequest(view, { pick, rationale, decider: who, ...(anchor.trim() ? { anchor: anchor.trim() } : {}), ...(tags.trim() ? { tags: tags.split(',').map(t => t.trim()) } : {}) }) || busy || changed || reviewing}>{busy ? view.decision ? 'Publishing…' : 'Landing…' : isPublished(view.decision) ? 'Decision landed' : view.decision ? 'Retry publication' : 'Land candidate →'}</button></form>
+        </fieldset><button class="land-button" disabled={!decisionRequest(view, { pick, rationale, decider: who, ...(anchor.trim() ? { anchor: anchor.trim() } : {}), ...(tags.trim() ? { tags: tags.split(',').map(t => t.trim()) } : {}) }) || busy || stale.current || changed || reviewing}>{busy ? view.decision ? 'Publishing…' : 'Landing…' : isPublished(view.decision) ? 'Decision landed' : view.decision ? 'Retry publication' : 'Land candidate →'}</button></form>
         {!view.decision && (() => { const picked = view.candidates.find(c => c.agent === pick), blocked = combinedBlock(picked);
           return blocked ? <p class="notice warning combined-block" role="status">{blocked}</p>
             : picked?.combined?.status === 'pass' ? <p class="muted combined-note">{picked.agent} lands as Heddle's merge with main, the exact result that passed its tests.</p> : null; })()}

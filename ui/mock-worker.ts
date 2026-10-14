@@ -7,10 +7,14 @@ const replay = replayText.trim().split('\n').map(line => JSON.parse(line)).filte
 // A single local DO owns fixture data and sockets, just as ProjectDO owns the real feed.
 export class FixtureProject {
   private mock = createMock();
+  private feedDenied = false;
   constructor(private ctx: DurableObjectState) {}
   async fetch(request: Request) {
     const url = new URL(request.url);
+    if (url.pathname === '/__mock/reset' && request.method === 'POST')
+      this.feedDenied = !!(await request.clone().json() as { feedDenied?: boolean }).feedDenied;
     if (url.pathname === '/api/projects/demo/ws' && request.headers.get('Upgrade') === 'websocket') {
+      if (this.feedDenied) return new Response('Sign in to open the feed', { status: 403 });
       const pair = new WebSocketPair();
       this.ctx.acceptWebSocket(pair[1]);
       return new Response(null, { status: 101, webSocket: pair[0] });
