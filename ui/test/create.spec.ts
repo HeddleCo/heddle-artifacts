@@ -8,14 +8,16 @@ const creates = (calls: Array<{ path: string }>) => calls.filter(c => c.path ===
 
 test.beforeEach(async ({ request }) => { expect((await reset(request)).ok()).toBe(true); });
 
+const answered = (page: any) => page.waitForResponse((r: any) => r.url().endsWith('/api/session'));
 test('a visitor who is not an operator sees no create form anywhere', async ({ page, request }) => {
   expect(await (await request.get('/api/session')).json()).toEqual({ operator: false, demo: 'demo' });
-  await page.goto('/');
+  let session = answered(page); await page.goto('/'); await session;
   await expect(page.getByRole('form', { name: 'New project' })).toHaveCount(0);
-  await page.goto('/p/demo');
+  session = answered(page); await page.goto('/p/demo'); await session;
   await expect(page.getByRole('heading', { name: 'demo' })).toBeVisible();
   await expect(page.getByTestId('new-task')).toHaveCount(0);
-  await page.goto('/p/demo/t/parser-escapes');
+  session = answered(page); await page.goto('/p/demo/t/parser-escapes'); await session;
+  await expect(page.getByRole('heading', { name: 'parser-escapes' })).toBeVisible();
   await expect(page.getByTestId('add-agent')).toHaveCount(0);
   expect(creates(await sent(request))).toEqual([]);
 });

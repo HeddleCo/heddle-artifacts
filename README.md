@@ -42,7 +42,7 @@ One command starts the real stack locally: the Heddle engine, a git server stand
 the UI. You bring a repository and your own agents; nothing here is a canned example.
 
 Needs Node 22+, Git, `tar`, `zstd`, and the Heddle 0.31.1 CLI (the command checks and tells you exactly what is
-missing; it never builds anything for you). Installing Heddle needs Rust and takes several minutes:
+missing; it never installs or builds Heddle for you, though it builds the UI itself the first time and whenever the UI sources are newer than the build). Installing Heddle needs Rust and takes several minutes:
 
 ```sh
 cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec40276510d2723a1572bdea0e9640e66e33 heddle-cli
@@ -62,7 +62,11 @@ It prints a URL and where your operator token is stored (`cat` that file to sign
 
 What is different from the live deployment: candidate tests run on **your machine**, in a throwaway checkout, not in
 an isolated Sandbox (the board says "local run (not isolated)"), and there is no AI reviewer unless you enrol one.
-Use it for your own agents' work. State lives in `~/.heddle-artifacts/local` (`--state DIR` to change, `--port N` to pin the port).
+**Candidate code runs as you.** It can read your files, including the operator token, and it can interfere with other
+candidates' results. Use this only for your own agents' work, never for code you do not trust. (A deployment on your
+own Cloudflare account tests in a keyless Sandbox instead; see (d).) Up to two candidates are tested at a time; the rest
+wait their turn. State lives in `~/.heddle-artifacts/local` (`--state DIR` to change, `--port N` to pin the port); Ctrl-C
+stops everything, at any point.
 
 ### (c) Preview the UI only (canned data)
 
