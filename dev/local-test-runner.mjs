@@ -15,6 +15,7 @@ const DEFAULT_RECIPE = { setup: [['npm', 'ci', '--ignore-scripts', '--no-audit',
 const SHA = /^[a-f0-9]{40}$/;
 // Every candidate process group that is running right now, so shutting the runner down can stop them.
 const liveGroups = new Set();
+export function killLiveCandidates() { killLive(); }
 function killLive() { for (const pid of liveGroups) { try { process.kill(-pid, 'SIGKILL'); } catch { /* already gone */ } } liveGroups.clear(); }
 
 function argv(value) {
