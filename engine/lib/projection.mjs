@@ -2,7 +2,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { run, git, Rejection } from './process.mjs';
-import { repoRoot, exportRoot, heddle } from './state.mjs';
+import { repoRoot, exportRoot, heddle, ENGINE } from './state.mjs';
 import { fixedIdentity } from './git.mjs';
 
 // G3 named fallback: stock 0.30.0's squashed child export can reject one ref.
@@ -11,8 +11,8 @@ export async function exportProjection(state, destination = exportRoot, reposito
   const temp = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'heddle-projection-'));
   try {
     const native = join(temp, 'native.git');
-    const home = join(dirname(repository), 'agents', '_engine', 'home');
-    const exported = await heddle(['bridge', 'git', 'export', '--destination', native], repository, { id: '_engine' }, { allowFailure: true, raw: true,
+    const home = join(dirname(repository), 'agents', ENGINE.id, 'home');
+    const exported = await heddle(['bridge', 'git', 'export', '--destination', native], repository, ENGINE, { allowFailure: true, raw: true,
       env: { HEDDLE_HOME: home, HEDDLE_CONFIG: join(home, 'config.toml') } });
     if (exported.code !== 0) {
       let error; try { error = JSON.parse(exported.stderr); } catch {}

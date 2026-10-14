@@ -69,6 +69,12 @@ export function actorEmail(agent, enrollment) {
   return `${agent.id}@${domain}`;
 }
 
+export const ENGINE = Object.freeze({
+  id: '_engine', displayName: 'Heddle engine',
+  // Validate when used so configuration errors stay inside the command boundary.
+  get address() { return `${this.id}@${defaultEmailDomain()}`; },
+});
+
 export function actorEnv(agent) {
   return {
     HEDDLE_HOME: join(stateRoot, 'agents', agent.id, 'home'),
@@ -80,7 +86,7 @@ export function actorEnv(agent) {
   };
 }
 
-export async function heddle(args, cwd = repoRoot, agent = { id: '_engine', displayName: 'Heddle engine', address: actorEmail({ id: '_engine' }, {}) }, options = {}) {
+export async function heddle(args, cwd = repoRoot, agent = ENGINE, options = {}) {
   let result;
   try { result = await run(process.env.HEDDLE_BIN || 'heddle', ['--output', 'json', ...args], { cwd, ...options, env: { ...actorEnv(agent), ...options.env } }); }
   catch (error) { if (error.safeMessage) error.safeMessage = `${args.slice(0, 2).join(' ')}: ${error.safeMessage}`; throw error; }

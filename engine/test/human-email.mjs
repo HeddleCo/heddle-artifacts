@@ -16,7 +16,15 @@ const seed = join(root, 'seed');
 let state, canonical;
 // Engine subprocesses restrict inherited env; the wrapper isolates HOME for every native call.
 const wrapper = join(root, 'heddle');
-await writeFile(wrapper, '#!/bin/sh\nexport HOME="$HEDDLE_HOME"\nexec ' + "'" + binary.replaceAll("'", "'\\''") + "'" + ' "$@"\n', { mode: 0o700 });
+const engineCalls = join(root, 'engine-calls.tsv');
+const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+await writeFile(wrapper, `#!/bin/sh
+export HOME="$HEDDLE_HOME"
+case "$HEDDLE_HOME" in
+  */agents/_engine/home) printf '%s\\t%s\\n' "$HEDDLE_PRINCIPAL_EMAIL" "$*" >> ${quote(engineCalls)} ;;
+esac
+exec ${quote(binary)} "$@"
+`, { mode: 0o700 });
 const env = { HEDDLE_BIN: wrapper, TMPDIR: root, HOME: join(root, 'home'), ACTOR_EMAIL_DOMAIN: 'noreply.heddle.sh' };
 let operation = 0;
 async function raw(command, input = {}) {
@@ -41,13 +49,13 @@ async function project(id) {
   await git(root, ['init', '--bare', '--initial-branch=main', canonical]);
   await mutate('init', { project: id, canonical: { remote: canonical }, seed: { importUrl: seed } });
 }
-async function candidate(task, agent, address) {
+async function candidate(task, agent, address, path = 'src/table.ts') {
   await mutate('task.create', { task, intent: 'Change the parser' });
   const fork = join(root, `${(await stored()).project}--${task}--${agent.id}.git`), checkout = join(root, task);
   await git(root, ['clone', '--bare', canonical, fork]);
   await mutate('lane.open', { task, agent: agent.id });
   await git(root, ['clone', fork, checkout]);
-  await writeFile(join(checkout, 'src/table.ts'), `export function parseRow(row: string) { return row.trim().split("|"); }\n// ${task}\n`);
+  await writeFile(join(checkout, path), `export function parseRow(row: string) { return row.trim().split("|"); }\n// ${task}\n`);
   await git(checkout, ['add', '.']);
   await git(checkout, ['-c', `user.name=${agent.displayName}`, '-c', 'user.email=source@example.invalid', 'commit', '-m', 'Change parser']);
   const sha = await git(checkout, ['rev-parse', 'HEAD']);
@@ -59,6 +67,25 @@ async function candidate(task, agent, address) {
   assert.equal(capture.principal.email, address, 'agent capture uses the address fixed at enrollment');
   console.log(`PASS ${task} agent capture: ${agent.displayName} <${capture.principal.email}>`);
   return candidates;
+}
+async function checkEngineIdentity() {
+  const calls = (await readFile(engineCalls, 'utf8')).trim().split('\n').map(line => {
+    const [email, args] = line.split('\t'); return { email, args };
+  });
+  // Require the affected paths to run, including both independent native exports.
+  for (const command of ['start ', 'thread refresh ', 'ready ', 'thread drop ',
+    'bridge git export --destination ']) {
+    assert.ok(calls.some(call => call.args.includes(command)), `engine ran ${command}`);
+  }
+  for (const destination of ['heddle-combined-', 'heddle-projection-']) {
+    assert.ok(calls.some(call => call.args.includes('bridge git export') && call.args.includes(destination)), `engine exported ${destination}`);
+  }
+  const expected = `_engine@${env.ACTOR_EMAIL_DOMAIN}`;
+  const mismatches = calls.filter(call => call.email !== expected);
+  assert.deepEqual([...new Set(calls.map(call => call.email))].sort(), [expected],
+    `all engine invocations use one principal; mismatches: ${JSON.stringify(mismatches)}`);
+  console.log(`PASS engine identity: ${calls.length} invocations, including combined refresh/ready/drop and both native exports, all <${expected}>`);
+  await writeFile(engineCalls, '');
 }
 try {
   console.log((await run(binary, ['--version'], { env: { HOME: join(root, 'home'), HEDDLE_HOME: join(root, 'home') } })).stdout.toString().trim());
@@ -84,6 +111,8 @@ try {
   const oldAgent = { id: 'old', kind: 'agent', displayName: 'Old', email: 'ignored@example.com' };
   const reviewer = { id: 'reviewer', kind: 'reviewer', displayName: 'Reviewer', email: 'ignored@example.com' };
   for (const identity of [human, agent, legacy, oldAgent, reviewer]) await mutate('agent.enroll', { agent: identity });
+  // Keep a clean, independent candidate open while each decision advances main.
+  await candidate('engine-identity', agent, 'luke+gwen@heddle.sh', 'src/engine.ts');
   for (const [task, picked, decider, address, captureAddress] of [
     ['real-email', agent, human, human.email, 'luke+gwen@heddle.sh'],
     ['legacy-email', oldAgent, legacy, 'legacy@heddle-artifacts.local', 'old@heddle-artifacts.local']
@@ -133,6 +162,10 @@ try {
     await mutate('publish', { canonical: { remote: canonical } });
     assert.equal(await git(canonical, ['show', '-s', identityFormat, 'main']), `${expected}\n${expected}`, 'publication retains landing identity');
     console.log(`PASS ${task}: landing and published author/committer ${expected}`);
+    const combined = (await mutate('combine', { task: 'engine-identity' })).candidates[0].combined;
+    assert.equal(combined.status, 'skipped', 'clean combined result needs no isolated tests in this identity fixture');
+    assert.deepEqual(combined.conflicts, [], 'independent candidate merges with main cleanly');
+    await checkEngineIdentity();
   }
 } finally {
   await rm(root, { recursive: true, force: true });
