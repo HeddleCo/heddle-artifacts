@@ -33,7 +33,7 @@ async function setup(opts = {}, args = []) {
   const w = world(opts), logs = []; let probes = 0;
   const deps = { run: w.run, log: l => logs.push(String(l)), confirm: async () => opts.confirm ?? true, repo, env: {}, nodeVersion: '22.4.0',
     fetch: async url => { probes++; return { ok: (opts.probeOk ?? true) && probes > (opts.probeFailures ?? 0), status: 200, url: String(url) }; }, sleep: async () => {}, exists: async () => true };
-  const options = parseCloudflareArgs(['my-app', '--state', state, ...args].slice(0)); options.name = options.name ?? 'my-app';
+  const options = parseCloudflareArgs(['--name', 'my-app', '--state', state, ...args]);
   return { root, repo, state, w, logs, deps, options, probes: () => probes, done: () => rm(root, { recursive: true, force: true }) };
 }
 

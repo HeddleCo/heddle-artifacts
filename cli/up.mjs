@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // `up`: stand the app up with one command, then drive your own work from the UI and plain git.
-//   node cli/up.mjs local    the real stack on this machine: real engine, real test runner, no cloud account
+//   node cli/up.mjs local        the real stack on this machine: real engine, real test runner, no cloud account
+//   node cli/up.mjs cloudflare   the same app on YOUR Cloudflare account (see cli/up-cloudflare.mjs)
 import { spawn, execFile } from 'node:child_process';
 import { access, mkdir, writeFile, readFile, chmod } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -109,9 +110,15 @@ export async function upLocal(options, log = console.log) {
 
 if (isMain(import.meta.url)) {
   Promise.resolve().then(async () => {
-    const options = parseArgs(process.argv.slice(2));
-    if (options.target !== 'local') throw new Error('Usage: node cli/up.mjs local [--state DIR] [--port N]');
+    const [target, ...rest] = process.argv.slice(2);
     process.chdir(root);
+    if (target === 'cloudflare') {
+      const { upCloudflare, parseCloudflareArgs, realDeps } = await import('./up-cloudflare.mjs');
+      process.exitCode = (await upCloudflare(parseCloudflareArgs(rest), realDeps(root))).code;
+      return;
+    }
+    const options = parseArgs(process.argv.slice(2));
+    if (options.target !== 'local') throw new Error('Usage: node cli/up.mjs local [--state DIR] [--port N]\n       node cli/up.mjs cloudflare --name NAME [--domain HOST] [--public-project NAME] [--yes] [--dry-run] [--destroy]');
     process.exitCode = (await upLocal(options)).code;
   }).catch(error => { console.error(`up: ${error.message}`); process.exitCode = 1; });
 }
