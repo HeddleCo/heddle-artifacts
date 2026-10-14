@@ -27,14 +27,14 @@ test('a passing candidate is actually executed and reports its own counts', () =
   const run = await runCandidateLocally(input(c), opts(root));
   assert.equal(run.testExitCode, 0);
   assert.equal(run.sourceSha, c.sourceSha); assert.equal(run.treeSha, c.treeSha);
-  assert.match(run.output, /^# pass 2$/m); assert.match(run.output, /^# fail 0$/m);
+  assert.match(run.output, /^(?:#|ℹ) pass 2$/m); assert.match(run.output, /^(?:#|ℹ) fail 0$/m);
 }));
 
 test('a failing candidate is reported failing: the result comes from running it, not from a fixture', () => withRoot(async root => {
   const c = await candidate(root, 'fail', "import test from 'node:test'; import assert from 'node:assert'; test('ok', () => {}); test('broken', () => assert.equal(1, 2));");
   const run = await runCandidate(c, root);
   assert.notEqual(run.testExitCode, 0);
-  assert.match(run.output, /^# pass 1$/m); assert.match(run.output, /^# fail 1$/m);
+  assert.match(run.output, /^(?:#|ℹ) pass 1$/m); assert.match(run.output, /^(?:#|ℹ) fail 1$/m);
 }));
 const runCandidate = (c, root, extra) => runCandidateLocally(input(c, extra), opts(root));
 
