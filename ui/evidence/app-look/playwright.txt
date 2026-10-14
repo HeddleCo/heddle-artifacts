@@ -1,0 +1,67 @@
+
+> test
+> node build.mjs && playwright test
+
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
+
+Running 35 tests using 1 worker
+
+(node:346) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 test/acceptance.spec.ts:18:1 › C-T1 fixture screens: pushing board, conflict compare, decided why (4.3s)
+  ✓   2 test/acceptance.spec.ts:39:1 › C-T2 WebSocket replay updates board without reload (3.9s)
+  ✓   3 test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 200 response (3.2s)
+  ✓   4 test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 403 response (2.6s)
+  ✓   5 test/acceptance.spec.ts:54:39 › C-T3 decision exact body and 409 response (2.2s)
+  ✓   6 test/acceptance.spec.ts:71:1 › decision sends optional symbol anchor and comma-separated tags, then displays both at 1920×1080 (1.9s)
+  ✓   7 test/acceptance.spec.ts:87:1 › Context supplied shows annotation symbol scope and tags (1.1s)
+  ✓   8 test/acceptance.spec.ts:104:1 › C-T3 required rationale and signed human discussion (1.9s)
+  ✓   9 test/acceptance.spec.ts:118:1 › C-T4 wrangler smoke: board, compare, keyboard decision, why, login, screenshots (2.5s)
+  ✓  10 test/acceptance.spec.ts:149:1 › C-T2 early feed survives delayed initial board snapshot (2.3s)
+  ✓  11 test/acceptance.spec.ts:167:1 › C-T2 initial compare snapshot retains early discussion and landing (2.3s)
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+  ✓  12 test/acceptance.spec.ts:185:81 › C-T5 recorded publication evidence: passed (252ms)
+  ✓  13 test/acceptance.spec.ts:185:81 › C-T5 recorded publication evidence: failed (105ms)
+  ✓  14 test/acceptance.spec.ts:185:81 › C-T5 recorded publication evidence: wrong-sha (76ms)
+  ✓  15 test/acceptance.spec.ts:185:81 › C-T5 recorded publication evidence: malformed (88ms)
+  ✓  16 test/acceptance.spec.ts:209:1 › C-T6 repeated decision submit stays single-flight (265ms)
+  ✓  17 test/acceptance.spec.ts:227:1 › C-T6 cancel reply clears target and browser history restores board and compare (593ms)
+  ✓  18 test/acceptance.spec.ts:246:1 › C-T7 pending publication preserves signed choice and exposes exact retry (346ms)
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+  ✓  19 test/acceptance.spec.ts:267:1 › C-T7 publish failure re-reads recorded decision before retry (361ms)
+  ✓  20 test/acceptance.spec.ts:282:1 › C-T8 board double-click keeps one refresh and retains the live candidate (283ms)
+  ✓  21 test/acceptance.spec.ts:305:1 › C-T8 repeated discussion submit is single-flight and freezes the pending draft (156ms)
+  ✓  22 test/acceptance.spec.ts:322:1 › C-T8 disconnect and reconnect keep the choice stale until an explicit review (2.1s)
+  ✓  23 test/acceptance.spec.ts:338:1 › C-T8 lost publication response and failed recovery read require immutable retry (409ms)
+  ✓  24 test/acceptance.spec.ts:358:1 › C-T8 compare review buffers discussion and landing while its snapshot is delayed (581ms)
+  ✓  25 test/app-look.spec.ts:16:1 › dashboard filters tasks, counts pending publication, and follows live landing (2.6s)
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+  ✓  26 test/app-look.spec.ts:45:1 › task section links preserve the decision draft and browser fragment history (436ms)
+  ✓  27 test/app-look.spec.ts:69:5 › app shell and film evidence at 1280×720, light (652ms)
+  ✓  28 test/app-look.spec.ts:69:5 › app shell and film evidence at 1280×720, dark (642ms)
+  ✓  29 test/app-look.spec.ts:69:5 › app shell and film evidence at 1440×900, light (739ms)
+  ✓  30 test/app-look.spec.ts:69:5 › app shell and film evidence at 1440×900, dark (542ms)
+  ✓  31 test/app-look.spec.ts:104:1 › mobile rails stack and keyboard controls remain reachable at 390×844 (550ms)
+  ✓  32 test/captures.spec.ts:4:1 › captures retains lane history, shares a time axis, and navigates across agents in light theme (366ms)
+  ✓  33 test/captures.spec.ts:58:1 › captures tags a lane briefed with earlier decisions and keeps the capture-only rendering without openedAt (164ms)
+  ✓  34 test/captures.spec.ts:69:1 › captures refetches for live pushes and candidates without navigation (2.3s)
+  ✓  35 test/captures.spec.ts:81:1 › pending summaries are refetched and selection survives the update (2.1s)
+
+  35 passed (1.9m)

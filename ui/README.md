@@ -15,6 +15,13 @@ npm run dev
 
 Routes: `/p/:p`, `/p/:p/t/:t`, `/p/:p/why/:sha`, `/login`.
 The fixture project is `demo`; its Why SHA is forty `f` characters.
+
+The board uses the Heddle dashboard shell: counted Views on the left, task rows and agent lanes in
+the centre, and Live activity plus project facts on the right. Task pages use a Tasks rail and
+Candidates / Captures / Discussion / Context anchor tabs. Sections stay mounted as you navigate,
+so a decision draft survives tab navigation. The decision rail scrolls independently at desktop
+widths; rails stack on mobile with a link to the decision. The theme toggle works in both layouts.
+See [issue #60 visual and test evidence](evidence/app-look/README.md) for the film viewport matrix.
 `UI_FIXTURE=pushing|conflict|decided npm run dev` chooses initial data.
 `POST /__mock/reset {"fixture":"pushing"}` resets data; `POST /__mock/replay` streams `fixtures/feed.jsonl`.
 Mock controls exist only in the local test harness. No production Worker imports these files.

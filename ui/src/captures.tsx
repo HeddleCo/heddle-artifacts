@@ -31,7 +31,7 @@ export function Captures({ p, t, agents, lanes, refresh }: { p: string; t: strin
     const next = all[Math.min(all.length - 1, Math.max(0, index + direction))];
     if (next) { setSelected(key(next)); if (focus) dots.current.get(key(next))?.focus(); }
   };
-  return <section id="captures" class="panel captures" aria-label="Captures" onKeyDown={e => {
+  return <section id="captures" tabIndex={-1} class="panel captures" aria-label="Captures" onKeyDown={e => {
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); step(e.key === 'ArrowRight' ? 1 : -1, true); }
   }}>
     <div class="captures-heading"><div><p class="eyebrow">SIGNED HEDDLE CAPTURES</p><h2>Captures <span class="count">{all.length}</span></h2></div>

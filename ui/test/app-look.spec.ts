@@ -61,6 +61,7 @@ test('task section links preserve the decision draft and browser fragment histor
   await expect(page.getByRole('radio', { name: /bob/ })).toBeChecked();
   await page.getByRole('button', { name: 'Land candidate →' }).click();
   await expect(page.getByText('✓ Landed bob on main')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Tasks', exact: true }).getByRole('link', { name: /parser-escapes/ })).toContainText('Landed');
 });
 
 for (const viewport of [{ width: 1280, height: 720 }, { width: 1440, height: 900 }]) {
@@ -118,6 +119,8 @@ test('mobile rails stack and keyboard controls remain reachable at 390×844', as
   await expect(page.locator('.capture-dot')).toHaveCount(5);
   await noOverflow(page);
   await shot(page, 'captures-mobile-light');
+  await page.getByRole('link', { name: 'Go to decision ↓' }).click();
+  await expect(page.locator('#decision')).toBeInViewport();
   await page.getByRole('radio', { name: /bob/ }).focus(); await page.keyboard.press('Space');
   await page.getByLabel('Why this candidate?').fill('Keep the API stable.');
   await page.getByRole('button', { name: 'Land candidate →' }).click();

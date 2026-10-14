@@ -169,7 +169,7 @@ function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; tur
     try { const turn = await request<Turn>(`${taskPath(p, t)}/turns`, { body: body.trim(), as: author, ...(replyTo ? { replyTo } : {}) }); if (n === lifecycle.current) { onTurn(turn); setBody(''); setReplyTo(''); } }
     catch(e) { if (n === lifecycle.current) setError(message(e)); } finally { if (n === lifecycle.current) { sending.current = false; setBusy(false); } }
   };
-  return <section id="discussion" class="panel discussion"><h2>Discussion <span class="count">{turns.length}</span></h2>
+  return <section id="discussion" tabIndex={-1} class="panel discussion"><h2>Discussion <span class="count">{turns.length}</span></h2>
     {turns.length ? turns.map(turn => <article class="turn" key={turn.id}><div class="turn-heading"><strong>{turn.author}</strong><span class="muted">{turn.kind} · <time dateTime={turn.at}>{new Date(turn.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></span></div>{(() => { const review = turn.kind === 'reviewer' ? parseReview(turn.body) : undefined; return review ? <ReviewBody review={review}/> : <RichText text={turn.body}/>; })()}<Signature signedBy={turn.signedBy}/>{turn.replyTo && <p class="muted">Reply to {turn.replyTo}</p>}<button class="quiet small" disabled={busy} onClick={() => setReplyTo(turn.id)}>Reply to {turn.author}</button></article>) : <p class="muted">No discussion yet. Add the context that should travel with the code.</p>}
     <form onSubmit={submit}><label>Speak as<select disabled={busy} value={author} onChange={e => setAs(e.currentTarget.value)} required><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
       <label>Your reply<textarea disabled={busy} required maxLength={10000} value={body} onInput={e => setBody(e.currentTarget.value)} placeholder="What should the team consider?"/></label>
@@ -189,7 +189,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     if (loading.current) return;
     const n = ++version.current, epoch = connectionEpoch.current; setReviewing(true); loading.current = true; pending.current = [];
     try { const [task, project] = await Promise.all([request<TaskView>(taskPath(p, t)), request<ProjectView>(projectPath(p))]);
-      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setProject(project); setLanes(project.tasks.find(x => x.slug === t)?.lanes ?? []); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current); if (reviewAgain) setPick(''); } hydrated.current = true; }
+      if (n === version.current) { setView(pending.current.reduce(updateTask, task)); setAgents(project.agents); setProject(pending.current.reduce(updateBoard, project)); setLanes(project.tasks.find(x => x.slug === t)?.lanes ?? []); setError(''); if (reviewAgain || !hydrated.current) { stale.current = !feedAvailable.current || epoch !== connectionEpoch.current || pending.current.some(e => e.type === 'candidate.ready' && e.candidate.task === t); setChanged(stale.current); if (reviewAgain) setPick(''); } hydrated.current = true; }
     } catch(e) { if (n === version.current) setError(message(e)); } finally { if (n === version.current) { setReviewing(false); loading.current = false; pending.current = []; if (reloadRequested.current) { reloadRequested.current = false; void load(true); } } }
   };
   useEffect(() => {
@@ -235,15 +235,16 @@ function Compare({ p, t }: { p: string; t: string }) {
   const regions = new Map<string, Set<string>>();
   for (const c of view?.candidates || []) for (const region of c.conflicts) { const key = `${region.path}${region.region ? `:${region.region}` : ''}`; regions.set(key, new Set([...(regions.get(key) || []), c.agent, ...region.with])); }
   const base = view?.task.baseSha || view?.candidates[0]?.parentSha;
+  const tasks = project?.tasks.map(task => task.slug === t && view ? { ...task, candidates: view.candidates, decision: view.decision } : task);
   return <><Header p={p} live={live}/><main class="app-shell spool">
-    <aside class="rail-card left-rail" aria-label="Project tasks"><h2 class="rail-title">Tasks</h2><a class="tree-project" href={link(p)}>{p}<span class="count">{project?.tasks.length || 0}</span></a><nav class="task-tree" aria-label="Tasks">{project?.tasks.map(task => <a key={task.slug} href={link(p, task.slug)} aria-current={task.slug === t ? 'page' : undefined}><span class="tree-label">{task.slug}<span class={`tree-status ${taskGroup(task) === 'Landed' ? 'success-text' : ''}`} aria-hidden="true">{taskGroup(task) === 'Landed' ? '✓' : taskGroup(task) === 'Needs a decision' ? '◌' : '·'}</span></span><span class="muted">{taskGroup(task)}</span></a>)}</nav><a class="rail-back" href={link(p)}>← Back to dashboard</a></aside>
+    <aside class="rail-card left-rail" aria-label="Project tasks"><h2 class="rail-title">Tasks</h2><a class="tree-project" href={link(p)}>{p}<span class="count">{project?.tasks.length || 0}</span></a><nav class="task-tree" aria-label="Tasks">{tasks?.map(task => <a key={task.slug} href={link(p, task.slug)} aria-current={task.slug === t ? 'page' : undefined}><span class="tree-label">{task.slug}<span class={`tree-status ${taskGroup(task) === 'Landed' ? 'success-text' : ''}`} aria-hidden="true">{taskGroup(task) === 'Landed' ? '✓' : taskGroup(task) === 'Needs a decision' ? '◌' : '·'}</span></span><span class="muted">{taskGroup(task)}</span></a>)}</nav><a class="rail-back" href={link(p)}>← Back to dashboard</a></aside>
     <div class="page-centre"><div class="page-title"><h1>{t}</h1><p class="path-line"><code>{view?.task.thread || `${p} / ${t}`} <span class="separator">/</span> base {base ? short(base) : 'awaiting capture'}</code></p><p class="intent">{view?.task.intent || 'Loading task…'}</p></div>
     <TaskTabs ready={!!view}/><a class="mobile-decision-link" href="#decision">Go to decision ↓</a>
     {error && <ErrorNotice text={error}/>}
     {changed && <div class="notice warning" role="status">Review the latest task state before continuing. <button class="quiet" disabled={reviewing} onClick={() => load(true)}>{view?.decision ? 'Refresh recorded decision' : 'Review current candidates'}</button></div>}
     {view?.decision && <DecisionNotice project={p} decision={view.decision}/>}
     {!!regions.size && <section class="conflict-banner" aria-label="Conflict regions"><strong>⚑ Overlapping work, preserved as alternatives</strong>{[...regions].map(([region, ids]) => <p><code>{region}</code><span>{[...ids].join(' ↔ ')}</span></p>)}</section>}
-    <div class="compare-main"><section id="candidates" class="candidates-section" aria-label="Candidates"><h2 class="section-title">Candidates <span class="count">{view?.candidates.length || 0}</span></h2>
+    <div class="compare-main"><section id="candidates" tabIndex={-1} class="candidates-section" aria-label="Candidates"><h2 class="section-title">Candidates <span class="count">{view?.candidates.length || 0}</span></h2>
     <div class="candidate-grid" style={{'--candidate-count': Math.min(view?.candidates.length || 1, 3)}}>{view?.candidates.map(candidate => { const agent = agents.find(a => a.id === candidate.agent); return <section class="candidate panel" key={candidate.agent} aria-label={`${candidate.agent} candidate`}>
       <div class="candidate-heading"><div><p class="eyebrow">CANDIDATE / {candidate.agent}</p><h2>{agent?.displayName || candidate.agent}</h2></div><Badge candidate={candidate}/></div>
       <p class="muted">{agent?.provider || 'unknown provider'} / {agent?.model || 'unspecified model'}</p>
@@ -257,7 +258,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     </section>
     {view && <Captures key={`captures/${p}/${t}`} p={p} t={t} agents={agents} lanes={lanes} refresh={captureRefresh}/>}
     {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
-      {view && <section id="context" class="panel context-supplied" aria-label="Context supplied"><h2>Context supplied</h2>
+      {view && <section id="context" tabIndex={-1} class="panel context-supplied" aria-label="Context supplied"><h2>Context supplied</h2>
         <p class="muted">{lanes.some(l => l.briefing?.annotations.length) ? "Heddle briefed each agent with earlier decisions on this code before it started." : "No earlier decisions were supplied to these lanes."}</p>
         {lanes.some(l => l.unbriefed) && <p class="muted control-note">Not briefed, as a control: {lanes.filter(l => l.unbriefed).map(l => l.agent).join(', ')}.</p>}
         {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
@@ -269,7 +270,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     ]}/></section>
     {view && <>
 
-      <section id="decision" class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">Your reason is saved with the decision on main.</p>
+      <section id="decision" tabIndex={-1} class="panel decision"><p class="eyebrow">DECISION · TO LAND</p><h2>{view.decision ? 'Recorded decision' : 'Choose what lands'}</h2><p class="muted">Your reason is saved with the decision on main.</p>
         <form onSubmit={submit}><fieldset disabled={busy || !!view.decision || changed || reviewing}><legend>Candidate to land</legend>{view.candidates.map(c => <label class="radio-choice"><input type="radio" name="pick" value={c.agent} required checked={(view.decision?.pick ?? pick) === c.agent} onChange={() => setPick(c.agent)}/><span>{c.agent}</span><Badge candidate={c}/></label>)}
           <label>Decide as<select required value={view.decision?.decider ?? who} onChange={e => setDecider(e.currentTarget.value)}><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
           <label>Why this candidate?<textarea required maxLength={10000} value={view.decision?.rationale ?? rationale} onInput={e => setRationale(e.currentTarget.value)} placeholder="Explain the tradeoff. This becomes part of the Git history."/></label>

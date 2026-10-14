@@ -1,0 +1,50 @@
+
+> test
+> node build.mjs && playwright test --grep dashboard filters
+
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
+
+Running 1 test using 1 worker
+
+(node:57) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 test/app-look.spec.ts:16:1 › dashboard filters tasks, counts pending publication, and follows live landing (6.3s)
+
+
+  1) test/app-look.spec.ts:16:1 › dashboard filters tasks, counts pending publication, and follows live landing 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('.task-column')
+    Expected: 0
+    Received: 2
+    Timeout:  6000ms
+
+    Call log:
+      - Expect "toHaveCount" locator('.task-column') with timeout 6000ms
+      - waiting for locator('.task-column')
+        16 × locator resolved to 2 elements
+           - unexpected value "2"
+
+
+      20 |   await expect(views.getByRole('button', { name: 'All tasks 2', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      21 |   await views.getByRole('button', { name: 'Needs a decision 0', exact: true }).click();
+    > 22 |   await expect(page.locator('.task-column')).toHaveCount(0);
+         |                                              ^
+      23 |   await expect(page.getByText('Nothing needs a decision right now.')).toBeVisible();
+      24 |   await views.getByRole('button', { name: 'In progress 2', exact: true }).click();
+      25 |   await expect(page.locator('.task-column')).toHaveCount(2);
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-60/ui/test/app-look.spec.ts:22:46
+
+    Error Context: test-results/app-look-dashboard-filters-1b186-on-and-follows-live-landing/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/app-look-dashboard-filters-1b186-on-and-follows-live-landing/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/app-look-dashboard-filters-1b186-on-and-follows-live-landing/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    test/app-look.spec.ts:16:1 › dashboard filters tasks, counts pending publication, and follows live landing 
