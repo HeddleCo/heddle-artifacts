@@ -7,7 +7,7 @@ A human picks one and writes why. The pick, the reason and the rejected alternat
 
 ![Compare-and-decide page: two agent candidates that changed the same function, their test results, and the decision form](docs/img/compare.png)
 
-*The compare page, from the local fixture in [Try it (b)](#b-run-the-ui-locally-no-cloudflare-account).*
+*The compare page, from the canned preview in [Try it (c)](#c-preview-the-ui-only-canned-data).*
 
 ## Built on Heddle
 
@@ -30,41 +30,59 @@ cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec4027
 
 The public `demo` project on the live app is read-only:
 
-- Board: <https://heddle-artifacts.zephyr-forge.workers.dev/p/demo>
-- Compare and decide (parser task): <https://heddle-artifacts.zephyr-forge.workers.dev/p/demo/t/parser-escapes>
+- Board: <https://demo.heddle.sh/p/demo>
+- Compare and decide (parser task): <https://demo.heddle.sh/p/demo/t/parser-escapes>
 - Why page: once a candidate has landed, the compare page shows a "See why … landed" link to `/p/demo/why/<sha>`.
 
-Deciding needs an operator sign-in. To click through a decision yourself, use (b).
+(The same app is also served at <https://heddle-artifacts.zephyr-forge.workers.dev>.) Deciding needs an operator sign-in.
 
-### (b) Run the UI locally: no Cloudflare account
+### (b) Run it yourself, on your own machine
 
-Needs Node 22 or newer, npm and Git. This serves the same UI against a local fixture API, so you can pick a
-candidate, write a reason and open the resulting Why page.
+One command starts the real stack locally: the Heddle engine, a git server standing in for Artifacts, the Worker and
+the UI. You bring a repository and your own agents; nothing here is a canned example.
+
+Needs Node 22+, Git, `tar`, `zstd`, and the Heddle 0.31.1 CLI (the command checks and tells you exactly what is
+missing; it never builds anything for you). Installing Heddle needs Rust and takes several minutes:
 
 ```sh
-git clone https://github.com/HeddleCo/heddle-artifacts.git
-cd heddle-artifacts/ui
-npm ci
-UI_FIXTURE=conflict npm run dev
+cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec40276510d2723a1572bdea0e9640e66e33 heddle-cli
+git clone https://github.com/HeddleCo/heddle-artifacts.git && cd heddle-artifacts
+npm ci && npm ci --prefix ui
+node cli/up.mjs local
 ```
 
-Open <http://127.0.0.1:4173/p/demo/t/parser-escapes>. Choose `bob`, type a reason, press **Land candidate**,
-then follow **See why … landed**. Stop the server with Ctrl-C.
+It prints a URL and where your operator token is stored (`cat` that file to sign in). Then, in the app:
 
-- Port 4173 already in use? Run `UI_FIXTURE=conflict PORT=4174 npm run dev` and use port 4174.
-- To watch the story play out live: start with `UI_FIXTURE=pushing npm run dev`, open <http://127.0.0.1:4173/p/demo>,
-  then run `curl -X POST http://127.0.0.1:4173/__mock/replay` in a second terminal. Pushes, tests, the conflict and
-  a decision arrive on the board over a few seconds. `UI_FIXTURE=decided` starts after the decision.
-- `npm run dev` builds `ui/dist` the first time. Run `npm run build` again after changing `ui/src`.
+1. **Create a project**: from a public repository address, or the small sample project. Add a test command if it is
+   not `npm test` (npm, npx and node only).
+2. **Add a task**: say what the agents should try to do.
+3. **Put your own agent on it**: the task page shows the exact `ha join …` command. Run it in a clone, point Claude
+   Code, Codex, OpenCode or plain `git` at the folder, and `git push origin HEAD:main`.
+4. Each push appears as a candidate with test results. Compare, write the reason, and land one.
 
-Deeper account-free checks (Worker tests against fake Artifacts, the browser suite, and the full native
-storyline with the Heddle CLI) are in [docs/LOCAL-INTEGRATION.md](docs/LOCAL-INTEGRATION.md) and [ui/README.md](ui/README.md).
+What is different from the live deployment: candidate tests run on **your machine**, in a throwaway checkout, not in
+an isolated Sandbox (the board says "local run (not isolated)"), and there is no AI reviewer unless you enrol one.
+Use it for your own agents' work. State lives in `~/.heddle-artifacts/local` (`--state DIR` to change, `--port N` to pin the port).
 
-### (c) Deploy your own
+### (c) Preview the UI only (canned data)
+
+No Heddle needed; this serves the UI against a fixture API with invented data, to look around or click through a decision:
+
+```sh
+cd heddle-artifacts/ui && npm ci && UI_FIXTURE=conflict npm run dev
+```
+
+Open <http://127.0.0.1:4173/p/demo/t/parser-escapes>. Port 4173 in use? Add `PORT=4174`. `UI_FIXTURE=pushing` plus
+`curl -X POST http://127.0.0.1:4173/__mock/replay` replays a story onto the board; `UI_FIXTURE=decided` starts after the decision.
+Deeper account-free checks are in [docs/LOCAL-INTEGRATION.md](docs/LOCAL-INTEGRATION.md) and [ui/README.md](ui/README.md).
+
+### (d) Deploy your own
 
 Follow [docs/DEPLOY.md](docs/DEPLOY.md). It needs a Cloudflare account with Artifacts, Containers and Workers AI.
 It covers the R2 bucket, Queue, configuration and secrets, the first `wrangler deploy` (which builds the engine
-from public source), and a scripted smoke run. Running agents in Cloudflare Sandboxes is an optional extra step.
+from public source), an optional custom domain, and a scripted smoke run. Once deployed, the same forms work there:
+sign in with your operator token and create projects, tasks and agents from the UI. Running agents in Cloudflare
+Sandboxes is an optional extra step.
 
 ## Glossary
 

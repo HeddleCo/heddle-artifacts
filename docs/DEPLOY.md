@@ -52,6 +52,17 @@ The first deploy builds the engine image from source (`engine/Dockerfile` compil
 CLI) and takes about 30 minutes. Operators who already have a verified engine image in their registry can point
 `containers[0].image` at `engine/Dockerfile.layer` with their image digest to ship only the engine JavaScript.
 
+### Optional: a custom domain
+
+If the domain's DNS is on the same Cloudflare account, add one line to `wrangler.live.jsonc` and deploy again; Cloudflare
+creates the DNS record and certificate:
+
+```jsonc
+"routes": [{ "pattern": "demo.example.com", "custom_domain": true }]
+```
+
+The Worker is then served at both that name and `*.workers.dev`. Do not use a name that already has a DNS record.
+
 ## 4. Check it
 
 ```sh
