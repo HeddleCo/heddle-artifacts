@@ -7,6 +7,29 @@ by `ui/test/tapestry-elements.spec.ts` to exercise three annotation kinds, conse
 turns, symbol scope, tags, and the reviewer model. Capture facts use the mock's actual agent records.
 A signing key is displayed without a verification tick; this UI does not verify capture signatures.
 
+## Follow-up: no accent stripes (2026-10-14)
+
+Removed the coloured left borders from annotation notes, notices and recommendations, along with
+the recommendation's stripe indentation. Annotation kinds retain their dots and labels; notices
+retain their tinted backgrounds and uniform 1 px borders. Only the brand divider and task-tree
+guide retain structural left hairlines. No replacement decoration was added.
+
+All 24 after images below were regenerated in both themes at 1280×720 and 1440×900.
+Current app-look, read-only and decision-annotation evidence was also refreshed. Historical
+`before-*` screenshots remain unchanged as comparisons to the earlier code.
+
+From `ui/`: `npm run typecheck && npm run test:unit && CI=1 npm test` passed
+(61 unit tests, 45 browser tests). Screenshot output used
+`UI_SCREENSHOT_DIR=/tmp/heddle-64-no-accent-shots` and
+`TAPESTRY_EVIDENCE_DIR=evidence/tapestry-elements`. Port 8788 was free before Playwright started
+its local mock. [Typecheck](no-accent-typecheck.txt), [unit](no-accent-unit.txt),
+[browser output](no-accent-playwright.txt), [left-border audit](no-accent-grep.txt).
+
+The existing annotation border assertion now expects `0px`. Temporarily restoring the 3 px
+stripe made that assertion fail (`Expected: "0px"`, `Received: "3px"`); fixed CSS was restored
+byte-for-byte before the final screenshot refresh. [Negative proof](no-accent-negative.txt),
+[read-only and tapestry refresh](no-accent-refresh.txt). Other test assertions were unchanged.
+
 ## 1280×720 film viewport
 
 | Surface | Before light | After light | Before dark | After dark |

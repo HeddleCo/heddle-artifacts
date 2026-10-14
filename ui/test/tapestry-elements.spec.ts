@@ -87,7 +87,7 @@ for (const theme of ['light', 'dark'] as const) for (const [width, height] of [[
     await expect(constraint.locator('.tag')).toHaveText(['parseRow', 'public-api']);
     await expect(constraint.locator('.briefing-hash')).toHaveText('bbbbbbbbbb');
     await expect(constraint.locator('.briefing-hash')).toHaveAttribute('title', 'b'.repeat(64));
-    await expect(constraint.locator('.annotation-note')).toHaveCSS('border-left-width', '3px');
+    await expect(constraint.locator('.annotation-note')).toHaveCSS('border-left-width', '0px');
     await expect(cards.nth(1).locator('.annotation-scope')).toHaveText('file');
     await expect(cards.nth(1).locator('.symbol-chip')).toHaveCount(0);
     await expect(cards.nth(2).locator('.annotation-scope')).toHaveText('module');

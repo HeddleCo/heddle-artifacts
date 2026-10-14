@@ -111,10 +111,10 @@ main { max-width: 1320px; margin: 0 auto; padding: 18px 28px 56px; }
 .page-title > p:not(.eyebrow) { color: var(--muted); font-size: 16px; margin: 4px 0; }
 
 .panel { background: var(--panel); border: 1px solid var(--stroke); border-radius: var(--radius); padding: 18px 20px; }
-.notice { border: 1px solid var(--stroke); border-left: 3px solid var(--fiber); background: var(--surface); border-radius: var(--radius); padding: 10px 14px; margin: 12px 0; font-size: 14px; }
-.notice.error { border-left-color: var(--risk); background: var(--risk-tint); }
-.notice.warning { border-left-color: var(--caution); background: var(--caution-tint); }
-.notice.landed { border-left-color: var(--good); background: var(--good-tint); }
+.notice { border: 1px solid var(--stroke); background: var(--surface); border-radius: var(--radius); padding: 10px 14px; margin: 12px 0; font-size: 14px; }
+.notice.error { background: var(--risk-tint); }
+.notice.warning { background: var(--caution-tint); }
+.notice.landed { background: var(--good-tint); }
 
 /* Badges and provenance tags. */
 .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--stroke); color: var(--muted); white-space: nowrap; }
@@ -188,7 +188,6 @@ pre { margin: 0; overflow: auto; }
 .verdict.approve { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .verdict.concerns { color: var(--caution); border-color: color-mix(in srgb, var(--caution) 40%, transparent); }
 .verdict-notes { display: block; color: var(--muted); font-size: 15px; margin-top: 4px; }
-.recommendation { border-left: 2px solid var(--accent); padding-left: 10px; }
 .discussion form { border-top: 1px solid var(--stroke); margin-top: 8px; padding-top: 4px; }
 
 /* Decision rail. */
@@ -502,7 +501,7 @@ button.turn-reply { border: 0; padding: 2px 0; font-size: 11px; color: var(--mut
 .annotation-rationale { --kind-color: var(--kind-rationale); }
 .annotation-heading { display: flex; align-items: center; gap: 9px; padding: 12px 20px; border-bottom: 1px solid var(--stroke); font: 12px/1.4 var(--font-mono); }
 .kind-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--kind-color); flex: none; }
-.annotation-note { border-left: 3px solid var(--kind-color); padding: 16px 20px 18px; }
+.annotation-note { padding: 16px 20px 18px; }
 .annotation-target { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; font: 12px/1.5 var(--font-mono); margin-bottom: 10px; overflow-wrap: anywhere; }
 .annotation-target .briefing-target { color: var(--text); font-weight: 600; }
 .annotation-target .anchor-chip { padding: 0; border: 0; background: transparent; flex-direction: row-reverse; }

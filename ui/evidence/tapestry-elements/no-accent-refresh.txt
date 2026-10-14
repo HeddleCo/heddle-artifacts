@@ -1,0 +1,58 @@
+
+> test
+> node build.mjs && playwright test test/read-only.spec.ts test/tapestry-elements.spec.ts --grep read-only visitors|tapestry surfaces
+
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
+
+Running 6 tests using 1 worker
+
+(node:134) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Broken pipe (os error 32)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Broken pipe (os error 32)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+  ✓  1 test/read-only.spec.ts:6:3 › read-only visitors see every task without a stale banner in light (12.2s)
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+[WebServer] ✘ [ERROR] kj::getCaughtExceptionAsKj() = rust/cxx/kj-rs-io/ffi.rs:176: disconnected: write(): Connection reset by peer (os error 104)
+[WebServer] 
+[WebServer]   stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57eb6c3 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef2b7 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@57ef604 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@3156710 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/node_modules/@cloudflare/workerd-linux-64/bin/workerd@229b1f7
+[WebServer] 
+[WebServer] 
+  ✓  2 test/read-only.spec.ts:6:3 › read-only visitors see every task without a stale banner in dark (11.8s)
+  ✓  3 test/tapestry-elements.spec.ts:24:3 › tapestry surfaces at 1280x720, light (1.6s)
+  ✓  4 test/tapestry-elements.spec.ts:24:3 › tapestry surfaces at 1440x900, light (1.8s)
+  ✓  5 test/tapestry-elements.spec.ts:24:3 › tapestry surfaces at 1280x720, dark (1.6s)
+  ✓  6 test/tapestry-elements.spec.ts:24:3 › tapestry surfaces at 1440x900, dark (1.5s)
+
+  6 passed (33.2s)

@@ -1,0 +1,42 @@
+
+> test
+> node build.mjs && playwright test test/tapestry-elements.spec.ts --grep 1280x720, light
+
+Built ui/dist: index.html, app.js, style.css, _headers, fonts/
+
+Running 1 test using 1 worker
+
+(node:138) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 test/tapestry-elements.spec.ts:24:3 › tapestry surfaces at 1280x720, light (6.4s)
+
+
+  1) test/tapestry-elements.spec.ts:24:3 › tapestry surfaces at 1280x720, light ────────────────────
+
+    Error: expect(locator).toHaveCSS(expected) failed
+
+    Locator:  locator('.context-supplied').locator('.annotation-card').first().locator('.annotation-note')
+    Expected: "0px"
+    Received: "3px"
+    Timeout:  6000ms
+
+    Call log:
+      - Expect "toHaveCSS" locator('.context-supplied').locator('.annotation-card').first().locator('.annotation-note') with timeout 6000ms
+      - waiting for locator('.context-supplied').locator('.annotation-card').first().locator('.annotation-note')
+        16 × locator resolved to <div class="annotation-note">…</div>
+           - unexpected value "3px"
+
+
+      88 |     await expect(constraint.locator('.briefing-hash')).toHaveText('bbbbbbbbbb');
+      89 |     await expect(constraint.locator('.briefing-hash')).toHaveAttribute('title', 'b'.repeat(64));
+    > 90 |     await expect(constraint.locator('.annotation-note')).toHaveCSS('border-left-width', '0px');
+         |                                                          ^
+      91 |     await expect(cards.nth(1).locator('.annotation-scope')).toHaveText('file');
+      92 |     await expect(cards.nth(1).locator('.symbol-chip')).toHaveCount(0);
+      93 |     await expect(cards.nth(2).locator('.annotation-scope')).toHaveText('module');
+        at /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/ui/test/tapestry-elements.spec.ts:90:58
+
+    Error Context: test-results/tapestry-elements-tapestry-surfaces-at-1280x720-light/error-context.md
+
+  1 failed
+    test/tapestry-elements.spec.ts:24:3 › tapestry surfaces at 1280x720, light ─────────────────────
