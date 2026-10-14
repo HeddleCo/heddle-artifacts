@@ -280,3 +280,33 @@ test('the secrets file is removed even if running wrangler throws, and a pre-exi
   await assert.rejects(() => stat(seen), /ENOENT/, 'secrets file gone although the deploy threw');
   assert.equal((await stat(tokenFile)).mode & 0o777, 0o600, 'an existing token file is tightened, not trusted');
 });
+
+test('bucket ownership survives a failed queue creation and retry', async t => {
+  const s = await setup({}, ['--yes']); t.after(s.done);
+  const run = s.deps.run; let fail = true;
+  s.deps.run = (argv, opts) => fail && argv.join(' ').includes('queues create') ? Promise.resolve({ code: 1, output: 'queue unavailable' }) : run(argv, opts);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 1);
+  assert.equal(JSON.parse(await readFile(join(s.state, 'my-app', 'created.json'))).bucket, true);
+  fail = false;
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 0);
+  s.w.calls.length = 0;
+  assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 0);
+  assert.ok(s.w.calls.some(c => c.line.includes('r2 bucket delete my-app-state')));
+});
+
+test('container listing and deletion failures retain independent cleanup state for a retry', async t => {
+  for (const failure of ['containers list', 'containers delete']) {
+    const s = await setup({ containers: [{ id: 'owned', name: 'my-app-heddleengine' }, { id: 'foreign', name: 'other-engine' }] }, ['--yes']); t.after(s.done);
+    await upCloudflare(s.options, s.deps);
+    const run = s.deps.run; let fail = true;
+    s.deps.run = (argv, opts) => fail && argv.join(' ').includes(failure) ? Promise.resolve({ code: 1, output: 'temporarily unavailable' }) : run(argv, opts);
+    assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 1, failure);
+    const record = JSON.parse(await readFile(join(s.state, 'my-app', 'created.json')));
+    assert.equal(record.workerGone, true); assert.notEqual(record.containersGone, true);
+    fail = false; s.w.calls.length = 0;
+    assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 0);
+    assert.ok(s.w.calls.some(c => c.line.includes('containers delete owned')));
+    assert.ok(!s.w.calls.some(c => /wrangler delete |containers delete foreign/.test(c.line)));
+    await assert.rejects(() => stat(join(s.state, 'my-app')), /ENOENT/);
+  }
+});

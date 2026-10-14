@@ -43,7 +43,7 @@ export async function startFakeArtifacts({ root = process.env.FAKE_ARTIFACTS_ROO
       } else { if (!res.headersSent) res.writeHead(400); res.end('Fake Artifacts request failed'); }
     }
   });
-  await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   binding.origin = `http://127.0.0.1:${server.address().port}`;
   return { binding, server, origin: binding.origin, close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }

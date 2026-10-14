@@ -55,12 +55,12 @@ function exec(args, { cwd, env, deadline, cap = TEST_OUTPUT_BYTES + 1, groups })
  * input: { sourceSha, treeSha, remote, readCredential, recipe? } as for the Sandbox runner (worker/isolated-tests.ts).
  * Returns the same SandboxRun shape, so the coordinator and the UI treat it exactly like a sandbox result.
  */
-export async function runCandidateLocally(input, { root, allowFileRemotes = false, signal } = {}) {
+export async function runCandidateLocally(input, { root, allowFileRemotes = false, signal, beforeSteps } = {}) {
   if (!root) throw new Error('A private work directory is required (no shared default: a predictable path in /tmp can be taken over)');
   const recipe = checkRecipe(input.recipe);
   if (!SHA.test(input.sourceSha) || !SHA.test(input.treeSha)) throw new Error('invalid sha');
   const { local } = checkRemote(input.remote, allowFileRemotes);
-  const start = Date.now(), deadline = start + recipe.budgetMs;
+  const start = Date.now(); let deadline = start + recipe.budgetMs, waitedMs = 0;
   // `local` is this runner saying what it is, so the board labels the result from the runner and not from a setting.
   const result = { sourceSha: input.sourceSha, treeSha: input.treeSha, output: '', durationMs: 0, local: true, ...(input.recipe ? { budgetMs: recipe.budgetMs } : {}) };
   await mkdir(root, { recursive: true, mode: 0o700 });
@@ -82,6 +82,10 @@ export async function runCandidateLocally(input, { root, allowFileRemotes = fals
     if ((await step(['git', 'checkout', '--detach', input.sourceSha])).code !== 0) throw new Error('checkout');
     const sha = await step(['git', 'rev-parse', 'HEAD']), tree = await step(['git', 'rev-parse', 'HEAD^{tree}']);
     if (sha.output.trim() !== input.sourceSha || tree.output.trim() !== input.treeSha) { result.failure = 'checkout'; return result; }
+    // Authenticate before queueing; neither credential expiry nor queue wait consumes the test budget.
+    if (beforeSteps) {
+      const waiting = Date.now(); await beforeSteps(); waitedMs = Date.now() - waiting; deadline += waitedMs;
+    }
     const env = { PATH: process.env.PATH, CI: '1', NO_COLOR: '1', HOME: home, TMPDIR: home, NPM_CONFIG_UPDATE_NOTIFIER: 'false', GIT_CONFIG_NOSYSTEM: '1' };
     for (const args of recipe.setup) {
       const run = await go(args, env);
@@ -98,14 +102,14 @@ export async function runCandidateLocally(input, { root, allowFileRemotes = fals
     return result;
   } finally {
     signal?.removeEventListener('abort', onAbort); onAbort();
-    result.durationMs = Date.now() - start;
+    result.durationMs = Date.now() - start - waitedMs;
     await rm(dir, { recursive: true, force: true });
   }
 }
 
 /**
  * A loopback-only HTTP wrapper for the Worker: POST /run with the shared secret header.
- * At most `slots` runs at once; further requests wait in a queue of at most `maxQueue` (then 429 "busy"), so a burst of pushes is
+ * Checkout happens on admission, while credentials are fresh. At most `slots` candidate recipes run at once; further requests wait in a queue of at most `maxQueue` (then 429 "busy"), so a burst of pushes is
  * tested in turn instead of some candidates being reported as errors for tests that never ran.
  * Without `root` the runner makes a private (0700) directory of its own and removes it on close.
  */
@@ -113,12 +117,11 @@ export async function startLocalTestRunner({ port = 0, root, secret, slots = 2, 
   if (!secret || secret.length < 24) throw new Error('A runner secret of at least 24 characters is required');
   const own = !root; root ??= await mkdtemp(join(tmpdir(), 'heddle-local-tests-'));
   await mkdir(root, { recursive: true, mode: 0o700 });
-  const want = Buffer.from(secret), waiters = [], lifecycle = new AbortController(); let running = 0, closing = false;
+  const want = Buffer.from(secret), waiters = [], lifecycle = new AbortController(); let running = 0, admitted = 0, closing = false;
   // A waiter that gives up leaves the queue; it never takes a slot.
   const acquire = signal => {
     if (closing || signal.aborted) return Promise.resolve(false);
     if (running < slots) { running++; return Promise.resolve(true); }
-    if (waiters.length >= maxQueue) return undefined;
     return new Promise(res => { const waiter = ok => { signal.removeEventListener('abort', leave); res(ok); }, leave = () => { const i = waiters.indexOf(waiter); if (i >= 0) waiters.splice(i, 1); res(false); }; signal.addEventListener('abort', leave, { once: true }); waiters.push(waiter); });
   };
   const release = () => { const next = waiters.shift(); if (next) next(true); else running--; };
@@ -131,10 +134,17 @@ export async function startLocalTestRunner({ port = 0, root, secret, slots = 2, 
       let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 65536) return end(413, { error: 'too_large' }); }
       const input = JSON.parse(text), gone = new AbortController(), signal = AbortSignal.any([gone.signal, lifecycle.signal]);
       res.on('close', () => { if (!res.writableEnded) gone.abort(); });
-      const slot = acquire(signal);
-      if (!slot) return end(429, { error: 'busy' });
-      if (!(await slot)) return end(503, { error: 'shutting_down' });
-      try { end(200, await runCandidateLocally(input, { root, allowFileRemotes, signal })); } finally { release(); }
+      if (closing) return end(503, { error: 'shutting_down' });
+      if (admitted >= slots + maxQueue) return end(429, { error: 'busy' });
+      admitted++;
+      let acquired = false;
+      try {
+        const beforeSteps = async () => {
+          acquired = await acquire(signal);
+          if (!acquired) throw new Error('aborted');
+        };
+        end(200, await runCandidateLocally(input, { root, allowFileRemotes, signal, beforeSteps }));
+      } finally { admitted--; if (acquired) release(); }
     } catch (error) { end(400, { error: /^invalid (recipe|remote|sha)/.test(error?.message) ? error.message : 'bad_request' }); }
   });
   await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));

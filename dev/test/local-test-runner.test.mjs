@@ -167,3 +167,66 @@ test('a request that gives up while still waiting in the queue never runs', { ti
     assert.ok(third, 'a later request is served; the abandoned waiter did not keep the slot'); assert.equal(third.status, 200);
   } finally { await runner.close(); }
 }));
+
+test('queued checkout finishes before its credential expires and queue wait preserves the recipe budget', { timeout: 20000 }, () => withRoot(async root => {
+  const release = join(root, 'release'), marker = join(root, 'started');
+  const holder = await candidate(root, 'lease-holder', `import { existsSync, writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'started'); while (!existsSync(${JSON.stringify(release)})) await new Promise(r => setTimeout(r, 20));`);
+  const queued = await candidate(root, 'lease-waiter', "import test from 'node:test'; test('ok', () => {});");
+  const fake = await startFakeArtifacts({ root: join(root, 'artifacts'), port: 0 });
+  const runner = await startLocalTestRunner({ root: join(root, 'work'), secret: SECRET, slots: 1, allowFileRemotes: true });
+  const until = async fn => { for (let i = 0; i < 100; i++) { if (await fn()) return; await new Promise(r => setTimeout(r, 30)); } throw new Error('condition did not become true'); };
+  try {
+    await fake.binding.create('queued'); const repo = await fake.binding.get('queued');
+    const write = await repo.createToken('write', 600), read = await repo.createToken('read', 240);
+    await execFileAsync('git', ['-c', `http.extraHeader=Authorization: Bearer ${write.plaintext}`, 'push', fake.binding.remote('queued'), 'HEAD:main'], { cwd: queued.remote });
+    const first = post(runner.origin, input(holder, { recipe: { setup: [], test: ['node', 'a.test.mjs'], budgetMs: 10000 } })).catch(() => undefined);
+    await until(() => stat(marker).then(() => true, () => false));
+    const second = post(runner.origin, input({ ...queued, remote: fake.binding.remote('queued'), readCredential: read.plaintext }, { recipe: { setup: [], test: ['node', '--test'], budgetMs: 1000 } })).catch(() => undefined);
+    await until(async () => {
+      const { readdir } = await import('node:fs/promises');
+      for (const dir of await readdir(runner.root)) {
+        const head = await readFile(join(runner.root, dir, 'candidate/.git/HEAD'), 'utf8').catch(() => '');
+        if (head.trim() === queued.sourceSha) return true;
+      }
+      return false;
+    });
+    fake.binding.now = () => Date.now() + 241000;
+    assert.equal(await fake.binding.authorize('queued', read.plaintext), false, 'credential expired before the queued recipe starts');
+    await new Promise(r => setTimeout(r, 1200));
+    await writeFile(release, 'go');
+    assert.equal((await first).status, 200);
+    const response = await second; assert.equal(response.status, 200);
+    const run = await response.json(); assert.equal(run.failure, undefined); assert.equal(run.testExitCode, 0);
+  } finally { await runner.close(); await fake.close(); }
+}));
+
+test('local restart preserves clone remotes and metadata, refreshes event hooks, and refuses an occupied origin', { timeout: 20000 }, () => withRoot(async root => {
+  const { startPersistentArtifacts } = await import('../../cli/up.mjs');
+  const { createServer } = await import('node:http');
+  const events = [], listener = createServer(async (req, res) => { let body = ''; for await (const c of req) body += c; events.push(JSON.parse(body)); res.end('ok'); });
+  await new Promise(r => listener.listen(0, '127.0.0.1', r));
+  const eventUrl = `http://127.0.0.1:${listener.address().port}/__dev/events`;
+  let fake;
+  try {
+    fake = await startPersistentArtifacts(root, 'http://127.0.0.1:1/old-events');
+    await fake.binding.create('restart'); const repo = await fake.binding.get('restart'), token = await repo.createToken('write', 600);
+    const origin = fake.origin, remote = fake.binding.remote('restart');
+    const c = await candidate(root, 'restart-clone', "import test from 'node:test'; test('ok', () => {});");
+    git(c.remote, 'remote', 'add', 'origin', remote);
+    await execFileAsync('git', ['-c', `http.extraHeader=Authorization: Bearer ${token.plaintext}`, 'push', 'origin', 'HEAD:main'], { cwd: c.remote });
+    await fake.close(); fake = undefined;
+    // Existing pre-fix installations recover the origin from their saved Wrangler config.
+    await rm(join(root, 'artifacts-port'));
+    await writeFile(join(root, 'wrangler.local.json'), JSON.stringify({ vars: { FAKE_ARTIFACTS_URL: origin } }));
+    fake = await startPersistentArtifacts(root, eventUrl);
+    assert.equal(fake.origin, origin); assert.equal((await (await fake.binding.get('restart')).info()).remote, remote);
+    await assert.rejects(() => startPersistentArtifacts(root, eventUrl), /EADDRINUSE/, 'an occupied persisted port must not silently choose a new origin');
+    await writeFile(join(c.remote, 'next'), 'next'); git(c.remote, 'add', '.'); git(c.remote, 'commit', '-m', 'after restart');
+    await execFileAsync('git', ['-c', `http.extraHeader=Authorization: Bearer ${token.plaintext}`, 'push', 'origin', 'HEAD:main'], { cwd: c.remote });
+    assert.ok(events.length > 0, 'the persisted clone push reaches the refreshed event hook');
+    await fake.close(); fake = await startPersistentArtifacts(root, eventUrl);
+    assert.equal(fake.origin, origin, 'the new port record also survives another restart');
+    const fetched = await runCandidateLocally(input({ ...c, sourceSha: git(c.remote, 'rev-parse', 'HEAD'), treeSha: git(c.remote, 'rev-parse', 'HEAD^{tree}'), remote, readCredential: token.plaintext }), { root: join(root, 'tests') });
+    assert.equal(fetched.testExitCode, 0, 'test checkout still reaches the persisted remote');
+  } finally { if (fake) await fake.close(); await new Promise(r => listener.close(r)); }
+}));

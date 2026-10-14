@@ -3,7 +3,7 @@
 //   node cli/up.mjs local        the real stack on this machine: real engine, real test runner, no cloud account
 //   node cli/up.mjs cloudflare   the same app on YOUR Cloudflare account (see cli/up-cloudflare.mjs)
 import { spawn, execFile } from 'node:child_process';
-import { access, mkdir, writeFile, readFile, chmod, readdir, stat } from 'node:fs/promises';
+import { access, mkdir, readFile, chmod, readdir, stat } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
@@ -83,7 +83,7 @@ export async function uiNeedsBuild(repo = root) {
 export async function readOrCreateToken(file) {
   let token = (await readFile(file, 'utf8').catch(() => '')).trim();
   // The same alphabet and an upper bound no larger than localDevVars accepts, so a token this keeps can always be used.
-  if (!/^[A-Za-z0-9._-]{32,128}$/.test(token)) { token = randomBytes(32).toString('hex'); await writeFile(file, `${token}\n`, { mode: 0o600 }); }
+  if (!/^[A-Za-z0-9._-]{32,128}$/.test(token)) { token = randomBytes(32).toString('hex'); await writePrivate(file, `${token}\n`); }
   await chmod(file, 0o600);
   return token;
 }
@@ -109,13 +109,34 @@ export async function waitUntil(fn, ms, label, abort = () => null) {
   throw new Error(`${label} did not start in ${ms / 1000}s`);
 }
 
+/** Reuse the fake origin retained by project records and agent clones; refresh hooks for the current app URL. */
+export async function startPersistentArtifacts(state, eventUrl) {
+  const { startFakeArtifacts } = await import('../dev/fake-artifacts/server.mjs');
+  const portFile = join(state, 'artifacts-port');
+  let port;
+  try { port = Number(await readFile(portFile, 'utf8')); }
+  catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    // Upgrade existing local state using the last config, before allocating a new origin.
+    try { port = Number(new URL(JSON.parse(await readFile(join(state, 'wrangler.local.json'), 'utf8')).vars.FAKE_ARTIFACTS_URL).port); }
+    catch (error) { if (error.code !== 'ENOENT') throw new Error('Cannot recover the persisted Artifacts origin'); }
+  }
+  if (port !== undefined && !(Number.isInteger(port) && port > 0 && port < 65536)) throw new Error('Invalid persisted Artifacts port');
+  const fake = await startFakeArtifacts({ root: join(state, 'artifacts'), port: port ?? 0, eventUrl });
+  try {
+    await writePrivate(portFile, `${new URL(fake.origin).port}\n`);
+    const entries = await readdir(join(state, 'artifacts')).catch(error => { if (error.code === 'ENOENT') return []; throw error; });
+    for (const entry of entries) if (entry.endsWith('.git')) await fake.binding.installHook(entry.slice(0, -4));
+    return fake;
+  } catch (error) { await fake.close(); throw error; }
+}
+
 export async function upLocal(options, log = console.log) {
   const problems = await checkPrerequisites();
   if (problems.length) {
     log('Cannot start yet. Missing:\n'); for (const p of problems) log(`  - ${p.item}\n    ${p.fix}\n`);
     return { code: 1 };
   }
-  const { startFakeArtifacts } = await import('../dev/fake-artifacts/server.mjs');
   const { startEngineDevserver } = await import('../dev/engine-devserver.mjs');
   const { startLocalTestRunner, killLiveCandidates } = await import('../dev/local-test-runner.mjs');
   await mkdir(options.state, { recursive: true, mode: 0o700 });
@@ -139,7 +160,7 @@ export async function upLocal(options, log = console.log) {
       await new Promise((res, rej) => { buildChild = spawn('npm', ['run', 'build', '--prefix', 'ui'], { cwd: root, stdio: 'ignore' }); buildChild.on('close', c => c === 0 ? res() : rej(new Error(stopRequested ? 'stopped' : 'UI build failed; run: npm run build'))); });
     }
     if (stopRequested) throw new Error('stopped');
-    const fake = await startFakeArtifacts({ root: join(options.state, 'artifacts'), port: 0, eventUrl: `${origin}/__dev/events` }); started.push(() => fake.close());
+    const fake = await startPersistentArtifacts(options.state, `${origin}/__dev/events`); started.push(() => fake.close());
     const engine = await startEngineDevserver({ root: join(options.state, 'engine'), port: 0, stub: false, engine: join(root, 'engine/engine.mjs') }); started.push(() => engine.close());
     // No root given: the runner makes its own private directory outside the state directory, so candidate code does not run next to your token.
     const runner = await startLocalTestRunner({ secret: runnerSecret }); started.push(() => runner.close());

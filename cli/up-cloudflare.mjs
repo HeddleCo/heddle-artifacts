@@ -129,7 +129,7 @@ export async function upCloudflare(options, deps) {
   const exec = (argv, extra = {}) => deps.run(argv, { cwd: deps.repo, env, ...extra });
 
   const bucket = await exec(wrangler('r2', 'bucket', 'create', n.bucket));
-  if (bucket.code === 0) record.bucket = true; else if (!/already exists/i.test(bucket.output)) { log(`Could not create the R2 bucket ${n.bucket}:\n${bucket.output}`); return { code: 1 }; }
+  if (bucket.code === 0) { record.bucket = true; await save(); } else if (!/already exists/i.test(bucket.output)) { log(`Could not create the R2 bucket ${n.bucket}:\n${bucket.output}`); return { code: 1 }; }
   const queue = await exec(wrangler('queues', 'create', n.queue));
   if (queue.code === 0) record.queue = true; else if (!/already exists/i.test(queue.output)) { log(`Could not create the Queue ${n.queue}:\n${queue.output}`); return { code: 1 }; }
   await save();
@@ -145,7 +145,7 @@ export async function upCloudflare(options, deps) {
   const secrets = join(dir, `.secrets-${randomBytes(6).toString('hex')}.json`);
   await writePrivate(secrets, JSON.stringify({ OPERATOR_TOKEN: token }));
   // From here a Worker may exist on the account because of this run, so a later --destroy may remove it. Before this point it never will.
-  record.worker = true; await save();
+  record.worker = true; record.workerGone = false; record.containersGone = false; await save();
   // The secrets file holds the operator token: remove it on every way out, including being killed or the terminal closing mid-deploy.
   const dropSecrets = () => { try { rmSync(secrets, { force: true }); } catch { /* best effort */ } };
   const onSignal = () => { dropSecrets(); process.exit(130); };
@@ -186,7 +186,8 @@ export async function destroyCloudflare(options, deps) {
   const n = names(options.name);
   // Only what this command recorded creating: a Worker only once a deploy was attempted, a bucket or queue only if it made them.
   const ownsWorker = record.worker === true && !record.workerGone, workerDone = record.workerGone || record.worker !== true;
-  const list = [ownsWorker && `Worker ${options.name}`, ownsWorker && `its containers (${n.containers.join(', ')})`, record.queue && !record.queueGone && `Queue ${n.queue}`, record.bucket && `R2 bucket ${n.bucket}`, 'the local operator token and config'].filter(Boolean);
+  const ownsContainers = record.worker === true && !record.containersGone;
+  const list = [ownsWorker && `Worker ${options.name}`, ownsContainers && `its containers (${n.containers.join(', ')})`, record.queue && !record.queueGone && `Queue ${n.queue}`, record.bucket && `R2 bucket ${n.bucket}`, 'the local operator token and config'].filter(Boolean);
   log(`This removes ${list.join(', ')}.\nArtifacts repositories in namespace ${record.namespace} are not removed by this command.`);
   if (!options.yes && !(await deps.confirm('\nRemove them? [y/N] '))) { log('Nothing was changed.'); return { code: 1 }; }
   const env = { CLOUDFLARE_ACCOUNT_ID: record.accountId }, exec = argv => deps.run(argv, { cwd: deps.repo, env }), left = [], save = () => writePrivate(join(dir, 'created.json'), JSON.stringify(record, null, 1));
@@ -197,8 +198,20 @@ export async function destroyCloudflare(options, deps) {
     await exec(wrangler('queues', 'consumer', 'worker', 'remove', n.queue, options.name));
     if (await attempt(await exec(wrangler('delete', options.name)), `Worker ${options.name}`)) {
       record.workerGone = true; await save();
-      const apps = await exec(wrangler('containers', 'list'));
-      for (const row of apps.output.split('\n')) { const cells = row.split('│').map(c => c.trim()); if (cells.length > 2 && n.containers.includes(cells[2])) await attempt(await exec(wrangler('containers', 'delete', cells[1])), `container ${cells[2]}`); }
+    }
+  }
+  if (ownsContainers && record.workerGone) {
+    const apps = await exec(wrangler('containers', 'list'));
+    if (apps.code !== 0) left.push(`containers: ${reason(apps.output)}`);
+    else {
+      let done = true;
+      for (const row of apps.output.split('\n')) {
+        const cells = row.split('│').map(c => c.trim());
+        if (cells.length > 2 && n.containers.includes(cells[2])) {
+          if (!(await attempt(await exec(wrangler('containers', 'delete', cells[1])), `container ${cells[2]}`))) done = false;
+        }
+      }
+      if (done) { record.containersGone = true; await save(); }
     }
   }
   if (record.queue && !record.queueGone && (record.workerGone || workerDone) && await attempt(await exec(wrangler('queues', 'delete', n.queue)), `Queue ${n.queue}`)) { record.queueGone = true; await save(); }
