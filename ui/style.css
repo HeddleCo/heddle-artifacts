@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Heddle house look: warm paper and char grounds, one ember accent, hairline strokes, one
    ink-filled primary action. Cal Sans sets everything people read and every control; Paper Mono
-   is for code only (diffs, paths, symbols, SHAs, keys, briefing hashes, shell commands).
+   sets code (diffs, paths, symbols, SHAs, keys, hashes, shell commands) and compact record metadata.
    Fonts: Cal Sans and Paper Mono, SIL Open Font License 1.1 (see fonts/). */
 @font-face { font-family: "Cal Sans"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("/fonts/CalSans-Variable.woff2") format("woff2-variations"); }
 @font-face { font-family: "Cal Sans"; font-style: italic; font-weight: 400 700; font-display: swap; src: url("/fonts/CalSans-Italic-Variable.woff2") format("woff2-variations"); }
@@ -55,8 +55,7 @@ h2 { font-weight: 600; font-size: 19px; line-height: 1.25; letter-spacing: -0.00
 h3 { font-weight: 600; font-size: 15.5px; }
 strong, b { font-weight: 600; }
 
-/* Paper Mono is for code only: diffs, code, file paths, symbols, SHAs, keys, briefing hashes and
-   shell commands. Everything else, chrome included, is Cal Sans. */
+/* Paper Mono sets code and compact record metadata. The shell and reading text use Cal Sans. */
 code, pre, kbd, .briefing-target, .briefing .tag { font-family: var(--font-mono); }
 /* Code shows every character as typed (no coding ligatures: `===` stays three glyphs in a diff
    under review and in commands people copy); Paper Mono keeps its slashed zero. */
@@ -232,8 +231,6 @@ pre { margin: 0; overflow: auto; }
 .reviewer .muted { font-size: 14px; font-style: italic; }
 /* Context carried forward from earlier decisions. */
 .briefed { margin: 6px 0 0; }
-.context-supplied ul { list-style: none; padding: 0; margin: 6px 0 0; }
-.context-supplied li { border-top: 1px dashed var(--stroke-subtle); padding: 8px 0; }
 .context-supplied .briefing { margin-top: 10px; }
 .briefing-target { font-size: 12px; color: var(--muted); }
 .context-supplied .muted { font-style: italic; font-size: 14px; }
@@ -251,7 +248,7 @@ pre { margin: 0; overflow: auto; }
 .check.combined.pass .check-mark { color: var(--good); } .check.combined.fail .check-mark { color: var(--risk); } .check.combined.conflict .check-mark { color: var(--caution); }
 
 /* Decision and briefing tags retain spacing and wrap within the decision rail. */
-.notice .tag, .context-supplied li > .tag { margin-left: 4px; max-width: 100%; overflow-wrap: anywhere; }
+.notice .tag { margin-left: 4px; max-width: 100%; overflow-wrap: anywhere; }
 
 /* Captures share one time scale across every lane. */
 .captures { margin-top: 20px; scroll-margin-top: 24px; }
