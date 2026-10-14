@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { mkdir, writeFile, readFile, chmod, readdir } from 'node:fs/promises';
 import { resolve, join as pathJoin } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// Node resolves import.meta.url to the real path, even when argv uses a symlink.
+export function isMain(importMetaUrl) {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(importMetaUrl));
+  } catch { return false; }
+}
 
 export function projectURL(input) {
   const url = new URL(input);
@@ -184,6 +193,6 @@ export async function main(args = process.argv.slice(2)) {
     console.log(action === 'status' ? JSON.stringify(redact(result), null, 2) : redact(result.narrative));
   } else throw new Error('Usage: node cli/ha.mjs join <url> --task t --as a [--dir dir] | status | why <sha>');
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   main().catch(error => { console.error(`ha: ${error.message}`); process.exitCode = 1; });
 }

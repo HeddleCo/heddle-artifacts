@@ -7,7 +7,7 @@ import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { command } from '../../cli/ha.mjs';
+import { command, isMain } from '../../cli/ha.mjs';
 import { createReviewer, REVIEW_MODEL } from '../../reviewer/reviewer.ts';
 const demoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const hash = text => createHash('sha256').update(text).digest('hex');
@@ -206,7 +206,7 @@ export async function startMock({ root, port = 0, operatorToken = randomBytes(32
   return { url, root, operatorToken, projects, tokens, pushes,
     close: async () => { await new Promise(r => server.close(r)); await rm(root, { recursive: true, force: true }); } };
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   const mock = await startMock({ port: Number(process.env.MOCK_PORT ?? 8787), mutation: process.env.MOCK_MUTATION });
   if (!process.env.MOCK_CONFIG) throw new Error('Set MOCK_CONFIG to a private temporary JSON file');
   await writeFile(process.env.MOCK_CONFIG, JSON.stringify({ url: mock.url, operatorToken: mock.operatorToken }), { mode: 0o600 });
