@@ -7,7 +7,7 @@ A human picks one and writes why. The pick, the reason and the rejected alternat
 
 ![Compare-and-decide page: two agent candidates that changed the same function, their test results, and the decision form](docs/img/compare.png)
 
-*The compare page, from the canned preview in [Try it (c)](#c-preview-the-ui-only-canned-data).*
+*The compare page, from the canned preview in [Try it (b)](#b-preview-the-ui-only-canned-data).*
 
 ## Built on Heddle
 
@@ -26,17 +26,7 @@ cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec4027
 
 ## Try it
 
-### (a) Look: nothing to install
-
-The public `demo` project on the live app is read-only:
-
-- Board: <https://demo.heddle.sh/p/demo>
-- Compare and decide (parser task): <https://demo.heddle.sh/p/demo/t/parser-escapes>
-- Why page: once a candidate has landed, the compare page shows a "See why … landed" link to `/p/demo/why/<sha>`.
-
-(The same app is also served at <https://heddle-artifacts.zephyr-forge.workers.dev>.) Deciding needs an operator sign-in.
-
-### (b) Run it yourself, on your own machine
+### (a) Run it yourself, on your own machine
 
 One command starts the real stack locally: the Heddle engine, a git server standing in for Artifacts, the Worker and
 the UI. You bring a repository and your own agents; nothing here is a canned example.
@@ -56,8 +46,7 @@ node cli/up.mjs local
 ```
 
 It prints a URL and where your operator token is stored (`cat` that file to sign in).
-A local stack starts empty: the `demo` project and `/p/demo` exist only on the hosted app. For the same sample locally,
-pick **The sample project** in step 1, name it `demo`, and add a task such as `parser-escapes` in step 2. Then, in the app:
+A local stack starts empty. To try the sample, pick **The sample project** in step 1, name it `demo`, and add a task such as `parser-escapes` in step 2. Then, in the app:
 
 1. **Create a project**: from a public repository address, or the small sample project. Add a test command if it is
    not `npm test` (npm, npx and node only).
@@ -70,7 +59,7 @@ What is different from the live deployment: candidate tests run on **your machin
 an isolated Sandbox (the board says "local run (not isolated)"), and there is no AI reviewer unless you enrol one.
 **Candidate code runs as you.** It can read your files, including the operator token, and it can interfere with other
 candidates' results. Use this only for your own agents' work, never for code you do not trust. (A deployment on your
-own Cloudflare account tests in a keyless Sandbox instead; see (d).) Up to two candidates are tested at a time; the rest
+own Cloudflare account tests in a keyless Sandbox instead; see (c).) Up to two candidates are tested at a time; the rest
 wait their turn. State lives in `~/.heddle-artifacts/local` (`--state DIR` to change, `--port N` to pin the port); Ctrl-C
 stops everything, at any point.
 
@@ -78,7 +67,7 @@ Two `cli/ha.mjs` details: `node cli/ha.mjs why <sha>` needs the full 40-characte
 `--provider` and `--model` (for example `--provider anthropic --model claude-code`); without them the Why page lists the agent as
 `unknown / unknown`.
 
-### (c) Preview the UI only (canned data)
+### (b) Preview the UI only (canned data)
 
 No Heddle needed; this serves the UI against a fixture API with invented data, to look around or click through a decision:
 
@@ -90,7 +79,7 @@ Open <http://127.0.0.1:4173/p/demo/t/parser-escapes>. Port 4173 in use? Add `POR
 `curl -X POST http://127.0.0.1:4173/__mock/replay` replays a story onto the board; `UI_FIXTURE=decided` starts after the decision.
 Deeper account-free checks are in [docs/LOCAL-INTEGRATION.md](docs/LOCAL-INTEGRATION.md) and [ui/README.md](ui/README.md).
 
-### (d) Deploy your own
+### (c) Deploy your own
 
 One command, on your own Cloudflare account (Workers Paid plan, Docker running, `npx wrangler login` done):
 
@@ -99,7 +88,7 @@ node cli/up.mjs cloudflare --name my-app        # shows the plan and asks first;
 ```
 
 It creates the R2 bucket and Queue, builds the engine and test-sandbox images locally, deploys the Worker, waits for it to
-answer, and prints the URL and where your operator token is. Sign in with it and use the same forms as in (b): there,
+answer, and prints the URL and where your operator token is. Sign in with it and use the same forms as in (a): there,
 candidate tests run in a keyless Cloudflare Sandbox, not on your machine. Nothing is public unless you pass
 `--public-project NAME`; `--domain host.example.com` adds a custom domain. `--destroy` removes exactly what it created.
 Details, and the manual steps it wraps, are in [docs/DEPLOY.md](docs/DEPLOY.md). Running agents in Cloudflare Sandboxes
@@ -143,7 +132,7 @@ Design details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   come from candidate-authored tests, so they can still misrepresent correctness; the review looks at the diff too.
 - Artifacts rejected atomic multi-ref push, so publication updates `main` last, after verifying the other refs.
   Auxiliary refs may be briefly pending; there is no all-refs-atomic view.
-- The UI preview in (c) uses canned data. Its Why page shows the fixture narrative, not the reason you typed.
+- The UI preview in (b) uses canned data. Its Why page shows the fixture narrative, not the reason you typed.
 - Live compatibility evidence is in [docs/LIVE-ARTIFACTS-20261010.md](docs/LIVE-ARTIFACTS-20261010.md).
 
 ## Run the storyline against a deployment
