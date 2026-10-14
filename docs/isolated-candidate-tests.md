@@ -74,8 +74,9 @@ The orchestrator builds this layer; this work does not deploy or pull that base.
 
 `DEV=1` uses the explicit `dev/fake-test-runner.ts` adapter; Worker tests can inject
 that same adapter. Local results say `isolated sandbox (local fixture)`. Those are contract fixtures that execute no candidate code and
-are not evidence of production Sandbox execution. The production entrypoint never
-imports this fake. `npm run test:worker` covers the real adapter against a fake
+are not evidence of production Sandbox execution. `up local` (`cli/up.mjs`) is different: it runs candidates for real on the
+user's own machine through `dev/local-test-runner.mjs`, with no container, and its results say `local run (not isolated)`.
+The production entrypoint never imports this fake. `npm run test:worker` covers the real adapter against a fake
 container, including a stalled SDK stream, and the coordinator against fake runner
 observations. `npm run test:dev` covers parsing, signature verification, late SHA
 rejection, provenance and the engine's execution boundary.

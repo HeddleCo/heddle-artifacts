@@ -38,7 +38,7 @@ export function failureDetails(output) {
 }
 
 export function isolatedTestResult(run) {
-  const provenance = run?.fixture ? 'isolated sandbox (local fixture)' : 'isolated sandbox';
+  const provenance = run?.local ? 'local run (not isolated)' : run?.fixture ? 'isolated sandbox (local fixture)' : 'isolated sandbox';
   const budgetMs = testBudgetMs(run);
   const durationMs = Number.isFinite(run?.durationMs) ? Math.min(budgetMs, Math.max(0, Math.round(run.durationMs))) : 0;
   const error = summary => ({ status: 'error', passed: 0, failed: 0, summary, durationMs, provenance, sourceSha: run?.sourceSha });
@@ -51,6 +51,6 @@ export function isolatedTestResult(run) {
   if (!counts || counts.passed + counts.failed === 0) return error('Isolated sandbox test counts unavailable');
   const status = run.testExitCode === 0 && counts.failed === 0 ? 'pass' : 'fail';
   return { status, ...counts,
-    summary: `${run.fixture ? 'Isolated sandbox (local fixture)' : 'Isolated sandbox'}: ${counts.passed} passed, ${counts.failed} failed`, durationMs, provenance, sourceSha: run.sourceSha,
+    summary: `${run.local ? 'Local run (not isolated)' : run.fixture ? 'Isolated sandbox (local fixture)' : 'Isolated sandbox'}: ${counts.passed} passed, ${counts.failed} failed`, durationMs, provenance, sourceSha: run.sourceSha,
     ...(status === 'fail' ? failureDetails(run.output) : {}) };
 }

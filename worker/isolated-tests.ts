@@ -13,6 +13,7 @@ export interface SandboxRun {
   installExitCode?: number; testExitCode?: number;
   failure?: 'timeout' | 'sandbox' | 'checkout' | 'output';
   fixture?: boolean;
+  local?: boolean;
 }
 export interface TestRunner { run(input: SandboxInput): Promise<SandboxRun>; destroy(): Promise<void>; }
 export async function sandboxId(project: string, candidate: Pick<Candidate, 'task' | 'agent' | 'sourceSha'>): Promise<string> {

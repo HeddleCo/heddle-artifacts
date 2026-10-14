@@ -234,10 +234,12 @@ export class ProjectDO extends DurableObject<Env> {
   }
   private sandboxJobs(): SandboxJob[] { return this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'isolated:%'").map(r => JSON.parse(r.data)); }
   private runner(id: string): TestRunner | undefined { return this.env.TEST_RUNNER?.get(id) ?? this.env.TEST_SANDBOX?.getByName(id); }
+  /** Where results came from, for the board: the user's own machine (`up local`), a local fixture (dev/test), or the real Sandbox (neither flag). */
+  private testOrigin(): { local?: true; fixture?: true } { return this.env.LOCAL_TEST_RUNNER_URL ? { local: true } : this.env.DEV === '1' ? { fixture: true } : {}; }
   private sandboxError(job: SandboxJob, failure: SandboxRun['failure'] = 'sandbox'): SandboxRun {
     const recipe = this.testRecipe(), budgetMs = recipe?.budgetMs ?? TEST_BUDGET_MS;
     return { sourceSha: job.sourceSha, treeSha: job.treeSha, output: '', durationMs: Math.min(budgetMs, Date.now() - (job.startedAt ?? Date.now())), failure,
-      ...(recipe ? { budgetMs } : {}), ...(this.env.DEV === '1' ? { fixture: true } : {}) };
+      ...(recipe ? { budgetMs } : {}), ...this.testOrigin() };
   }
   /** The operator's recipe for this project's sandbox tests, if it set one at creation. */
   private testRecipe(): TestRecipe | undefined { return this.store.get<{ tests?: TestRecipe }>('meta', 'project')?.tests;
@@ -303,7 +305,7 @@ export class ProjectDO extends DurableObject<Env> {
       if (result.sourceSha !== job.sourceSha || result.treeSha !== job.treeSha) throw new Error('sandbox_binding');
       // Copy only observation fields; candidate output cannot supply test counts.
       run = { sourceSha: job.sourceSha, treeSha: job.treeSha, output: result.output, durationMs: result.durationMs, ...(recipe ? { budgetMs } : {}),
-        installExitCode: result.installExitCode, testExitCode: result.testExitCode, ...(result.failure ? { failure: result.failure } : {}), ...(this.env.DEV === '1' ? { fixture: true } : {}) };
+        installExitCode: result.installExitCode, testExitCode: result.testExitCode, ...(result.failure ? { failure: result.failure } : {}), ...this.testOrigin() };
       if (typeof run.output !== 'string' || new TextEncoder().encode(run.output).length > TEST_OUTPUT_BYTES) run = this.sandboxError(job, 'output');
     } catch (error) { run = this.sandboxError(job, error instanceof Error && error.message === 'sandbox_timeout' ? 'timeout' : 'sandbox'); }
     finally {
