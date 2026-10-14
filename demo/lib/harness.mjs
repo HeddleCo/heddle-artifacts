@@ -9,6 +9,11 @@ const tasks = [
   { slug: 'parser-escapes', intent: 'Support escaped pipes (\\|) inside table cells while preserving the string[] API and backslash parity.' },
   { slug: 'docs-readme', intent: 'Document the table parser API with runnable examples; change only README.md.' },
 ];
+export function demoDecider(env = process.env) {
+  return { id: env.DEMO_DECIDER_ID ?? 'luke', displayName: env.DEMO_DECIDER_NAME ?? 'Luke',
+    ...(env.DEMO_DECIDER_EMAIL !== undefined ? { email: env.DEMO_DECIDER_EMAIL, sponsor: true } : {}) };
+}
+
 export function options(args, action = 'run') {
   const opts = { url: process.env.DEMO_URL ?? 'http://localhost:8787', project: process.env.DEMO_PROJECT ?? 'demo',
     directory: process.env.DEMO_DIR ?? join(process.env.TMPDIR ?? '/tmp', 'heddle-demo'), mode: 'scripted',
@@ -49,7 +54,7 @@ async function initialize(opts) {
   await writeFile(join(opts.directory, '.demo.json'), JSON.stringify(state), { mode: 0o600 });
   await chmod(join(opts.directory, '.demo.json'), 0o600);
   for (const task of tasks) await request(`${opts.api}/tasks`, token, task);
-  await request(`${opts.api}/humans`, token, { id: 'luke', displayName: 'Luke' });
+  await request(`${opts.api}/humans`, token, demoDecider());
   await request(`${opts.api}/tasks/parser-escapes/agents`, token,
     { id: 'reviewer', kind: 'reviewer', displayName: 'Reviewer', provider: 'workers-ai', model: '@cf/zai-org/glm-5.2' });
   return state;
@@ -238,12 +243,12 @@ async function run(opts) {
   }, 'signed reviewer discussion');
   console.log(`Conflict candidates ready; independent docs clean. Reviewer: ${parser.review.model}`);
   await request(`${opts.api}/tasks/parser-escapes/turns`, process.env.OPERATOR_TOKEN,
-    { body: 'Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.', as: 'luke' });
+    { body: 'Preserving the API and slash parity matters more than the shorter regex. I agree with choosing Bob.', as: demoDecider().id });
   // Refresh immediately before deciding; never auto-retry a stale decision.
   parser = await request(`${opts.api}/tasks/parser-escapes`, process.env.OPERATOR_TOKEN);
   const decision = await request(`${opts.api}/tasks/parser-escapes/decision`, process.env.OPERATOR_TOKEN,
     { pick: 'bob', rationale: 'Bob preserves string[] and handles escaped pipes and backslash parity; Alice remains a recorded alternative.',
-      decider: 'luke', expectHeads: parser.heads });
+      decider: demoDecider().id, expectHeads: parser.heads });
   if (!/^[a-f0-9]{40,64}$/.test(decision.mainSha ?? '')) throw new Error('Decision has no published main SHA');
   await verifyPublication(opts, state, runDir, decision.mainSha, 'bob', pushed);
   const seconds = (Date.now() - start) / 1000;
@@ -749,7 +754,7 @@ async function initRepo(opts) {
   const project = await request(`${new URL(opts.url).origin}/api/projects`, token, { id: opts.project, seed: { importUrl, ...(snapshot ? { snapshot } : {}) }, ...(tests ? { tests } : {}) });
   remoteURL(project.canonicalRemote, opts.api);
   await writeFile(join(opts.directory, '.demo.json'), JSON.stringify({ ...project, api: opts.api, clones: {}, generation: Date.now() }), { mode: 0o600 });
-  await request(`${opts.api}/humans`, token, { id: 'luke', displayName: 'Luke' });
+  await request(`${opts.api}/humans`, token, demoDecider());
   console.log(`${opts.project}: imported ${importUrl}${tests ? ' with its test recipe' : ''}. Project open until ${project.projectExpiresAt}.`);
 }
 
@@ -759,7 +764,7 @@ export function taskAgents(value) {
   const agents = new Map();
   for (const item of (value ?? '').split(',').map(s => s.trim()).filter(Boolean)) {
     const [name, model, extra] = item.split('=');
-    if (!/^[a-z][a-z0-9-]{0,30}$/.test(name ?? '') || ['reviewer', 'luke'].includes(name) || agents.has(name) || extra !== undefined ||
+    if (!/^[a-z][a-z0-9-]{0,30}$/.test(name ?? '') || ['reviewer', demoDecider().id].includes(name) || agents.has(name) || extra !== undefined ||
         !(/^@cf\/[\w.-]+\/[\w.-]+$/.test(model ?? '') || /^claude:claude-[a-z0-9.-]{1,60}$/.test(model ?? '')))
       throw new Error('DEMO_TASK_AGENTS must be name=@cf/org/model or name=claude:claude-... pairs with distinct lowercase names');
     agents.set(name, model);

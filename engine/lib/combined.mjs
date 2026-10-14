@@ -6,12 +6,11 @@ import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { run, git, Rejection } from './process.mjs';
-import { stateRoot, repoRoot, exportRoot, heddle } from './state.mjs';
+import { stateRoot, repoRoot, exportRoot, heddle, ENGINE } from './state.mjs';
 import { fixedIdentity } from './git.mjs';
 import { combinedRefusal } from './combined-rule.mjs';
 
 export const COMBINED_REF = 'refs/heads/combined';
-const ENGINE = { id: '_engine', displayName: 'Heddle engine' };
 
 /** True when the candidate commit already contains the current main, so its own tests are the combined result. */
 export async function containsMain(state, sha) {

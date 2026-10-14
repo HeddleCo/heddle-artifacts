@@ -39,6 +39,12 @@ export function slug(value: unknown): string {
 export function text(value: unknown, max = 16000): string {
   if (typeof value !== 'string' || !value.trim() || value.length > max) throw new HttpError(400, 'invalid_text'); return value;
 }
+// Plain ASCII dot-atom local part and DNS domain; no quoted/display-name forms.
+export function email(value: unknown): string {
+  if (typeof value !== 'string' || value.length > 254 ||
+      !/^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![\s\S])/.test(value)) throw new HttpError(400, 'invalid_email');
+  return value;
+}
 export function responseError(error: unknown): Response {
   if (error instanceof HttpError) return Response.json({ error: error.code, ...error.data }, { status: error.status });
   // Engine and transport exception messages can include credentials. Never forward them.

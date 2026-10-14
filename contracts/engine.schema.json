@@ -333,6 +333,13 @@
         },
         "model": {
           "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "sponsor": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -366,6 +373,16 @@
           "type": "string"
         },
         "publicKey": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "sponsor": {
+          "type": "boolean"
+        },
+        "address": {
           "type": "string"
         }
       },
@@ -940,6 +957,9 @@
       "type": "object",
       "properties": {
         "publicKey": {
+          "type": "string"
+        },
+        "address": {
           "type": "string"
         }
       },

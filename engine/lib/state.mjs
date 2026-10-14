@@ -47,18 +47,46 @@ export async function identity(id) {
   return hex;
 }
 
+export function defaultEmailDomain(value = process.env.ACTOR_EMAIL_DOMAIN ?? 'noreply.heddle.sh') {
+  if (typeof value !== 'string' || value.length > 253 ||
+      !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![\s\S])/.test(value)) {
+    throw new Rejection('invalid_actor_email_domain', 'ACTOR_EMAIL_DOMAIN must be a hostname with at least one dot');
+  }
+  return value;
+}
+
+// Supplying enrollment opts into today's defaults. Resolving an older record must
+// retain its original fallback, even after a sponsor or deployment setting changes.
+export function actorEmail(agent, enrollment) {
+  if (agent.address) return agent.address;
+  if (agent.kind === 'human' && agent.email) return agent.email;
+  if (!enrollment) return `${agent.id}@heddle-artifacts.local`;
+  const domain = defaultEmailDomain(enrollment.domain);
+  if (agent.kind !== 'human' && enrollment.sponsor) {
+    const [local, sponsorDomain] = enrollment.sponsor.email.split('@');
+    return `${local.split('+')[0]}+${agent.id}@${sponsorDomain}`;
+  }
+  return `${agent.id}@${domain}`;
+}
+
+export const ENGINE = Object.freeze({
+  id: '_engine', displayName: 'Heddle engine',
+  // Validate when used so configuration errors stay inside the command boundary.
+  get address() { return `${this.id}@${defaultEmailDomain()}`; },
+});
+
 export function actorEnv(agent) {
   return {
     HEDDLE_HOME: join(stateRoot, 'agents', agent.id, 'home'),
     HEDDLE_CONFIG: join(stateRoot, 'agents', agent.id, 'home', 'config.toml'),
     HEDDLE_PRINCIPAL_NAME: agent.displayName || agent.id,
-    HEDDLE_PRINCIPAL_EMAIL: `${agent.id}@heddle-artifacts.local`,
+    HEDDLE_PRINCIPAL_EMAIL: actorEmail(agent),
     HEDDLE_AGENT_PROVIDER: agent.provider || '', HEDDLE_AGENT_MODEL: agent.model || '',
     HEDDLE_FSMONITOR: 'off', NO_COLOR: '1',
   };
 }
 
-export async function heddle(args, cwd = repoRoot, agent = { id: '_engine', displayName: 'Heddle engine' }, options = {}) {
+export async function heddle(args, cwd = repoRoot, agent = ENGINE, options = {}) {
   let result;
   try { result = await run(process.env.HEDDLE_BIN || 'heddle', ['--output', 'json', ...args], { cwd, ...options, env: { ...actorEnv(agent), ...options.env } }); }
   catch (error) { if (error.safeMessage) error.safeMessage = `${args.slice(0, 2).join(' ')}: ${error.safeMessage}`; throw error; }

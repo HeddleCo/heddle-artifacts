@@ -17,6 +17,23 @@ export DEMO_DIR=/tmp/heddle-recording
 ./demo/run.sh --mode scripted
 ```
 
+The human decider is configured through `DEMO_DECIDER_ID` (default `luke`),
+`DEMO_DECIDER_NAME` (default `Luke`), and optional `DEMO_DECIDER_EMAIL`.
+Set the email in the operator's environment for live runs; it must be a plain
+`local@domain` address with a dot in the domain. When set, the harness registers
+the decider with `sponsor: true` before enrolling the reviewer and coding agents.
+They receive `<local>+<agent-id>@<domain>` (any existing `+tag` is removed first),
+including `<local>+reviewer@<domain>`. Only one human per project can sponsor
+agents; other humans with an email are never implicitly sponsors.
+
+Without an email, a new decider receives `<id>@noreply.heddle.sh`. Operators can
+change this fallback with the Worker deployment variable `ACTOR_EMAIL_DOMAIN`
+(see `wrangler.example.jsonc`); it must be a hostname with at least one dot.
+Addresses are fixed at enrollment, so an agent enrolled before a sponsor keeps
+its noreply address. Set these before creating a project: real emails are
+immutable, and older identity records without a stored address retain
+`<id>@heddle-artifacts.local` without migration.
+
 The harness creates the project using `{seed:{template:"demo"}}`, the two tasks,
 Luke, reviewer, and three coding agents. The engine demo template must contain
 the contents of `demo/seed-project` at its repo root, including the lockfile and

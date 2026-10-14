@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run, git, gitAuth, remote, slug, Rejection } from './process.mjs';
 import { decisionOptions, DecisionInputError } from './decision-anchor.mjs';
-import { stateRoot, repoRoot, exportRoot, identity, heddle } from './state.mjs';
+import { stateRoot, repoRoot, exportRoot, identity, heddle, actorEmail } from './state.mjs';
 import { forkRemote, fetchCommits, materialize, conflictPaths, diffstat, fixedIdentity } from './git.mjs';
 import { verifyCapture } from './signatures.mjs';
 import { testCandidate } from './tests.mjs';
@@ -105,8 +105,21 @@ export async function enroll(state, request) {
   const agent = request.agent;
   slug(agent?.id);
   if (!['agent', 'human', 'reviewer'].includes(agent.kind) || typeof agent.displayName !== 'string') throw new Rejection('invalid_agent', 'Agent kind and displayName are required');
-  if (!state.agents[agent.id]) state.agents[agent.id] = { id: agent.id, kind: agent.kind, displayName: agent.displayName, ...(agent.provider ? { provider: agent.provider } : {}), ...(agent.model ? { model: agent.model } : {}), publicKey: await identity(agent.id) };
-  return { publicKey: state.agents[agent.id].publicKey };
+  if (agent.sponsor !== undefined && typeof agent.sponsor !== 'boolean') throw new Rejection('invalid_sponsor', 'sponsor must be a boolean');
+  const sponsor = Object.values(state.agents).find(a => a.sponsor === true);
+  if (agent.sponsor === true) {
+    if (agent.kind !== 'human' || typeof agent.email !== 'string' || !agent.email) throw new Rejection('invalid_sponsor', 'A sponsor must be a human with an email');
+    if (sponsor && sponsor.id !== agent.id) throw new Rejection('sponsor_exists', 'The project already has a sponsor');
+  }
+  const prior = state.agents[agent.id];
+  if (prior && (prior.kind !== agent.kind || agent.kind === 'human' && prior.email !== agent.email)) throw new Rejection('identity_exists', 'Identity already exists with different attributes');
+  if (!prior) {
+    const record = { id: agent.id, kind: agent.kind, displayName: agent.displayName, ...(agent.email !== undefined ? { email: agent.email } : {}), ...(agent.sponsor === true ? { sponsor: true } : {}), ...(agent.provider ? { provider: agent.provider } : {}), ...(agent.model ? { model: agent.model } : {}) };
+    record.address = actorEmail(record, { sponsor });
+    state.agents[agent.id] = { ...record, publicKey: await identity(agent.id) };
+  } else if (agent.sponsor === true) prior.sponsor = true;
+  const { publicKey, address } = state.agents[agent.id];
+  return { publicKey, ...(address !== undefined ? { address } : {}) };
 }
 export async function openLane(state, request) {
   const task = taskFor(state, request.task), agent = agentFor(state, request.agent);
@@ -394,7 +407,7 @@ export async function decide(state, request) {
   // decision belongs to this native rationale turn, not that earlier Capture.
   // Persist the same native timestamp in both the decision and projection pin.
   state.projection = { parentSha: state.mainSha, treeSha: native.tree, author: decider.displayName,
-    email: `${decider.id}@heddle-artifacts.local`, at: decisionTurn.at,
+    email: actorEmail(decider), at: decisionTurn.at,
     message: `${message}\n\nHeddle-State: ${landed.state_id_full}\nHeddle-Change: ${change}` };
   const mainSha = (await exportProjection(state)).sha;
   /** @type {Decision} */

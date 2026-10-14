@@ -37,7 +37,7 @@ export class EngineClient {
     const result = this.tail.then(fn); this.tail = result.catch(() => {}); return result;
   }
   private async transport(command: string, body: BodyInit | null, env: Record<string, string> = {}): Promise<Response> {
-    const request = new Request(`http://engine/${command}`, { method: 'POST', headers: { 'x-engine-env': JSON.stringify(env) }, body });
+    const request = new Request(`http://engine/${command}`, { method: 'POST', headers: { 'x-engine-env': JSON.stringify({ ...env, ACTOR_EMAIL_DOMAIN: this.env.ACTOR_EMAIL_DOMAIN ?? 'noreply.heddle.sh' }) }, body });
     if (this.env.DEV === '1' && this.env.ENGINE_DEV_URL) {
       return fetch(`${this.env.ENGINE_DEV_URL}/projects/${this.project()}/${command}`, { method: 'POST', headers: request.headers, body: request.body, signal: AbortSignal.timeout(180000) });
     }
@@ -48,7 +48,7 @@ export class EngineClient {
       const error = await response.json() as { error: { code: string; message: string } };
       const code = /^[a-z_]{1,40}$/.test(error.error?.code) ? error.error.code : 'rejected';
       // Combined-check refusals are state conflicts the decider resolves by waiting or re-briefing.
-      throw new HttpError(code === 'stale' || code.startsWith('combined_') ? 409 : 422, code);
+      throw new HttpError(code === 'stale' || code === 'sponsor_exists' || code === 'identity_exists' || code.startsWith('combined_') ? 409 : 422, code);
     }
     if (!response.ok) throw new EngineFailure(await crashDetail(response));
     const line = (await response.text()).trim();

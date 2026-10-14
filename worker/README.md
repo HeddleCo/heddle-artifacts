@@ -6,6 +6,17 @@ PR #5. The production Worker imports Track D's `createReviewer(env)` through
 Wrangler's `heddle-reviewer` alias. Local mode resolves the same import to the
 explicit reviewer fixture; no Workers AI credentials are used locally.
 
+`POST /api/projects/:p/humans` accepts optional `email` and `sponsor: true`.
+A sponsor needs a validated email; a different sponsor returns `409 sponsor_exists`.
+The designation is durable and can be added to an already registered human with
+the same email. Omitting `sponsor` on a retry preserves the designation.
+
+`ACTOR_EMAIL_DOMAIN` is a deployment variable, defaulting to `noreply.heddle.sh`
+(see `wrangler.example.jsonc`). The worker passes it through `x-engine-env` for
+every command, including the local engine transport. Invalid hostnames are
+rejected by the engine with `invalid_actor_email_domain`. The engine freezes
+each new identity's address and returns it to durable worker state.
+
 Run local checks from the repository root:
 
 ```sh

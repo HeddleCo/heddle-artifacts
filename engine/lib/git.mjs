@@ -3,7 +3,7 @@ import { readdir, rm, mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { run, git, gitAuth, remote, Rejection } from './process.mjs';
-import { exportRoot } from './state.mjs';
+import { exportRoot, actorEmail } from './state.mjs';
 
 export function forkRemote(canonical, project, task, agent) {
   const full = `${project}--${task}--${agent}`;
@@ -49,7 +49,8 @@ export async function note(sha, narrative, at) {
 }
 
 export function fixedIdentity(at = '2026-10-10T12:00:00Z') {
-  return { GIT_AUTHOR_NAME: 'Heddle engine', GIT_AUTHOR_EMAIL: 'engine@heddle-artifacts.local', GIT_COMMITTER_NAME: 'Heddle engine', GIT_COMMITTER_EMAIL: 'engine@heddle-artifacts.local', GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at };
+  const address = actorEmail({ id: 'engine' }, {});
+  return { GIT_AUTHOR_NAME: 'Heddle engine', GIT_AUTHOR_EMAIL: address, GIT_COMMITTER_NAME: 'Heddle engine', GIT_COMMITTER_EMAIL: address, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at };
 }
 
 export async function diffstat(base, sha) {
