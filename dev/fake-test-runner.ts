@@ -19,6 +19,7 @@ export class FakeTestRunner {
   reject = false;
   get(id: string): TestRunner {
     return {
+      ...(this.local ? { local: true } : {}),
       run: async input => {
         this.inputs.push({ id, input: structuredClone(input) });
         if (this.#held) await this.#held;

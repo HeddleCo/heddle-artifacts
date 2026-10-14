@@ -5,23 +5,9 @@ import { fetchApi } from '../worker/api';
 import { queue } from '../worker/events';
 import { ProjectDO as Coordinator } from '../worker/project-do';
 import type { Env } from '../worker/env';
-import type { SandboxInput, SandboxRun, TestRunner } from '../worker/isolated-tests';
-
-function localRunner(env: Env & { LOCAL_TEST_RUNNER_URL?: string; LOCAL_RUNNER_SECRET?: string }): { get(id: string): TestRunner } {
-  return {
-    get: () => ({
-      run: async (input: SandboxInput): Promise<SandboxRun> => {
-        if (!env.LOCAL_TEST_RUNNER_URL || !env.LOCAL_RUNNER_SECRET) throw new Error('local test runner is not configured');
-        const response = await fetch(`${env.LOCAL_TEST_RUNNER_URL}/run`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-runner-secret': env.LOCAL_RUNNER_SECRET }, body: JSON.stringify(input) });
-        if (!response.ok) throw new Error(`local test runner refused the run (${response.status})`);
-        return await response.json() as SandboxRun;
-      },
-      destroy: async () => {},
-    }),
-  };
-}
+import { localRunner, type LocalRunnerEnv } from './local-runner-adapter';
 
 export class ProjectDO extends Coordinator {
-  constructor(ctx: DurableObjectState, env: Env) { super(ctx, { ...env, TEST_RUNNER: localRunner(env) }); }
+  constructor(ctx: DurableObjectState, env: Env) { super(ctx, { ...env, TEST_RUNNER: localRunner(env as Env & LocalRunnerEnv) }); }
 }
 export default { fetch: fetchApi, queue };

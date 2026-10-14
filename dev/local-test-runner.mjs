@@ -37,17 +37,17 @@ function checkRemote(remote, allowFileRemotes) {
 }
 
 /** One bounded child process. Resolves with its exit code and combined output; kills the whole group on timeout. */
-function exec(args, { cwd, env, deadline, cap = TEST_OUTPUT_BYTES + 1 }) {
+function exec(args, { cwd, env, deadline, cap = TEST_OUTPUT_BYTES + 1, groups }) {
   return new Promise(resolve => {
     const child = spawn(args[0], args.slice(1), { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    if (child.pid) liveGroups.add(child.pid);
+    if (child.pid) { liveGroups.add(child.pid); groups?.add(child.pid); }
     const chunks = []; let size = 0, overflow = false, timedOut = false;
     const killGroup = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
     const timer = setTimeout(() => { timedOut = true; killGroup(); }, Math.max(1, deadline - Date.now()));
     const take = chunk => { if (size >= cap) { overflow = true; return; } chunks.push(chunk); size += chunk.length; };
     child.stdout.on('data', take); child.stderr.on('data', take);
-    child.on('error', () => { clearTimeout(timer); liveGroups.delete(child.pid); resolve({ code: 127, output: '', timedOut, overflow }); });
-    child.on('close', code => { clearTimeout(timer); killGroup(); liveGroups.delete(child.pid); resolve({ code: timedOut ? 124 : code ?? 1, output: Buffer.concat(chunks).toString('utf8'), timedOut, overflow }); });
+    child.on('error', () => { clearTimeout(timer); liveGroups.delete(child.pid); groups?.delete(child.pid); resolve({ code: 127, output: '', timedOut, overflow }); });
+    child.on('close', code => { clearTimeout(timer); killGroup(); liveGroups.delete(child.pid); groups?.delete(child.pid); resolve({ code: timedOut ? 124 : code ?? 1, output: Buffer.concat(chunks).toString('utf8'), timedOut, overflow }); });
   });
 }
 
@@ -55,7 +55,7 @@ function exec(args, { cwd, env, deadline, cap = TEST_OUTPUT_BYTES + 1 }) {
  * input: { sourceSha, treeSha, remote, readCredential, recipe? } as for the Sandbox runner (worker/isolated-tests.ts).
  * Returns the same SandboxRun shape, so the coordinator and the UI treat it exactly like a sandbox result.
  */
-export async function runCandidateLocally(input, { root, allowFileRemotes = false } = {}) {
+export async function runCandidateLocally(input, { root, allowFileRemotes = false, signal } = {}) {
   if (!root) throw new Error('A private work directory is required (no shared default: a predictable path in /tmp can be taken over)');
   const recipe = checkRecipe(input.recipe);
   if (!SHA.test(input.sourceSha) || !SHA.test(input.treeSha)) throw new Error('invalid sha');
@@ -65,12 +65,16 @@ export async function runCandidateLocally(input, { root, allowFileRemotes = fals
   const result = { sourceSha: input.sourceSha, treeSha: input.treeSha, output: '', durationMs: 0, local: true, ...(input.recipe ? { budgetMs: recipe.budgetMs } : {}) };
   await mkdir(root, { recursive: true, mode: 0o700 });
   const dir = await mkdtemp(join(root, 'run-')), cwd = join(dir, 'candidate'), home = join(dir, 'home');
+  // `signal` is the client giving up, or the runner shutting down: stop what is running and start nothing more.
+  const groups = new Set(), onAbort = () => { for (const pid of groups) { try { process.kill(-pid, 'SIGKILL'); } catch { /* already gone */ } } };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  const go = (args, e) => { if (signal?.aborted) throw new Error('aborted'); return exec(args, { cwd, env: e, deadline, groups }); };
   try {
     await mkdir(cwd); await mkdir(home);
     // Git gets the credential through its own environment config; the candidate's steps never do.
     const gitEnv = { PATH: process.env.PATH, HOME: home, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1',
       ...(local ? {} : { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraHeader', GIT_CONFIG_VALUE_0: `Authorization: Bearer ${input.readCredential}` }) };
-    const step = async (args, env = gitEnv) => exec(args, { cwd, env, deadline });
+    const step = async (args, env = gitEnv) => go(args, env);
     if ((await step(['git', 'init', cwd])).code !== 0) throw new Error('init');
     const fetched = await step(['git', 'fetch', '--no-tags', '--depth=1', '--', input.remote, input.sourceSha]);
     if (fetched.timedOut) { result.failure = 'timeout'; return result; }
@@ -80,12 +84,12 @@ export async function runCandidateLocally(input, { root, allowFileRemotes = fals
     if (sha.output.trim() !== input.sourceSha || tree.output.trim() !== input.treeSha) { result.failure = 'checkout'; return result; }
     const env = { PATH: process.env.PATH, CI: '1', NO_COLOR: '1', HOME: home, TMPDIR: home, NPM_CONFIG_UPDATE_NOTIFIER: 'false', GIT_CONFIG_NOSYSTEM: '1' };
     for (const args of recipe.setup) {
-      const run = await exec(args, { cwd, env, deadline });
+      const run = await go(args, env);
       result.installExitCode = run.code;
       if (run.timedOut) { result.failure = 'timeout'; return result; }
       if (run.code !== 0) return result;
     }
-    const test = await exec(recipe.test, { cwd, env, deadline });
+    const test = await go(recipe.test, env);
     result.testExitCode = test.code; result.output = test.output;
     if (test.timedOut) result.failure = 'timeout'; else if (test.overflow) result.failure = 'output';
     return result;
@@ -93,6 +97,7 @@ export async function runCandidateLocally(input, { root, allowFileRemotes = fals
     result.failure ||= /^(init|fetch|checkout)$/.test(error?.message) ? 'checkout' : 'sandbox';
     return result;
   } finally {
+    signal?.removeEventListener('abort', onAbort); onAbort();
     result.durationMs = Date.now() - start;
     await rm(dir, { recursive: true, force: true });
   }
@@ -108,8 +113,14 @@ export async function startLocalTestRunner({ port = 0, root, secret, slots = 2, 
   if (!secret || secret.length < 24) throw new Error('A runner secret of at least 24 characters is required');
   const own = !root; root ??= await mkdtemp(join(tmpdir(), 'heddle-local-tests-'));
   await mkdir(root, { recursive: true, mode: 0o700 });
-  const want = Buffer.from(secret), waiters = []; let running = 0, closing = false;
-  const acquire = () => { if (closing) return Promise.resolve(false); if (running < slots) { running++; return Promise.resolve(true); } return waiters.length < maxQueue ? new Promise(res => waiters.push(res)) : undefined; };
+  const want = Buffer.from(secret), waiters = [], lifecycle = new AbortController(); let running = 0, closing = false;
+  // A waiter that gives up leaves the queue; it never takes a slot.
+  const acquire = signal => {
+    if (closing || signal.aborted) return Promise.resolve(false);
+    if (running < slots) { running++; return Promise.resolve(true); }
+    if (waiters.length >= maxQueue) return undefined;
+    return new Promise(res => { const waiter = ok => { signal.removeEventListener('abort', leave); res(ok); }, leave = () => { const i = waiters.indexOf(waiter); if (i >= 0) waiters.splice(i, 1); res(false); }; signal.addEventListener('abort', leave, { once: true }); waiters.push(waiter); });
+  };
   const release = () => { const next = waiters.shift(); if (next) next(true); else running--; };
   const server = createServer(async (req, res) => {
     const end = (status, body) => { if (!res.writableEnded) res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body)); };
@@ -118,17 +129,19 @@ export async function startLocalTestRunner({ port = 0, root, secret, slots = 2, 
       if (req.method !== 'POST' || req.url !== '/run' || got.length !== want.length || !timingSafeEqual(got, want)) return end(404, { error: 'not_found' });
       if (!/^application\/json/.test(req.headers['content-type'] ?? '')) return end(415, { error: 'json_required' });
       let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 65536) return end(413, { error: 'too_large' }); }
-      const input = JSON.parse(text), slot = acquire();
+      const input = JSON.parse(text), gone = new AbortController(), signal = AbortSignal.any([gone.signal, lifecycle.signal]);
+      res.on('close', () => { if (!res.writableEnded) gone.abort(); });
+      const slot = acquire(signal);
       if (!slot) return end(429, { error: 'busy' });
       if (!(await slot)) return end(503, { error: 'shutting_down' });
-      try { end(200, await runCandidateLocally(input, { root, allowFileRemotes })); } finally { release(); }
+      try { end(200, await runCandidateLocally(input, { root, allowFileRemotes, signal })); } finally { release(); }
     } catch (error) { end(400, { error: /^invalid (recipe|remote|sha)/.test(error?.message) ? error.message : 'bad_request' }); }
   });
   await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));
   return {
     origin: `http://127.0.0.1:${server.address().port}`, root,
     async close() {
-      closing = true; for (const w of waiters.splice(0)) w(false);
+      closing = true; lifecycle.abort(); for (const w of waiters.splice(0)) w(false);
       killLive(); server.closeAllConnections();
       await new Promise(resolve => server.close(resolve));
       if (own) await rm(root, { recursive: true, force: true });

@@ -161,5 +161,9 @@ test('a request that gives up while still waiting in the queue never runs', { ti
     await new Promise(r => setTimeout(r, 300)); abort.abort(); await queued;
     assert.equal((await holding).status, 200); await new Promise(r => setTimeout(r, 800));
     await assert.rejects(() => stat(marker), /ENOENT/, 'the abandoned queued job was never executed');
+    // The slot the holder released must go to a real request, not to the one that left (a leaked slot would block everyone after it).
+    const later = await candidate(root, 'later', "import test from 'node:test'; test('ok', () => {});");
+    const third = await Promise.race([post(runner.origin, input(later)), new Promise(r => setTimeout(() => r(undefined), 8000))]);
+    assert.ok(third, 'a later request is served; the abandoned waiter did not keep the slot'); assert.equal(third.status, 200);
   } finally { await runner.close(); }
 }));
