@@ -86,7 +86,7 @@ export function createMock(initial = 'conflict') {
     if (!pathname.startsWith('/api/')) return;
     // Operator surface, as the real Worker has it: /api/session answers one boolean; creating things needs the operator session.
     const isOperator = /(?:^|;\s*)fixture_session=local(?:;|$)/.test(request.headers.get('cookie') ?? '');
-    if (pathname === '/api/session') return request.method === 'GET' ? json({ operator: isOperator }) : new Response(null, { status: 405 });
+    if (pathname === '/api/session') return request.method === 'GET' ? json({ operator: isOperator, demo: 'demo' }) : new Response(null, { status: 405 });
     if (request.method === 'POST' && (pathname === '/api/projects' || /^\/api\/projects\/[^/]+\/(tasks|humans)$/.test(pathname))) {
       const body = await request.json().catch(() => ({})) as Record<string, any>;
       if (!isOperator) return json({ error: 'forbidden' }, 403); requests.push({ path: pathname, body });

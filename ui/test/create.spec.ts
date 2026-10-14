@@ -9,9 +9,8 @@ const creates = (calls: Array<{ path: string }>) => calls.filter(c => c.path ===
 test.beforeEach(async ({ request }) => { expect((await reset(request)).ok()).toBe(true); });
 
 test('a visitor who is not an operator sees no create form anywhere', async ({ page, request }) => {
-  expect(await (await request.get('/api/session')).json()).toEqual({ operator: false });
+  expect(await (await request.get('/api/session')).json()).toEqual({ operator: false, demo: 'demo' });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Open board →' })).toBeVisible();
   await expect(page.getByRole('form', { name: 'New project' })).toHaveCount(0);
   await page.goto('/p/demo');
   await expect(page.getByRole('heading', { name: 'demo' })).toBeVisible();
@@ -96,4 +95,28 @@ test('with no human identity, an operator adds their name instead of being sent 
   await page.locator('.add-human').last().getByRole('button', { name: 'Add me' }).click();
   await expect(page.getByLabel('Decide as').locator('option', { hasText: 'Grace Hopper' })).toHaveCount(1);
   expect(creates(await sent(request))).toEqual([{ path: '/api/projects/demo/humans', body: { id: 'grace-hopper', displayName: 'Grace Hopper' } }]);
+});
+
+test('the root URL is the public demo board for a visitor, with the address left as /', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'demo' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'parser-escapes' }).first()).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe('/');
+  await expect(page.getByRole('button', { name: 'Open board →' })).toHaveCount(0);
+});
+
+test('the root URL stays the operator home: create form and a link to the demo, not the board', async ({ page, context }) => {
+  await signIn(context);
+  await page.goto('/');
+  await expect(page.getByRole('form', { name: 'New project' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /demo board/i })).toHaveAttribute('href', '/p/demo');
+  await expect(page.locator('.board')).toHaveCount(0);
+});
+
+test('with no demo project, the root is the project picker, and an unknown path is still not found', async ({ page }) => {
+  await page.route('**/api/session', route => route.fulfill({ json: { operator: false } }));
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Open board →' })).toBeVisible();
+  await page.goto('/nowhere');
+  await expect(page.getByRole('heading', { name: 'Page not found.' })).toBeVisible();
 });
