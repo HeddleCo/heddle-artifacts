@@ -34,6 +34,13 @@ test('parses observed Node and Vitest totals, including mixed failures and ANSI'
   assert.equal(isolatedTestResult(run({ passed: 9999, failed: 0 })).passed, 14);
   assert.equal(isolatedTestResult(run({ fixture: true })).provenance, 'isolated sandbox (local fixture)');
 });
+test('a run on the user\'s own machine is labelled as such, never as an isolated sandbox or a fixture', () => {
+  const local = isolatedTestResult(run({ local: true, output: '# pass 3\n# fail 1\n', testExitCode: 1 }));
+  assert.equal(local.provenance, 'local run (not isolated)'); assert.match(local.summary, /^Local run \(not isolated\): 3 passed, 1 failed$/);
+  assert.equal(isolatedTestResult(run({})).provenance, 'isolated sandbox');
+  assert.equal(isolatedTestResult(run({ fixture: true })).summary.startsWith('Isolated sandbox (local fixture)'), true);
+  assert.equal(isolatedTestResult(run({ local: true, passed: 9999 })).passed, 14, 'counts still come from the output only');
+});
 test('sandbox timeout and failures cannot become pass even with passing output', async () => {
   for (const overrides of [{ failure: 'timeout' }, { durationMs: 180000 }, { testExitCode: 124 }, { testExitCode: 137 },
     { failure: 'sandbox' }, { failure: 'checkout' }, { failure: 'output' }, { installExitCode: 1 }, { output: 'x'.repeat(TEST_OUTPUT_BYTES + 1) }]) {

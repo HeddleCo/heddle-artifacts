@@ -49,6 +49,17 @@ it('isolated request contains only one scoped read credential; recorded tests fl
   const board = await (await api(f.base)).json() as any;
   expect(board.tasks[0].candidates[0].tests.provenance).toBe('isolated sandbox');
 });
+it('the board names where tests ran: sandbox, local fixture, or the user\'s own machine', async () => {
+  const labels: Record<string, string> = {};
+  for (const [name, vars] of [['sandbox', {}], ['fixture', { DEV: '1' }], ['local', { DEV: '1', LOCAL_TEST_RUNNER_URL: 'http://127.0.0.1:9' }]] as const) {
+    const f = await fixture();
+    await runInDurableObject(f.project, instance => { Object.assign((instance as any).env, vars); });
+    await f.project.notePush(f.fork, 'refs/heads/main', sha(1), 'event');
+    const view = await waitFor(f.task, v => v.candidates[0]?.tests?.status === 'pass');
+    labels[name] = view.candidates[0].tests.provenance;
+  }
+  expect(labels).toEqual({ sandbox: 'isolated sandbox', fixture: 'isolated sandbox (local fixture)', local: 'local run (not isolated)' });
+});
 it('pending isolated tests keep board responsive and block decision and automatic review', async () => {
   const f = await fixture(); f.fake.delayMs = 1000;
   await f.project.notePush(f.fork, 'refs/heads/main', sha(1), 'event');
