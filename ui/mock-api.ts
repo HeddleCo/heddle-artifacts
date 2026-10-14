@@ -71,10 +71,11 @@ export function createMock(initial = 'conflict') {
       return new Response(null, { status: 303, headers: { Location: '/p/demo', 'Set-Cookie': 'fixture_session=local; HttpOnly; SameSite=Strict; Path=/' } });
     }
     if (pathname === '/__mock/reset' && request.method === 'POST') {
-      const body = await request.json() as { fixture: keyof typeof fixtures; decisionStatus?: number; pendingPublication?: boolean };
+      const body = await request.json() as { fixture: keyof typeof fixtures; decisionStatus?: number; pendingPublication?: boolean; noHumans?: boolean };
       if (!fixtures[body.fixture]) return json({ error: 'unknown fixture' }, 400);
       state = structuredClone(fixtures[body.fixture]); decisionStatus = body.decisionStatus || 200; requests.length = 0;
       histories = makeHistories();
+      if (body.noHumans) state.agents = state.agents.filter(a => a.kind !== 'human');
       if (body.pendingPublication) { state.tasks[0].decision = { ...decided.tasks[0].decision!, mainSha: '' }; state.tasks[0].status = 'reviewing'; }
       return json({ ok: true });
     }
@@ -83,6 +84,16 @@ export function createMock(initial = 'conflict') {
     }
     if (pathname === '/__mock/requests') return json(requests);
     if (!pathname.startsWith('/api/')) return;
+    // Operator surface, as the real Worker has it: /api/session answers one boolean; creating things needs the operator session.
+    const isOperator = /(?:^|;\s*)fixture_session=local(?:;|$)/.test(request.headers.get('cookie') ?? '');
+    if (pathname === '/api/session') return request.method === 'GET' ? json({ operator: isOperator }) : new Response(null, { status: 405 });
+    if (request.method === 'POST' && (pathname === '/api/projects' || /^\/api\/projects\/[^/]+\/(tasks|humans)$/.test(pathname))) {
+      const body = await request.json().catch(() => ({})) as Record<string, any>;
+      if (!isOperator) return json({ error: 'forbidden' }, 403); requests.push({ path: pathname, body });
+      if (pathname.endsWith('/tasks')) { if (state.tasks.some(t => t.slug === body.slug)) return json({ error: 'task_exists' }, 409); state.tasks.push({ slug: body.slug, intent: body.intent, status: 'open', lanes: [], candidates: [] } as typeof state.tasks[number]); return json({ slug: body.slug }); }
+      if (pathname.endsWith('/humans')) { state.agents.push({ id: body.id, kind: 'human', displayName: body.displayName, publicKey: `fixture-key-${body.id}` } as typeof state.agents[number]); return json({ id: body.id, publicKey: `fixture-key-${body.id}` }); }
+      return json({ project: body.id });
+    }
     const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent);
     if (parts[0] !== 'api' || parts[1] !== 'projects' || parts[2] !== 'demo') return json({ error: 'not_found' }, 404);
     if (parts.length === 3 && request.method === 'GET') return json({ project: state.project, agents: state.agents, tasks: state.tasks });

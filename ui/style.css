@@ -545,3 +545,16 @@ button.turn-reply { border: 0; padding: 2px 0; font-size: 11px; color: var(--mut
   .attribution-card { padding: 10px 14px; }
   .attribution-card > div { grid-template-columns: 76px minmax(0, 1fr); gap: 8px; }
 }
+
+/* Create-and-drive forms (operator only). Same panel, field and button language as the rest of the app; no accent bars. */
+.create-form { display: grid; gap: 12px; max-width: 560px; margin: 0 0 18px; }
+.create-form h2, .create-form summary { margin: 0; font: 600 var(--text-lg, 15px)/1.3 var(--font-ui, inherit); cursor: pointer; }
+.create-form form { display: grid; gap: 12px; margin-top: 12px; }
+.create-form label { display: grid; gap: 6px; }
+.create-form fieldset { display: grid; gap: 8px; border: 0; padding: 0; margin: 0; }
+.create-form legend { padding: 0; margin-bottom: 4px; color: var(--muted); }
+.create-form label.radio { display: flex; gap: 8px; align-items: center; }
+.create-form input[aria-invalid="true"] { border-color: var(--danger, #b04a3b); }
+.create-form .join-command { margin: 0; padding: 12px 14px; overflow-x: auto; border: 1px solid var(--stroke); border-radius: var(--radius); background: var(--panel-2, transparent); font: 13px/1.5 var(--mono, monospace); }
+.add-human { display: grid; gap: 8px; max-width: 360px; }
+main > form.panel.create-form { max-width: 560px; }
