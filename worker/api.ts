@@ -21,7 +21,8 @@ export async function fetchApi(request: Request, env: Env): Promise<Response> {
     // One boolean for the UI: whether to offer the create forms. The session cookie is HttpOnly, so the page cannot tell.
     if (url.pathname === '/api/session') {
       if (request.method !== 'GET') return new Response(null, { status: 405, headers: { allow: 'GET' } });
-      return Response.json({ operator: await operator(request, env.OPERATOR_TOKEN) }, { headers: { 'cache-control': 'no-store' } });
+      // `demo` is the project public reads already expose (DEMO_PROJECT), so the root URL can show it without a /p/<name> path.
+      return Response.json({ operator: await operator(request, env.OPERATOR_TOKEN), ...(env.DEMO_PROJECT ? { demo: env.DEMO_PROJECT } : {}) }, { headers: { 'cache-control': 'no-store' } });
     }
     if (url.pathname === '/api/projects' && request.method === 'POST') {
       checkOrigin(request); if (!await operator(request, env.OPERATOR_TOKEN)) throw new HttpError(403, 'forbidden');

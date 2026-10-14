@@ -6,16 +6,21 @@ import { humanBody, joinCommand, projectBody, suggestId, taskBody, validId } fro
 import type { ProjectForm } from './create';
 
 // One answer per page load: operators see the create forms, everyone else (judges on the public demo included) does not.
-let session: Promise<boolean> | undefined;
-export function useOperator(): boolean {
-  const [operator, setOperator] = useState(false);
+// `demo` is the public demo project's name, when the deployment has one; the root URL shows that board to visitors.
+interface Session { ready: boolean; operator: boolean; demo?: string }
+interface Body { operator?: unknown; demo?: unknown }
+let session: Promise<Session> | undefined;
+export function useSession(): Session {
+  const [value, setValue] = useState<Session>({ ready: false, operator: false });
   useEffect(() => {
-    session ??= fetch('/api/session', { credentials: 'same-origin' }).then(r => r.ok ? r.json() as Promise<{ operator?: unknown }> : { operator: false }).then(b => b.operator === true).catch(() => false);
-    let live = true; void session.then(v => { if (live) setOperator(v); });
+    session ??= fetch('/api/session', { credentials: 'same-origin' }).then(r => r.ok ? r.json() as Promise<Body> : ({} as Body))
+      .then((b): Session => ({ ready: true, operator: b.operator === true, ...(typeof b.demo === 'string' && b.demo ? { demo: b.demo } : {}) })).catch((): Session => ({ ready: true, operator: false }));
+    let live = true; void session.then(v => { if (live) setValue(v); });
     return () => { live = false; };
   }, []);
-  return operator;
+  return value;
 }
+export const useOperator = (): boolean => useSession().operator;
 const say = (e: unknown) => e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not reach the server. Try again.';
 
 export function NewProject() {

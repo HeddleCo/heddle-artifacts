@@ -120,3 +120,9 @@ test('with no demo project, the root is the project picker, and an unknown path 
   await page.goto('/nowhere');
   await expect(page.getByRole('heading', { name: 'Page not found.' })).toBeVisible();
 });
+
+test('with a demo configured, an unknown path is still "not found", not the demo board', async ({ page }) => {
+  await page.goto('/nowhere');
+  await expect(page.getByRole('heading', { name: 'Page not found.' })).toBeVisible();
+  await expect(page.locator('.board')).toHaveCount(0);
+});

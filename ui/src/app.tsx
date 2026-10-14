@@ -13,7 +13,7 @@ import { plural } from './format';
 import { CombinedLine, CombinedPanel } from './combined';
 import { Captures } from './captures';
 import { AnchorChip, AnnotationCard } from './annotation-card';
-import { AddAgent, AddHuman, NewProject, NewTask, useOperator } from './create-forms';
+import { AddAgent, AddHuman, NewProject, NewTask, useOperator, useSession } from './create-forms';
 
 
 const short = (s: string) => s.slice(0, 10);
@@ -360,7 +360,10 @@ function App() {
   return <Home/>;
 }
 function Home() {
-  const operator = useOperator();
-  return <><Header/><main><PageTitle eyebrow="HEDDLE / ARTIFACTS" title={location.pathname === '/' ? 'Decisions that travel with code.' : 'Page not found.'}/>{operator && location.pathname === '/' && <NewProject/>}<form class="panel" onSubmit={e => { e.preventDefault(); const value = new FormData(e.currentTarget).get('project'); if (typeof value === 'string' && value.trim()) location.assign(link(value.trim())); }}><label>Project ID<input name="project" required placeholder="demo"/></label><button>Open board →</button></form></main></>;
+  const { ready, operator, demo } = useSession(), root = location.pathname === '/';
+  if (root && !ready) return <><Header/><main><p role="status">Loading…</p></main></>;
+  // Visitors at the root see the public demo board; operators keep the create form.
+  if (root && !operator && demo) return <Board p={demo}/>;
+  return <><Header/><main><PageTitle eyebrow="HEDDLE / ARTIFACTS" title={location.pathname === '/' ? 'Decisions that travel with code.' : 'Page not found.'}/>{operator && root && <NewProject/>}{operator && root && demo && <p class="muted"><a href={link(demo)}>Open the demo board →</a></p>}<form class="panel" onSubmit={e => { e.preventDefault(); const value = new FormData(e.currentTarget).get('project'); if (typeof value === 'string' && value.trim()) location.assign(link(value.trim())); }}><label>Project ID<input name="project" required placeholder="demo"/></label><button>Open board →</button></form></main></>;
 }
 render(<App/>, document.getElementById('app')!);
