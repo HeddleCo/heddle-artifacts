@@ -46,6 +46,7 @@ export interface Env {
   DEV?: string;
   FAKE_ARTIFACTS_URL?: string;
   ENGINE_DEV_URL?: string;
+  ACTOR_EMAIL_DOMAIN?: string;
   // Track D can bind its pure review(input) through this adapter.
   REVIEW?: { review(input: ReviewInput, options?: ReviewOptions): Promise<Review> };
 }

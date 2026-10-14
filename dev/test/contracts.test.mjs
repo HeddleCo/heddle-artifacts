@@ -46,11 +46,11 @@ test('lane briefing contract preserves symbol scope and annotation tags', () => 
 });
 
 test('human email is accepted in enrollment and agent records, and preserved by the fixture engine', () => {
-  const agent = { id: 'luke', kind: 'human', displayName: 'Luke', email: 'luke@heddle.sh' };
+  const agent = { id: 'luke', kind: 'human', displayName: 'Luke', email: 'luke@heddle.sh', sponsor: true };
   const input = { opId: 'enroll-human', agent }, fixture = emptyState();
-  for (const value of [agent, { ...agent, email: undefined }]) {
+  for (const value of [agent, { ...agent, email: undefined, sponsor: undefined }]) {
     assert.equal(ajv.getSchema(`${schema.$id}#/$defs/agent.enroll.input`)({ ...input, agent: value }), true);
-    assert.equal(ajv.getSchema(`${schema.$id}#/$defs/Agent`)({ ...value, publicKey: 'a'.repeat(64) }), true);
+    assert.equal(ajv.getSchema(`${schema.$id}#/$defs/Agent`)({ ...value, publicKey: 'a'.repeat(64), address: 'luke@heddle.sh' }), true);
   }
   const result = executeFixture(fixture, 'agent.enroll', input);
   assert.deepEqual(fixture.agents.luke, { ...agent, ...result });
@@ -58,4 +58,11 @@ test('human email is accepted in enrollment and agent records, and preserved by 
     assert.equal(ajv.getSchema(`${schema.$id}#/$defs/AgentInput`)({ ...agent, email }), false);
     assert.equal(ajv.getSchema(`${schema.$id}#/$defs/Agent`)({ ...agent, email, publicKey: 'a'.repeat(64) }), false);
   }
+});
+
+test('enrollment output can carry a frozen address, but input cannot supply one', () => {
+  const agent = { id: 'gwen', kind: 'agent', displayName: 'Gwen' };
+  assert.equal(ajv.getSchema(`${schema.$id}#/$defs/agent.enroll.input`)({ opId: 'gwen', agent: { ...agent, address: 'untrusted@example.com' } }), false);
+  assert.equal(ajv.getSchema(`${schema.$id}#/$defs/agent.enroll.output`)({ publicKey: 'a'.repeat(64), address: 'luke+gwen@heddle.sh' }), true);
+  assert.equal(ajv.getSchema(`${schema.$id}#/$defs/AgentInput`)({ ...agent, sponsor: 'true' }), false);
 });

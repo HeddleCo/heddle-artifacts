@@ -15,6 +15,18 @@ For host development, set `HEDDLE_BIN` to the pinned CLI and
 `ARTIFACTS_READ_TOKENS` and `ARTIFACTS_WRITE_TOKEN` are transient environment
 variables. Do not put credentials in remote URLs.
 
+`ACTOR_EMAIL_DOMAIN` defaults to `noreply.heddle.sh` and must be a hostname
+with at least one dot. A bad setting rejects commands with
+`invalid_actor_email_domain` before state is changed. `agent.enroll` stores a
+frozen `address` on each new record: a human's real `email`, an agent/reviewer
+plus address under the explicitly designated human `sponsor`, or
+`<id>@<ACTOR_EMAIL_DOMAIN>` otherwise. Enrollment ignores agent/reviewer email
+metadata. A sponsor must have an email; designating another sponsor rejects
+with `sponsor_exists`. The `sponsor: true` flag is stored on the human record.
+Old records without `address` retain their original resolution (human email
+when present, otherwise `<id>@heddle-artifacts.local`); loading, replaying and
+restoring never backfill them.
+
 All fourteen commands implement §7.3 in
 [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md). JSON requests produce one
 JSON line: exit 0 for success, 2 for domain rejection, 1 for a crash.

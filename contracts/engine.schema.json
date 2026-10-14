@@ -337,6 +337,9 @@
         "email": {
           "type": "string",
           "maxLength": 254
+        },
+        "sponsor": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -375,6 +378,12 @@
         "email": {
           "type": "string",
           "maxLength": 254
+        },
+        "sponsor": {
+          "type": "boolean"
+        },
+        "address": {
+          "type": "string"
         }
       },
       "required": [
@@ -948,6 +957,9 @@
       "type": "object",
       "properties": {
         "publicKey": {
+          "type": "string"
+        },
+        "address": {
           "type": "string"
         }
       },

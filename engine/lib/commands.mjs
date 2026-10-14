@@ -105,8 +105,21 @@ export async function enroll(state, request) {
   const agent = request.agent;
   slug(agent?.id);
   if (!['agent', 'human', 'reviewer'].includes(agent.kind) || typeof agent.displayName !== 'string') throw new Rejection('invalid_agent', 'Agent kind and displayName are required');
-  if (!state.agents[agent.id]) state.agents[agent.id] = { id: agent.id, kind: agent.kind, displayName: agent.displayName, ...(agent.email !== undefined ? { email: agent.email } : {}), ...(agent.provider ? { provider: agent.provider } : {}), ...(agent.model ? { model: agent.model } : {}), publicKey: await identity(agent.id) };
-  return { publicKey: state.agents[agent.id].publicKey };
+  if (agent.sponsor !== undefined && typeof agent.sponsor !== 'boolean') throw new Rejection('invalid_sponsor', 'sponsor must be a boolean');
+  const sponsor = Object.values(state.agents).find(a => a.sponsor === true);
+  if (agent.sponsor === true) {
+    if (agent.kind !== 'human' || typeof agent.email !== 'string' || !agent.email) throw new Rejection('invalid_sponsor', 'A sponsor must be a human with an email');
+    if (sponsor && sponsor.id !== agent.id) throw new Rejection('sponsor_exists', 'The project already has a sponsor');
+  }
+  const prior = state.agents[agent.id];
+  if (prior && (prior.kind !== agent.kind || agent.kind === 'human' && prior.email !== agent.email)) throw new Rejection('identity_exists', 'Identity already exists with different attributes');
+  if (!prior) {
+    const record = { id: agent.id, kind: agent.kind, displayName: agent.displayName, ...(agent.email !== undefined ? { email: agent.email } : {}), ...(agent.sponsor === true ? { sponsor: true } : {}), ...(agent.provider ? { provider: agent.provider } : {}), ...(agent.model ? { model: agent.model } : {}) };
+    record.address = actorEmail(record, { sponsor });
+    state.agents[agent.id] = { ...record, publicKey: await identity(agent.id) };
+  } else if (agent.sponsor === true) prior.sponsor = true;
+  const { publicKey, address } = state.agents[agent.id];
+  return { publicKey, ...(address !== undefined ? { address } : {}) };
 }
 export async function openLane(state, request) {
   const task = taskFor(state, request.task), agent = agentFor(state, request.agent);

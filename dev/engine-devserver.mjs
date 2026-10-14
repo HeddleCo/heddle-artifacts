@@ -24,7 +24,7 @@ export async function startEngineDevserver({ port = Number(process.env.ENGINE_DE
       const stateDir = join(root, project); await mkdir(stateDir, { recursive: true });
       const incoming = JSON.parse(req.headers['x-engine-env'] ?? '{}');
       const env = { ...process.env, ENGINE_STATE_DIR: stateDir, HEDDLE_STATE_DIR: stateDir, STATE_DIR: stateDir };
-      for (const key of ['ARTIFACTS_READ_TOKENS', 'ARTIFACTS_WRITE_TOKEN']) if (typeof incoming[key] === 'string') env[key] = incoming[key];
+      for (const key of ['ARTIFACTS_READ_TOKENS', 'ARTIFACTS_WRITE_TOKEN', 'ACTOR_EMAIL_DOMAIN']) if (typeof incoming[key] === 'string') env[key] = incoming[key];
       const child = spawn(process.execPath, [engine, command], { env, cwd: resolve('.') });
       const stdout = []; let diagnostics = '';
       child.stderr.on('data', chunk => { if (process.env.ENGINE_DEV_DIAGNOSTICS === '1' && diagnostics.length < 4096) diagnostics += chunk.toString().slice(0, 4096 - diagnostics.length); });

@@ -370,6 +370,7 @@ Every source file carries `// SPDX-License-Identifier: Apache-2.0`.
 ```ts
 export type AgentKind = "agent" | "human" | "reviewer";
 export interface Agent { id: string; kind: AgentKind; displayName: string; publicKey: string /*hex ed25519*/;
+  email?: string; sponsor?: boolean; address?: string /*frozen at enrollment; absent on older records*/;
   provider?: string; model?: string; }
 export interface Lane { project: string; task: string; agent: string; forkRepo: string; forkRemote: string;
   laneThread: string /* task/<t>/<a> */; lastSeenSha?: string; status: "active"|"released"|"abandoned"; }
@@ -407,7 +408,7 @@ Auth:
 | `POST /api/projects` | op | `{id, seed:{template:"demo"}\|{importUrl}}` → `{id, canonicalRemote, readToken}` |
 | `POST /api/projects/:p/tasks` | op | `{slug, intent}` → `{slug, thread, baseSha}` |
 | `POST /api/projects/:p/tasks/:t/agents` | op | `{id, kind, displayName, provider?, model?}` → `{agentKey, fork:{remote, token, expiresAt}, upstream:{remote, readToken}, setup: string /*sh script*/}` |
-| `POST /api/projects/:p/humans` | op | `{id, displayName}` → `{id, publicKey}` (decider and discussant identities) |
+| `POST /api/projects/:p/humans` | op | `{id, displayName, email?, sponsor?}` → `{id, publicKey}` (decider and discussant identities) |
 | `GET /api/projects/:p` | op/agent | `{project, agents, tasks:[{slug,intent,status,lanes,candidates,decision?}]}` |
 | `GET /api/projects/:p/tasks/:t` | op/agent | `{task, candidates: Candidate[], turns: Turn[], review?: Review, decision?: Decision, heads: string[]}` |
 | `GET /api/projects/:p/tasks/:t/candidates/:a/diff` | op/agent | `text/x-diff` (vs task base, max 512 KB) |
@@ -420,6 +421,16 @@ Auth:
 
 \*Public only for the demo project. It is read-only and contains no tokens.
 
+Human real emails are immutable. `sponsor: true` requires an email (otherwise
+400 `invalid_sponsor`), and a project can designate only one human sponsor
+(a different sponsor returns 409 `sponsor_exists`). The designation is durable.
+New agents and reviewers receive `<local>+<agent-id>@<domain>` under that sponsor,
+dropping any existing `+tag` from the sponsor's local part. New identities without
+a real address use `<id>@noreply.heddle.sh`; the deployment variable
+`ACTOR_EMAIL_DOMAIN` overrides this domain and must be a hostname with a dot.
+The engine freezes addresses at enrollment. Existing records without `address`
+continue using their human email or `<id>@heddle-artifacts.local`, without migration.
+
 ### 7.3 Engine contract (Track A calls it; Track B implements it)
 - **Invocation:** `container.exec(["engine", <cmd>], { stdin: JSON | byte stream, env })`.
 - **stdout:** exactly one JSON line.
@@ -427,6 +438,7 @@ Auth:
 - **Exit codes:** `0` ok. `2` domain rejection, with `{"error":{"code","message"}}`. `1` crash; ProjectDO retries up to 3 times with backoff and then emits `engine.error`.
 - **Idempotency:** every mutating command takes `opId`. A replay with the same `opId` returns the recorded result.
 - **Tokens:** passed only through `env` (`ARTIFACTS_READ_TOKENS` JSON map of remote → token, `ARTIFACTS_WRITE_TOKEN`), with a 10-min TTL, and used via `git -c http.extraHeader=…`. They are never written to disk.
+- **Identity defaults:** `ACTOR_EMAIL_DOMAIN` is passed in `env` through `x-engine-env`; an invalid value rejects with `invalid_actor_email_domain` before writes. See `wrangler.example.jsonc`.
 
 | cmd | stdin | stdout |
 |---|---|---|
@@ -434,7 +446,7 @@ Auth:
 | `snapshot` | `{}` | tar.zst bytes (ProjectDO streams them to R2) |
 | `init` | `{opId, project, canonical:{remote}, seed}` | `{mainState, mainSha}` |
 | `task.create` | `{opId, task, intent}` | `{thread, baseState, baseSha}` |
-| `agent.enroll` | `{opId, agent: Agent-without-publicKey}` | `{publicKey}` |
+| `agent.enroll` | `{opId, agent: Agent-without-publicKey-or-address}` | `{publicKey, address?}` (address absent for older records) |
 | `lane.open` | `{opId, task, agent}` | `{laneThread, leaseId}` |
 | `ingest` | `{opId, items:[{task, agent, fork:{remote}, ref, sha}], runTests: boolean}` | `{results:[{agent, task, status:"captured"\|"duplicate"\|"rejected", candidate?: Candidate, reason?}], conflicts: {[task]: Candidate["conflicts"]}}` |
 | `candidates` | `{task}` | `{heads: string[], candidates: Candidate[]}` |

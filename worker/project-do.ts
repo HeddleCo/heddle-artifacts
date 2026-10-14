@@ -46,7 +46,7 @@ export class ProjectDO extends DurableObject<Env> {
     const events: FeedEvent[] = [];
     if (command === 'init') this.store.put('meta', 'mainSha', result.mainSha);
     if (command === 'task.create') this.store.put('tasks', input.task, { slug: input.task, intent: input.intent, ...result, status: 'open' });
-    if (command === 'agent.enroll') this.store.put('agents', input.agent.id, { ...input.agent, publicKey: result.publicKey });
+    if (command === 'agent.enroll') this.store.put('agents', input.agent.id, { ...this.store.get<Agent>('agents', input.agent.id), ...input.agent, ...result });
     if (command === 'lane.open') {
       const lane = this.store.get<Lane>('lanes', `${input.task}/${input.agent}`)!;
       this.store.put('lanes', `${input.task}/${input.agent}`, { ...lane, laneThread: result.laneThread, status: 'active', ...(result.briefing ? { briefing: result.briefing } : {}), ...(input.brief === false ? { unbriefed: true } : {}) });
@@ -478,11 +478,13 @@ export class ProjectDO extends DurableObject<Env> {
       const actor = publicRead ? await this.authorize(request).catch(() => anonymous) : await this.authorize(request);
       const anonymousRead = publicRead && actor === anonymous;
       // Validate human registration before recovery can replay any pending engine writes.
-      let human: { id: string; displayName: string; email?: string } | undefined;
+      let human: { id: string; displayName: string; email?: string; sponsor?: true } | undefined;
       if (actor.op && parts[3] === 'humans' && request.method === 'POST') {
         const body = await jsonBody(request);
         human = { id: slug(body.id), displayName: text(body.displayName, 200),
           ...(body.email !== undefined ? { email: email(body.email) } : {}) };
+        if (body.sponsor !== undefined && typeof body.sponsor !== 'boolean' || body.sponsor === true && !human.email) throw new HttpError(400, 'invalid_sponsor');
+        if (body.sponsor === true) human.sponsor = true;
       }
       this.expireAccess();
       if (parts[3] === 'credentials' && (parts.length === 4 || parts[4] === 'status' && parts.length === 5) && request.method === 'GET' || parts[3] === 'cleanup' && parts.length === 4 && request.method === 'POST') {
@@ -570,7 +572,9 @@ export class ProjectDO extends DurableObject<Env> {
         if (parts[3] === 'humans' && request.method === 'POST') {
           const { id, displayName, email: address } = human!;
           const prior = this.store.get<Agent>('agents', id); if (prior && (prior.kind !== 'human' || prior.email !== address)) throw new HttpError(409, 'identity_exists');
-          await this.engine.mutate('agent.enroll', { opId: `enroll:${id}`, agent: { id, kind: 'human', displayName, ...(address !== undefined ? { email: address } : {}) } });
+          const sponsor = human!.sponsor || prior?.sponsor;
+          if (sponsor && this.store.all<Agent>('agents').some(a => a.sponsor && a.id !== id)) throw new HttpError(409, 'sponsor_exists');
+          await this.engine.mutate('agent.enroll', { opId: `enroll:${id}${sponsor ? ':sponsor' : ''}`, agent: { id, kind: 'human', displayName, ...(address !== undefined ? { email: address } : {}), ...(sponsor ? { sponsor: true } : {}) } });
           const agent = this.store.get<Agent>('agents', id)!; return Response.json({ id, publicKey: agent.publicKey });
         }
         if (parts[3] === 'why' && request.method === 'GET') {

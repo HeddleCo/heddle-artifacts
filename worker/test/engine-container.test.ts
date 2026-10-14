@@ -9,8 +9,8 @@ it('container wrapper passes argv/stdin/env separately and maps domain/crash exi
       calls.push({ argv, env: options.env, stdin: await new Response(options.stdin).text(), stderr: options.stderr });
       return { stdout: new Response('{"error":{"code":"stale","message":"changed"}}\n').body, exitCode: Promise.resolve(code) };
     } } } };
-    const response = await HeddleEngine.prototype.fetch.call(fake as unknown as HeddleEngine, new Request('http://engine/decide', { method: 'POST', headers: { 'x-engine-env': JSON.stringify({ ARTIFACTS_WRITE_TOKEN: 'fixture-token' }) }, body: '{"opId":"1"}' }));
-    expect(response.status).toBe(status); expect(calls).toEqual([{ argv: ['engine', 'decide'], env: { ARTIFACTS_WRITE_TOKEN: 'fixture-token' }, stdin: '{"opId":"1"}', stderr: 'ignore' }]);
+    const response = await HeddleEngine.prototype.fetch.call(fake as unknown as HeddleEngine, new Request('http://engine/decide', { method: 'POST', headers: { 'x-engine-env': JSON.stringify({ ARTIFACTS_WRITE_TOKEN: 'fixture-token', ACTOR_EMAIL_DOMAIN: 'noreply.operator.example' }) }, body: '{"opId":"1"}' }));
+    expect(response.status).toBe(status); expect(calls).toEqual([{ argv: ['engine', 'decide'], env: { ARTIFACTS_WRITE_TOKEN: 'fixture-token', ACTOR_EMAIL_DOMAIN: 'noreply.operator.example' }, stdin: '{"opId":"1"}', stderr: 'ignore' }]);
   }
 });
 it('container snapshot exit failure aborts the streamed response', async () => {

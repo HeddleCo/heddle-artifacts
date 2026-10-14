@@ -80,3 +80,57 @@ it('a human cannot replace an existing agent identity', async () => {
   expect(response.status).toBe(409); expect(await response.json()).toEqual({ error: 'identity_exists' });
   expect(await engine.stats()).toEqual(before);
 });
+
+it('sponsor registration is explicit, durable and idempotent; a different sponsor conflicts', async () => {
+  const { base, project, engine } = await setup();
+  const agent = { id: 'luke', displayName: 'Luke', email: 'luke@heddle.sh', sponsor: true };
+  // Several other humans may have email; none is implicitly the sponsor.
+  expect((await api(`${base}/humans`, { id: 'other', displayName: 'Other', email: 'other@example.com' })).status).toBe(200);
+  const first = await api(`${base}/humans`, agent); expect(first.status).toBe(200);
+  const body = await first.json();
+  expect(await (await api(`${base}/humans`, agent)).json()).toEqual(body);
+  expect(await (await api(`${base}/humans`, { ...agent, sponsor: undefined })).json()).toEqual(body);
+  const stats = await engine.stats();
+  expect(stats.calls.filter((c: any) => c.command === 'agent.enroll' && c.input.agent.sponsor)).toHaveLength(1);
+  expect(stats.state.agents.luke).toMatchObject({ ...agent, kind: 'human' });
+  await runInDurableObject(project, async instance => {
+    expect(instance.store.get('agents', 'luke')).toMatchObject({ ...agent, kind: 'human' });
+  });
+  for (const candidate of [{ id: 'another', displayName: 'Another', email: 'another@example.com', sponsor: true },
+    { id: 'other', displayName: 'Other', email: 'other@example.com', sponsor: true }]) {
+    const response = await api(`${base}/humans`, candidate);
+    expect(response.status).toBe(409); expect(await response.json()).toEqual({ error: 'sponsor_exists' });
+  }
+  expect(await engine.stats()).toEqual(stats);
+});
+it('a registered human with the same email can become sponsor without replacing the identity', async () => {
+  const { base, project } = await setup();
+  const human = { id: 'luke', displayName: 'Luke', email: 'luke@heddle.sh' };
+  const before = await (await api(`${base}/humans`, human)).json();
+  expect(await (await api(`${base}/humans`, { ...human, sponsor: true })).json()).toEqual(before);
+  await runInDurableObject(project, async instance => { expect(instance.store.get('agents', human.id).sponsor).toBe(true); });
+});
+it('sponsor without email or with a nonboolean designation is rejected before recovery or enrollment', async () => {
+  const { base, project, engine } = await setup();
+  await runInDurableObject(project, async instance => {
+    instance.store.storage.sql.exec('INSERT INTO ops (id,command,input,context,status) VALUES (?,?,?,?,?)',
+      'pending-sponsor', 'agent.enroll', JSON.stringify({ opId: 'pending-sponsor', agent: { id: 'pending', kind: 'human', displayName: 'Pending' } }), '{}', 'pending');
+  });
+  const before = await engine.stats();
+  for (const candidate of [{ sponsor: true }, { email: 'luke@heddle.sh', sponsor: 'true' }, { email: 'luke@heddle.sh', sponsor: null }]) {
+    const response = await api(`${base}/humans`, { id: 'invalid', displayName: 'Invalid', ...candidate });
+    expect(response.status).toBe(400); expect(await response.json()).toEqual({ error: 'invalid_sponsor' });
+  }
+  expect(await engine.stats()).toEqual(before);
+  await runInDurableObject(project, async instance => { expect(instance.store.all('agents')).toEqual([]); });
+});
+it('the worker preserves the engine address in durable enrollment state', async () => {
+  const { base, project } = await setup();
+  await runInDurableObject(project, async instance => {
+    (instance as any).apply('agent.enroll', { agent: { id: 'gwen', kind: 'agent', displayName: 'Gwen' } },
+      { publicKey: 'a'.repeat(64), address: 'luke+gwen@heddle.sh' }, {});
+    expect(instance.store.get('agents', 'gwen').address).toBe('luke+gwen@heddle.sh');
+  });
+  const board = await (await api(base)).json() as any;
+  expect(board.agents.find((a: any) => a.id === 'gwen').address).toBe('luke+gwen@heddle.sh');
+});

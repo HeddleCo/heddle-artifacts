@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 export type AgentKind = "agent" | "human" | "reviewer";
 export interface Agent { id: string; kind: AgentKind; displayName: string; publicKey: string /*hex ed25519*/;
-  email?: string; provider?: string; model?: string; }
+  email?: string; sponsor?: boolean; /** Frozen at enrollment; absent on legacy records. */ address?: string; provider?: string; model?: string; }
 export interface Lane { project: string; task: string; agent: string; forkRepo: string; forkRemote: string;
   laneThread: string /* task/<t>/<a> */; lastSeenSha?: string; status: "active"|"released"|"abandoned"; briefing?: Briefing; /** Opened without a briefing, as a control. */ unbriefed?: boolean; }
 /** Heddle's signed pre-turn briefing for a lane: earlier decisions' annotations its agent started from. */

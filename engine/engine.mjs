@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { run, Rejection } from './lib/process.mjs';
-import { load, save, requestHash } from './lib/state.mjs';
+import { load, save, requestHash, defaultEmailDomain } from './lib/state.mjs';
 import { snapshot, restore, loadedToken } from './lib/snapshots.mjs';
 import { init, createTask, enroll, openLane, ingest, recordTests, candidates, diff, discuss, decide, combine, validateDecision } from './lib/commands.mjs';
 import { publish } from './lib/publish.mjs';
@@ -13,6 +13,7 @@ export async function selftest() {
 }
 
 try {
+  defaultEmailDomain();
   const cmd = process.argv[2];
   const mutating = { init, 'task.create': createTask, 'agent.enroll': enroll, 'lane.open': openLane, ingest, 'tests.record': recordTests, combine, discuss, decide, publish };
   if (![...Object.keys(mutating), 'selftest', 'snapshot', 'restore', 'loaded', 'candidates', 'captures', 'diff', 'why', 'decision.validate'].includes(cmd)) throw new Rejection('unknown_command', 'Unknown engine command');
