@@ -1,0 +1,138 @@
+
+> test
+> vitest run && node --test dev/test/*.test.mjs
+
+
+=======================================================================================
+WARNING: @cloudflare/vitest-pool-workers has been renamed to @cloudflare/vitest-plugin.
+This package will not receive future updates.
+Run `npx @cloudflare/codemods vitest:pool-workers-to-vitest-plugin` to migrate.
+=======================================================================================
+
+
+ RUN  v4.1.11 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64
+
+Sourcemap for "/home/heddleco/HeddleCo/workspace/heddle-artifacts-64/node_modules/@cloudflare/containers/dist/index.js" points to missing source files
+Sourcemap for "/home/heddleco/HeddleCo/workspace/heddle-artifacts-64/node_modules/@cloudflare/containers/dist/lib/container.js" points to missing source files
+Sourcemap for "/home/heddleco/HeddleCo/workspace/heddle-artifacts-64/node_modules/@cloudflare/containers/dist/lib/helpers.js" points to missing source files
+Sourcemap for "/home/heddleco/HeddleCo/workspace/heddle-artifacts-64/node_modules/@cloudflare/containers/dist/lib/utils.js" points to missing source files
+uncaught exception; exception = workerd/api/global-scope.c++:54: failed: jsg.TypeError: Can't read from request stream after response has been sent.
+stack: /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/node_modules/@cloudflare/workerd-linux-64/bin/workerd@34e5510 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/node_modules/@cloudflare/workerd-linux-64/bin/workerd@34e5a30 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/node_modules/@cloudflare/workerd-linux-64/bin/workerd@342d4d0 /home/heddleco/HeddleCo/workspace/heddle-artifacts-64/node_modules/@cloudflare/workerd-linux-64/bin/workerd@342d5c3
+
+ Test Files  19 passed (19)
+      Tests  166 passed (166)
+   Start at  04:19:18
+   Duration  38.79s (transform 8.95s, setup 0ms, import 13.37s, tests 160.52s, environment 0ms)
+
+✔ new agent and reviewer addresses use the explicit sponsor, dropping any existing plus tag (0.951317ms)
+✔ new identities without real addresses use a configurable noreply domain; human emails stay real (0.800004ms)
+✔ resolving a stored or legacy identity never recomputes its address (0.298668ms)
+✔ invalid default domains are rejected clearly, including empty values and line breaks (0.787611ms)
+✔ enrollment freezes the address before a sponsor, uses only the explicit sponsor, and persists the designation (341.519697ms)
+✔ enrollment retains old records without addresses and rejects a bad deployment setting before writes (67.57434ms)
+§7 schema: 16 JSON commands/results accepted; missing opId, stdin credentials and unknown commands rejected
+✔ §7 schema accepts every JSON fixture command/output and rejects missing opId, extra credentials and unknown verbs (89.236396ms)
+✔ lane briefing contract preserves symbol scope and annotation tags (0.842083ms)
+✔ human email is accepted in enrollment and agent records, and preserved by the fixture engine (2.602131ms)
+✔ enrollment output can carry a frozen address, but input cannot supply one (0.163716ms)
+✔ preflight uses the chosen tree or its combined tree, including added and deleted files (3.038035ms)
+✔ identifier and tag validation reject trailing newlines and preserve allowed punctuation (0.57806ms)
+✔ demo human defaults to Luke without an email and uses configured identity verbatim (1.091219ms)
+✔ demo Container build context and compute defaults are bounded (7.239013ms)
+✔ the engine Container execs every command the engine accepts (1.147403ms)
+✔ every module the engine imports is in the Docker build context (3.604293ms)
+✔ root Docker context is an exact runtime-source allowlist, excluding private state (2.382501ms)
+✔ host engine-devserver streams bytes, isolates project roots, forwards env credentials, preserves exit 2 and suppresses stderr (213.087793ms)
+✔ git failures are classified by subcommand and cause (1.360301ms)
+✔ a real failing git push reports its reason without echoing stderr (29.007015ms)
+✔ engine fetches speak protocol v2 and pushes stay on v1 (101.169858ms)
+FakeArtifacts: main, candidates, notes, atomic push, hook, fork scope, read-only, revoke and expiry verified
+✔ smart HTTP: real Git push/fork/clone, scoped expiring tokens, notes, atomic refs and events (819.724645ms)
+✔ binding errors retain provider name, code and numericCode across local HTTP without raw diagnostics (28.966591ms)
+✔ historical image recovery is manual-only and cannot claim to test a new app head (4.533168ms)
+✔ parses observed Node and Vitest totals, including mixed failures and ANSI (2.520518ms)
+✔ sandbox timeout and failures cannot become pass even with passing output (31.791597ms)
+✔ sandbox pass for SHA X is ignored for SHA Y even when their tree is identical (0.326591ms)
+✔ sandbox observation is engine signed and binds SHA, tree and native state (2.757632ms)
+✔ mismatched runner SHA or tree cannot be signed (0.375221ms)
+✔ engine decision waits for pending isolated observations (0.614638ms)
+✔ unreviewed candidate never invokes npm in the signing engine (3.391595ms)
+✔ fixed preflight covers all actual local suites and never opts into native or live work implicitly (3.73635ms)
+✔ CLI refuses alternate commands, remote modes and ignored options (0.447776ms)
+✔ environment excludes credentials, process injection, auth homes and alternate runtime endpoints (0.422319ms)
+✔ passed, failed, spawn, missing-module, signal, timeout, and output-limit checks remain distinct (1731.411408ms)
+✔ browser blockers, missing dependencies, and changing source cannot yield a green exit (0.302224ms)
+✔ npm wrapper refuses installs by default and forces opted-in fixture reconstruction offline (249.28474ms)
+✔ portable report metadata hashes current files and all four lockfiles without runtime secrets (47.478661ms)
+✔ logs redact ordinary bearer/secret shapes and local root paths (0.345325ms)
+✔ --plan is read-only and does not claim test execution (22.696748ms)
+✔ Wrangler auto-loaded files and project npm configuration fail closed without reading them (6.133127ms)
+✔ timeout force-cleans a detached grandchild even when its parent closes first (1110.043208ms)
+✔ browser web server preserves the caller isolated Wrangler auth directory (0.540069ms)
+✔ OAuth accepts only the exact official oauth token output, with no diagnostic reflection (1.287194ms)
+✔ OAuth child is allowlisted and omits ambient credentials, proxies, tracing and runtime hooks (0.791178ms)
+✔ only explicitly selected private /tmp HOME and child XDG directory are accepted, regardless of ambient TMPDIR (9.813532ms)
+✔ synthetic OAuth subprocess captures token only in memory and suppresses stderr (4.339987ms)
+✔ OAuth subprocess fails closed on timeout, total-output cap, nonzero status, spawn error and fallback credential type (25.277509ms)
+✔ OAuth plan validation never reads ambient token, and local/plan modes never read auth or bridge (1024.614244ms)
+✔ nested Wrangler auth stores cannot escape via symlinks, hardlinks, shared modes or special paths (4.262533ms)
+✔ bridge accepts only exact planned operations and ledger-owned targets without credential fields (17.758433ms)
+✔ request and response are bound to plan, account, exact method/path, unique ID and deadline (12.755928ms)
+✔ provider normalization strips headers, token fields, diagnostics and unneeded event content (10.472222ms)
+✔ private file bridge completes request/response end to end and refuses replay or reuse (80.430847ms)
+✔ file bridge rejects symlink responses, output overflow and unavailable timely responses (241.136179ms)
+✔ bridge CLI uses non-secret explicit files and stdin, with no response overwrite (66.759248ms)
+✔ split control keeps OAuth exclusively on Artifacts REST and cleans only new bridge resources (50.215303ms)
+✔ bridge lost create response stays unknown, and asynchronous queue deletion is never success (20.42287ms)
+✔ live OAuth injection cannot access ambient token and fails before resources when mocked preflight fails (16.748136ms)
+✔ plan contents are verified against a recomputed digest and the complete ledger plan (5.406028ms)
+✔ exclusive claims prevent redispatch after races or lost responses and cannot be skipped (61.740242ms)
+✔ ledger rejects shared/symlink directories and never follows predictable staging links (10.878992ms)
+✔ invalid ledger start times and finished ledgers cannot disable request expiry (5.36933ms)
+✔ local fake actually disables atomic and rejects rebuilt notes without changing remote refs (192.804694ms)
+✔ smoke fails before main CAS when an ordinary proof stage is partially rejected (817.752642ms)
+✔ smoke fails before main CAS when staged proof readback has the right ref name but wrong hash (328.18676ms)
+✔ main CAS uses the production primitive with explicit expected-old OID and one pinned target (0.629186ms)
+✔ Git timing retains failure classification and expected rejection without leaking diagnostics (0.309939ms)
+✔ event observation is correlated to exact main CAS, not seed or unvalidated clock metadata (0.234348ms)
+✔ REST timing retains only safe aggregate metadata, no token body or error text (3.151808ms)
+✔ HTTP errors stay failed observations and absent ownership probes are identified (0.437638ms)
+✔ Queue evidence retains only exact Git OIDs and canonical event timestamp (0.976303ms)
+✔ transport config pins only the approved credential-free loopback proxy and exact CA identity (1.765307ms)
+✔ explicit config requires private owned regular files and directories, rejecting links and oversized JSON (12.222863ms)
+✔ CA metadata and SHA256 are checked before any transport is accepted (3.757519ms)
+﹣ pinned public CA is snapshotted privately and transport options apply only to the exact validated remote (2.516621ms) # Optional pinned platform public CA is not installed in this environment
+﹣ mock Git receives explicit URL-scoped transport but no token or transport secrets in argv (1.287295ms) # Optional pinned platform public CA is not installed in this environment
+✔ Git errors expose only fixed categories and allowlisted phases, including split stderr chunks (3.704199ms)
+✔ Git output cap remains fail-closed and does not turn a capped diagnostic into a service verdict (1.942238ms)
+✔ plan/fake modes never load transport configuration or inherit ambient proxy/CA (1001.084921ms)
+✔ invalid explicit transport blocks a live-mode fixture before OAuth, bridge or network setup (14.020431ms)
+✔ stale, mismatched, absent or malformed per-launch proxy fails before CA reads (1.475436ms)
+✔ default live-mode fixture never reads runtime HTTPS_PROXY when transport is absent (11.360201ms)
+﹣ same-launch endpoint comparison accepts absent trailing slash without accepting URL aliases (0.930498ms) # Optional pinned platform public CA is not installed in this environment
+✔ A-S1 ref evidence cannot pass with a missing ref or a substring match (1.340053ms)
+✔ --plan is local-only with stable names, explicit bounds and no credentials (2.263869ms)
+✔ live mode refuses absent, unknown, expired, changed and wrong-account plans without network (2.496534ms)
+✔ preflight refuses existing or unknown inventory: {"existingRepo":true} (20.198882ms)
+✔ preflight refuses existing or unknown inventory: {"existingQueue":true} (7.306358ms)
+✔ preflight refuses existing or unknown inventory: {"inventoryUnknown":true} (9.466934ms)
+✔ ledger records IDs without token plaintext and refuses reusing a run ID (99.20696ms)
+✔ unknown create outcome stays pending and is never adopted or deleted by name (13.236126ms)
+✔ replacement IDs are never mutated or deleted during cleanup (34.420399ms)
+✔ cleanup failure is retained, printed and prevents a successful smoke exit (44.594824ms)
+✔ Git environment excludes API credentials, user helpers and tracing; remotes reject secret URLs (0.429683ms)
+✔ bounded Git kills a timed-out process without reflecting command output (5.500916ms)
+✔ local no-atomic fake verifies main-last CAS, stale rejection, fresh clone and exact final refs (1454.567968ms)
+✔ missing inventory metadata and missing bootstrap identity fail closed (15.635959ms)
+✔ normal API actions stop at plan expiry before fetch (5.232194ms)
+✔ exact publication refs reject wrong hashes, missing refs and ambiguous duplicate rows (0.338092ms)
+✔ network-command budget blocks the eighth command before dispatch and counts rejected commands (0.200044ms)
+✔ review plan pins the main-last command sequence and rejects legacy atomic plans (0.20344ms)
+ℹ tests 102
+ℹ suites 0
+ℹ pass 99
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 3253.52814

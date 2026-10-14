@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Heddle house look: warm paper and char grounds, one ember accent, hairline strokes, one
    ink-filled primary action. Cal Sans sets everything people read and every control; Paper Mono
-   is for code only (diffs, paths, symbols, SHAs, keys, briefing hashes, shell commands).
+   sets code (diffs, paths, symbols, SHAs, keys, hashes, shell commands) and compact record metadata.
    Fonts: Cal Sans and Paper Mono, SIL Open Font License 1.1 (see fonts/). */
 @font-face { font-family: "Cal Sans"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("/fonts/CalSans-Variable.woff2") format("woff2-variations"); }
 @font-face { font-family: "Cal Sans"; font-style: italic; font-weight: 400 700; font-display: swap; src: url("/fonts/CalSans-Italic-Variable.woff2") format("woff2-variations"); }
@@ -55,8 +55,7 @@ h2 { font-weight: 600; font-size: 19px; line-height: 1.25; letter-spacing: -0.00
 h3 { font-weight: 600; font-size: 15.5px; }
 strong, b { font-weight: 600; }
 
-/* Paper Mono is for code only: diffs, code, file paths, symbols, SHAs, keys, briefing hashes and
-   shell commands. Everything else, chrome included, is Cal Sans. */
+/* Paper Mono sets code and compact record metadata. The shell and reading text use Cal Sans. */
 code, pre, kbd, .briefing-target, .briefing .tag { font-family: var(--font-mono); }
 /* Code shows every character as typed (no coding ligatures: `===` stays three glyphs in a diff
    under review and in commands people copy); Paper Mono keeps its slashed zero. */
@@ -112,10 +111,10 @@ main { max-width: 1320px; margin: 0 auto; padding: 18px 28px 56px; }
 .page-title > p:not(.eyebrow) { color: var(--muted); font-size: 16px; margin: 4px 0; }
 
 .panel { background: var(--panel); border: 1px solid var(--stroke); border-radius: var(--radius); padding: 18px 20px; }
-.notice { border: 1px solid var(--stroke); border-left: 3px solid var(--fiber); background: var(--surface); border-radius: var(--radius); padding: 10px 14px; margin: 12px 0; font-size: 14px; }
-.notice.error { border-left-color: var(--risk); background: var(--risk-tint); }
-.notice.warning { border-left-color: var(--caution); background: var(--caution-tint); }
-.notice.landed { border-left-color: var(--good); background: var(--good-tint); }
+.notice { border: 1px solid var(--stroke); background: var(--surface); border-radius: var(--radius); padding: 10px 14px; margin: 12px 0; font-size: 14px; }
+.notice.error { background: var(--risk-tint); }
+.notice.warning { background: var(--caution-tint); }
+.notice.landed { background: var(--good-tint); }
 
 /* Badges and provenance tags. */
 .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--stroke); color: var(--muted); white-space: nowrap; }
@@ -189,7 +188,6 @@ pre { margin: 0; overflow: auto; }
 .verdict.approve { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .verdict.concerns { color: var(--caution); border-color: color-mix(in srgb, var(--caution) 40%, transparent); }
 .verdict-notes { display: block; color: var(--muted); font-size: 15px; margin-top: 4px; }
-.recommendation { border-left: 2px solid var(--accent); padding-left: 10px; }
 .discussion form { border-top: 1px solid var(--stroke); margin-top: 8px; padding-top: 4px; }
 
 /* Decision rail. */
@@ -232,8 +230,6 @@ pre { margin: 0; overflow: auto; }
 .reviewer .muted { font-size: 14px; font-style: italic; }
 /* Context carried forward from earlier decisions. */
 .briefed { margin: 6px 0 0; }
-.context-supplied ul { list-style: none; padding: 0; margin: 6px 0 0; }
-.context-supplied li { border-top: 1px dashed var(--stroke-subtle); padding: 8px 0; }
 .context-supplied .briefing { margin-top: 10px; }
 .briefing-target { font-size: 12px; color: var(--muted); }
 .context-supplied .muted { font-style: italic; font-size: 14px; }
@@ -251,7 +247,7 @@ pre { margin: 0; overflow: auto; }
 .check.combined.pass .check-mark { color: var(--good); } .check.combined.fail .check-mark { color: var(--risk); } .check.combined.conflict .check-mark { color: var(--caution); }
 
 /* Decision and briefing tags retain spacing and wrap within the decision rail. */
-.notice .tag, .context-supplied li > .tag { margin-left: 4px; max-width: 100%; overflow-wrap: anywhere; }
+.notice .tag { margin-left: 4px; max-width: 100%; overflow-wrap: anywhere; }
 
 /* Captures share one time scale across every lane. */
 .captures { margin-top: 20px; scroll-margin-top: 24px; }
@@ -462,4 +458,90 @@ header nav { flex-shrink: 0; }
   .captures-heading { flex-wrap: wrap; }
   .candidates-section, #captures, #discussion, #context { scroll-margin-top: 60px; }
   .app-shell footer { margin-top: 28px; }
+}
+
+/* Discussion threads: a shared byline, paper bubbles, and signed turns. */
+.discussion-heading { display: flex; align-items: center; gap: 12px; }
+.discussion-heading h2 { margin: 0; }
+.discussion-title { font: 12px/1.5 var(--font-mono); color: var(--muted); margin: 6px 0 10px; }
+.discussion-status { font: 11px/1.4 var(--font-mono); border: 1px solid var(--stroke); border-radius: 20px; padding: 1px 8px; color: var(--accent-deep); }
+.discussion-status.resolved { color: var(--good); border-color: color-mix(in oklab, var(--good) 35%, transparent); }
+.anchor-chip { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 3px 8px; border: 1px solid var(--stroke); border-radius: 4px; font: 12px/1.5 var(--font-mono); color: var(--muted); background: var(--panel); max-width: 100%; overflow-wrap: anywhere; }
+.anchor-chip code { font-size: inherit; }
+.symbol-chip { color: var(--accent-deep); font: 12px/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.discussion-thread { display: grid; gap: 14px; margin: 20px 0; }
+.discussion .turn { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 9px; padding: 0; border: 0; }
+.turn-avatar { width: 26px; height: 26px; grid-row: 1 / 3; font: 12px var(--font-mono); background: var(--hover); color: var(--muted); border: 0; }
+.turn-human .turn-avatar { color: var(--accent-deep); background: var(--accent-tint); }
+.turn-heading { grid-column: 2; justify-content: flex-start; gap: 7px; flex-wrap: wrap; margin-bottom: 4px; font: 12px/1.5 var(--font-mono); }
+.turn-heading strong { font-size: 12px; font-weight: 600; }
+.turn-heading time { color: var(--muted); font-size: 11px; }
+.turn-role { color: var(--muted); border: 1px solid var(--stroke); border-radius: 20px; padding: 0 6px; font-size: 10px; }
+.turn-content { grid-column: 2; min-width: 0; max-width: 62ch; }
+.turn-bubble { border: 1px solid var(--stroke); border-radius: 4px 12px 12px 12px; padding: 8px 12px; overflow-wrap: anywhere; }
+.turn-agent .turn-bubble, .turn-reviewer .turn-bubble { border-style: dashed; background: transparent; }
+.turn-human .turn-bubble { background: var(--accent-tint); border-color: color-mix(in oklab, var(--accent) 30%, var(--stroke)); }
+.turn-bubble .rich-text > :first-child { margin-top: 0; }
+.turn-bubble .rich-text > :last-child { margin-bottom: 0; }
+.turn-bubble .rich-text p { font-size: 15px; }
+.turn-bubble .signature { border: 0; padding: 0; margin: 5px 0 0; font-size: 10px; }
+.turn-bubble .signature code { font-size: 10px; }
+.turn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 3px; }
+.turn-actions .muted { font-size: 11px; }
+button.turn-reply { border: 0; padding: 2px 0; font-size: 11px; color: var(--muted); }
+.discussion .turn-grouped { margin-top: -10px; }
+.discussion form { margin-top: 18px; }
+
+/* Annotation cards share the same structure with a recorded decision's Reason. */
+:root { --kind-constraint: #ba9aca; --kind-invariant: #9cc49a; --kind-rationale: #e89a73; }
+:root[data-theme=light] { --kind-constraint: #80539c; --kind-invariant: #3f6b47; --kind-rationale: #8f4322; }
+.annotation-card { --kind-color: var(--accent-deep); background: var(--panel); border: 1px solid var(--stroke); border-radius: var(--radius-surface); overflow: hidden; margin: 12px 0; }
+.annotation-constraint { --kind-color: var(--kind-constraint); }
+.annotation-invariant { --kind-color: var(--kind-invariant); }
+.annotation-rationale { --kind-color: var(--kind-rationale); }
+.annotation-heading { display: flex; align-items: center; gap: 9px; padding: 12px 20px; border-bottom: 1px solid var(--stroke); font: 12px/1.4 var(--font-mono); }
+.kind-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--kind-color); flex: none; }
+.annotation-note { padding: 16px 20px 18px; }
+.annotation-target { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; font: 12px/1.5 var(--font-mono); margin-bottom: 10px; overflow-wrap: anywhere; }
+.annotation-target .briefing-target { color: var(--text); font-weight: 600; }
+.annotation-target .anchor-chip { padding: 0; border: 0; background: transparent; flex-direction: row-reverse; }
+.annotation-scope { color: var(--muted); }
+.annotation-note .rich-text p { font-size: 15.5px; line-height: 1.6; margin: 0 0 12px; }
+.annotation-note .rich-text code { color: var(--accent-deep); background: var(--accent-tint); border: 0; }
+.annotation-footer { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px; margin-top: 16px; font: 11px/1.5 var(--font-mono); color: var(--muted); overflow-wrap: anywhere; }
+.annotation-footer .tag { font: inherit; margin: 0; }
+.briefing-hash { margin-left: auto; padding: 1px 7px; border: 1px solid var(--stroke); border-radius: 4px; font-size: 11px; }
+.briefing-lane { font: 12px/1.5 var(--font-mono); margin: 20px 0 8px; }
+.notice.landed .annotation-card, .publication-pending .annotation-card { margin: 12px 0; }
+.narrative > .annotation-card { margin: 16px 0 20px; }
+
+/* Reviews retain the recommendation, then give each candidate a verdict and a quote. */
+.reviewer-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.reviewer-model { font: 11px/1.5 var(--font-mono); color: var(--muted); padding: 1px 7px; border: 1px solid var(--stroke); border-radius: 4px; overflow-wrap: anywhere; }
+.reviewer-summary { margin: 14px 0; }
+.reviewer-summary h3 { font-size: 15px; }
+.reviewer .reviewer-summary .muted { font-style: normal; }
+.review-rows { list-style: none; padding: 0; margin: 0; }
+.review-row { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-top: 1px solid var(--stroke); }
+.review-glyph { font: 14px/1.6 var(--font-mono); color: var(--accent-deep); }
+.review-approve .review-glyph { color: var(--good); }
+.review-agent { font: 600 12px/1.6 var(--font-mono); }
+.review-row blockquote { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 3px 0 0; }
+.review-row blockquote::before { content: '“'; }
+.review-row blockquote::after { content: '”'; }
+
+/* Signed capture facts follow the compact key–value attribution card. */
+.attribution-card { background: var(--panel); border: 1px solid var(--stroke); border-radius: var(--radius-surface); padding: 14px 20px; margin: 14px 0 18px; max-width: 62ch; }
+.attribution-card > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--stroke); }
+.attribution-card > div:last-child { border: 0; }
+.attribution-card dt { color: var(--muted); font: 11px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+.attribution-card dd { margin: 0; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.attribution-card code { font-size: 12px; }
+.attribution-signature { color: var(--accent-deep); }
+.attribution-card .test-summary { font-size: 13px; }
+@media (max-width: 760px) {
+  .annotation-heading { padding: 10px 14px; }
+  .annotation-note { padding: 12px 14px; }
+  .attribution-card { padding: 10px 14px; }
+  .attribution-card > div { grid-template-columns: 76px minmax(0, 1fr); gap: 8px; }
 }

@@ -1,4 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
+The `after-*` screenshots were refreshed at 1280×720 in both themes on 2026-10-14 after removing
+notice and annotation accent stripes (#64 follow-up). Historical `before-*` images are unchanged.
+See the [follow-up evidence](../tapestry-elements/README.md#follow-up-no-accent-stripes-2026-10-14).
+
 # Read-only task pages (#62)
 
 Local Wrangler mock, 1280×720, decided `parser-escapes`, rejected WebSocket handshakes.

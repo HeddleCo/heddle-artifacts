@@ -5,6 +5,10 @@ Implemented from the supplied screenshots and measured values in this repository
 No tapestry source was accessed or copied. All captures use synthetic local fixtures, with no live
 Worker, account data, deployment or real engine claims.
 
+The current screenshots were refreshed on 2026-10-14 after removing card and notice accent stripes
+(#64 follow-up); historical `before-*` images remain unchanged. See the
+[follow-up evidence and passing UI checks](../tapestry-elements/README.md#follow-up-no-accent-stripes-2026-10-14).
+
 The dashboard groups tasks with decision work first, and the Views buttons filter the list and
 update counts from the live feed. The task page uses anchor tabs: Candidates, Captures, Discussion
 and Context remain mounted, preserving decision drafts and the existing recorder hooks. The decision

@@ -9,9 +9,10 @@ import { publicationEvidence } from './verification';
 import { isPublished, decisionRequest, conflictMessage, combinedBlock, combinedText } from './decision';
 import { DecisionNotice } from './decision-notice';
 import { identifiers, InlineText, Narrative, parseReview, ReviewBody, RichText } from './rich-text';
-import { displayName, plural } from './format';
+import { plural } from './format';
 import { CombinedLine, CombinedPanel } from './combined';
 import { Captures } from './captures';
+import { AnchorChip, AnnotationCard } from './annotation-card';
 
 
 const short = (s: string) => s.slice(0, 10);
@@ -158,7 +159,7 @@ function Diff({ p, t, candidate }: { p: string; t: string; candidate: Candidate 
   }, [p, t, candidate.agent, candidate.sourceSha, retry]);
   return error ? <div role="alert">{error} <button class="quiet" onClick={() => setRetry(n => n + 1)}>Retry diff</button></div> : <pre class="diff" aria-label={`Diff for ${candidate.agent}`}><code>{text.split('\n').map((line, i) => <span key={i} class={line.startsWith('+') && !line.startsWith('+++') ? 'diff-add' : line.startsWith('-') && !line.startsWith('---') ? 'diff-remove' : line.startsWith('@@') ? 'diff-region' : ''}>{line}{'\n'}</span>)}</code></pre>;
 }
-function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; turns: Turn[]; humans: Agent[]; onTurn: (turn: Turn) => void }) {
+function Discussion({ p, t, turns, humans, decision, onTurn }: { p: string; t: string; turns: Turn[]; humans: Agent[]; decision?: Decision; onTurn: (turn: Turn) => void }) {
   const [body, setBody] = useState(''), [as, setAs] = useState(''), [replyTo, setReplyTo] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const sending = useRef(false), lifecycle = useRef(0);
   useEffect(() => { setBody(''); setAs(''); setReplyTo(''); setError(''); setBusy(false); sending.current = false;
@@ -169,8 +170,22 @@ function Discussion({ p, t, turns, humans, onTurn }: { p: string; t: string; tur
     try { const turn = await request<Turn>(`${taskPath(p, t)}/turns`, { body: body.trim(), as: author, ...(replyTo ? { replyTo } : {}) }); if (n === lifecycle.current) { onTurn(turn); setBody(''); setReplyTo(''); } }
     catch(e) { if (n === lifecycle.current) setError(message(e)); } finally { if (n === lifecycle.current) { sending.current = false; setBusy(false); } }
   };
-  return <section id="discussion" tabIndex={-1} class="panel discussion"><h2>Discussion <span class="count">{turns.length}</span></h2>
-    {turns.length ? turns.map(turn => <article class="turn" key={turn.id}><div class="turn-heading"><strong>{turn.author}</strong><span class="muted">{turn.kind} · <time dateTime={turn.at}>{new Date(turn.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></span></div>{(() => { const review = turn.kind === 'reviewer' ? parseReview(turn.body) : undefined; return review ? <ReviewBody review={review}/> : <RichText text={turn.body}/>; })()}<Signature signedBy={turn.signedBy}/>{turn.replyTo && <p class="muted">Reply to {turn.replyTo}</p>}<button class="quiet small" disabled={busy} onClick={() => setReplyTo(turn.id)}>Reply to {turn.author}</button></article>) : <p class="muted">No discussion yet. Add the context that should travel with the code.</p>}
+  return <section id="discussion" tabIndex={-1} class="panel discussion">
+    <div class="discussion-heading"><h2>Discussion <span class="count">{turns.length}</span></h2><span class={`discussion-status ${decision ? 'resolved' : 'open'}`}>{decision ? 'resolved' : 'open'}</span></div>
+    <p class="discussion-title">{t}</p>{decision?.anchor && <AnchorChip anchor={decision.anchor}/>}
+    {turns.length ? <div class="discussion-thread">{turns.map((turn, i) => {
+      const grouped = i > 0 && turns[i - 1].author === turn.author && turns[i - 1].kind === turn.kind;
+      const name = humans.find(a => a.id === turn.author)?.displayName || turn.author;
+      const initials = name.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase();
+      const review = turn.kind === 'reviewer' ? parseReview(turn.body) : undefined;
+      return <article class={`turn turn-${turn.kind}${grouped ? ' turn-grouped' : ''}`} key={turn.id} aria-label={`${name}, ${new Date(turn.at).toLocaleString()}`}>
+        {!grouped && <><span class="avatar turn-avatar" aria-hidden="true">{turn.kind === 'human' ? initials : '◇'}</span>
+          <div class="turn-heading"><strong>{name}</strong>{turn.kind !== 'human' && <span class="turn-role">{turn.kind}</span>}<time dateTime={turn.at}>{new Date(turn.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></div></>}
+        <div class="turn-content"><div class="turn-bubble">{review ? <ReviewBody review={review}/> : <RichText text={turn.body}/>}<Signature signedBy={turn.signedBy}/></div>
+          <div class="turn-actions">{turn.replyTo && <span class="muted">Reply to {turn.replyTo}</span>}<button class="quiet small turn-reply" disabled={busy} onClick={() => setReplyTo(turn.id)}>Reply to {turn.author}</button></div>
+        </div>
+      </article>;
+    })}</div> : <p class="muted">No discussion yet. Add the context that should travel with the code.</p>}
     <form onSubmit={submit}><label>Speak as<select disabled={busy} value={author} onChange={e => setAs(e.currentTarget.value)} required><option value="" disabled>Select a human identity</option>{humans.map(a => <option value={a.id}>{a.displayName}</option>)}</select></label>
       <label>Your reply<textarea disabled={busy} required maxLength={10000} value={body} onInput={e => setBody(e.currentTarget.value)} placeholder="What should the team consider?"/></label>
       {replyTo && <p>Replying to {replyTo} <button type="button" class="quiet" disabled={busy} onClick={() => setReplyTo('')}>Cancel reply</button></p>}
@@ -255,15 +270,20 @@ function Compare({ p, t }: { p: string; t: string }) {
       <CombinedPanel candidate={candidate}/>
       <Diff p={p} t={t} candidate={candidate}/><Signature signedBy={candidate.signedBy} agent={agent}/></section>; })}</div>
     {view && !view.candidates.length && <p class="notice">Waiting for candidate captures. This page updates live.</p>}
-  {view?.review && <section class="panel reviewer"><div><p class="eyebrow">REVIEWER / {view.review.model}</p><h2>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h2><p><InlineText text={view.review.summary}/></p>{view.review.recommendation && <p class="muted"><InlineText text={view.review.recommendation.why}/></p>}</div><ul>{view.review.perCandidate.map(c => <li><strong>{c.agent} · {c.verdict}</strong><p><InlineText text={c.notes}/></p></li>)}</ul></section>}
+  {view?.review && <section class="panel reviewer">
+    <div class="reviewer-heading"><h2>Reviews <span class="count">{view.review.perCandidate.length}</span></h2><span class="reviewer-model" title={view.review.model}>{view.review.model.startsWith('@cf/') ? view.review.model.split('/').at(-1)?.toUpperCase() : view.review.model}</span></div>
+    <div class="reviewer-summary"><h3>{view.review.recommendation ? `Recommendation: ${view.review.recommendation.pick}` : 'Review'}</h3><p><InlineText text={view.review.summary}/></p>{view.review.recommendation && <p class="muted"><InlineText text={view.review.recommendation.why}/></p>}</div>
+    <ul class="review-rows">{view.review.perCandidate.map(c => <li class={`review-row review-${c.verdict}`} key={c.agent}>
+      <span class="review-glyph" role="img" aria-label={c.verdict}>{c.verdict === 'approve' ? '✓' : '–'}</span><div><strong class="review-agent">{c.agent}</strong><blockquote><InlineText text={c.notes}/></blockquote></div>
+    </li>)}</ul></section>}
     </section>
     {view && <Captures key={`captures/${p}/${t}`} p={p} t={t} agents={agents} lanes={lanes} refresh={captureRefresh}/>}
-    {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
+    {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} decision={view.decision} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
       {view && <section id="context" tabIndex={-1} class="panel context-supplied" aria-label="Context supplied"><h2>Context supplied</h2>
         <p class="muted">{lanes.some(l => l.briefing?.annotations.length) ? "Heddle briefed each agent with earlier decisions on this code before it started." : "No earlier decisions were supplied to these lanes."}</p>
         {lanes.some(l => l.unbriefed) && <p class="muted control-note">Not briefed, as a control: {lanes.filter(l => l.unbriefed).map(l => l.agent).join(', ')}.</p>}
-        {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><p><strong>{l.agent}</strong> <span class="tag dashed" title={l.briefing!.hash}>briefing {l.briefing!.hash.slice(0, 10)}</span></p>
-          <ul>{l.briefing!.annotations.map(a => <li><span class="verdict">{a.kind}</span> <span class="briefing-target">{a.target}{a.scope && a.scope !== 'file' ? ` · ${a.scope}` : ''}</span>{a.tags?.map(tag => <span class="tag" key={tag}>{tag}</span>)}<span class="verdict-notes">“{a.content}”</span><span class="muted">— {displayName(a.attribution)}</span></li>)}</ul></div>)}
+        {lanes.filter(l => l.briefing?.annotations.length).map(l => <div class="briefing" key={l.agent}><h3 class="briefing-lane">{l.agent} <span class="count">{l.briefing!.annotations.length} supplied</span></h3>
+          <div class="annotation-list">{l.briefing!.annotations.map(a => <AnnotationCard key={`${a.annotationId}/${a.revisionId}`} kind={a.kind} target={a.target} scope={a.scope} content={a.content} tags={a.tags} attribution={a.attribution} hash={l.briefing!.hash}/>)}</div></div>)}
       </section>}
     </div></div>
     <aside class="rail-card right-rail rail" aria-label="Decision"><section class="task-facts"><h2 class="rail-title">About</h2><Facts rows={[
@@ -312,7 +332,7 @@ function Why({ p, sha }: { p: string; sha: string }) {
   const commands = `read -r -s -p 'Artifacts read token: ' HEDDLE_READ_TOKEN; printf '\\n'\nexport HEDDLE_READ_TOKEN\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" clone '${cloneRemote}' heddle-check\ncd heddle-check\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" fetch origin '+refs/notes/*:refs/notes/*'\nunset HEDDLE_READ_TOKEN\ngit log --notes='heddle*' -3\ngit branch -r`;
   const proof = `git fsck --strict${/^[a-f0-9]{40}$/i.test(sha) && view?.decision && /^[a-zA-Z0-9_-]+$/.test(view.decision.task) && /^[a-zA-Z0-9_-]+$/.test(view.decision.pick) ? `\ngit rev-parse '${sha}^{tree}' 'origin/candidates/${view.decision.task}/${view.decision.pick}^{tree}'` : ''}`;
   return <><Header p={p}/><main><a class="breadcrumb" href={link(p)}>← {p} / board</a><PageTitle eyebrow="THE WHY / PLAIN GIT" title="The decision stays with the code."><p>Commit <code>{short(sha)}</code> · the chosen work, the alternatives, and the reasoning.</p></PageTitle>{error && <ErrorNotice text={error}/>}
-    <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2><Narrative text={view?.narrative || 'Loading narrative…'}/>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
+    <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2>{view?.decision && <AnnotationCard kind="Reason" content={view.decision.rationale} attribution={view.decision.decider} anchor={view.decision.anchor} tags={view.decision.tags}/>}<Narrative text={view?.narrative || 'Loading narrative…'}/>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
       <Verification view={view} sha={sha} proof={proof}/></div>
     <section class="panel git-instructions"><div class="section-heading"><h2>See it in plain Git</h2><button class="quiet" onClick={async () => { try { await navigator.clipboard.writeText(commands); setCopied('Copied'); } catch { setCopied('Select and copy the commands below.'); } }}>Copy commands</button></div><p class="muted">Use Bash. Enter your repo-scoped read token at the hidden prompt.{cloneRemote === '<CANONICAL_REMOTE>' ? ' Replace <CANONICAL_REMOTE> with the project’s Artifacts HTTPS clone URL.' : ''}</p><pre tabIndex={0}><code>{commands}</code></pre><p role="status">{copied}</p></section>
   </main></>;

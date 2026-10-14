@@ -18,12 +18,12 @@ test('captures retains lane history, shares a time axis, and navigates across ag
   await expect(panel.locator('.capture-detail')).toContainText('Add the row parser');
   await expect(panel.locator('.capture-detail')).toContainText('Function added: parseRow in src/table.ts');
   await expect(panel.locator('.capture-detail')).toContainText('1111111111');
-  await expect(panel.locator('.capture-detail')).toContainText('Tests: fail');
+  await expect(panel.locator('.attribution-card')).toContainText('fail · 12 passed / 2 failed');
   await expect(panel.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled();
   await panel.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(panel.locator('.capture-detail')).toContainText('Bob · CAPTURE 2 OF 5');
   await expect(panel.locator('.capture-detail')).toContainText('Function modified: parseRow in src/table.ts');
-  await expect(panel.locator('.capture-detail')).toContainText('Tests: pass');
+  await expect(panel.locator('.attribution-card')).toContainText('pass · 14 passed / 0 failed');
   await panel.getByRole('button', { name: 'Next', exact: true }).press('ArrowRight');
   await expect(panel.locator('.capture-detail')).toContainText('Handle escaped pipes');
   await expect(panel.locator('.capture-detail')).toContainText('Semantic summary unavailable');
