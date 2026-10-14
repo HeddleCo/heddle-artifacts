@@ -9,6 +9,7 @@ import { run, git, Rejection } from './process.mjs';
 import { stateRoot, repoRoot, exportRoot, heddle, ENGINE } from './state.mjs';
 import { fixedIdentity } from './git.mjs';
 import { combinedRefusal } from './combined-rule.mjs';
+import { COMBINED_PENDING_SUMMARY } from './isolated-tests.mjs';
 
 export const COMBINED_REF = 'refs/heads/combined';
 
@@ -125,8 +126,8 @@ export async function refreshCombined(state, taskId, { isolate = false } = {}) {
         await git(exportRoot, ['update-ref', ref, sha]);
         refs.push(ref);
         candidate.combined = { ...base, status: isolate ? 'pending' : 'skipped', conflicts: [], state: merge.mergedState, sha, treeSha,
-          tests: isolate ? { status: 'pending', passed: 0, failed: 0, summary: 'Combined tests pending in the isolated sandbox', durationMs: 0, provenance: 'isolated sandbox', sourceSha: sha }
-            : { status: 'skipped', passed: 0, failed: 0, summary: 'Combined tests run only in the isolated sandbox', durationMs: 0 } };
+          tests: isolate ? { status: 'pending', passed: 0, failed: 0, summary: COMBINED_PENDING_SUMMARY, durationMs: 0, provenance: 'isolated sandbox', sourceSha: sha }
+            : { status: 'skipped', passed: 0, failed: 0, summary: 'Combined tests are run by the test runner only', durationMs: 0 } };
       }
       lane.seen[candidate.sourceSha] = candidate;
     }

@@ -426,7 +426,8 @@
           "enum": [
             "reviewed fixture",
             "isolated sandbox",
-            "isolated sandbox (local fixture)"
+            "isolated sandbox (local fixture)",
+            "local run (not isolated)"
           ]
         },
         "sourceSha": {
@@ -1522,6 +1523,9 @@
           "maximum": 600000
         },
         "fixture": {
+          "type": "boolean"
+        },
+        "local": {
           "type": "boolean"
         }
       },

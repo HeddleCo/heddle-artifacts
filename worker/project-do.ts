@@ -8,7 +8,7 @@ import { bodyText, checkOrigin, credential, digest, email, HttpError, jsonBody, 
 import { Store } from './store';
 import { EngineClient } from './engine-client';
 import { DemoCredentials } from './credentials';
-import { sandboxId, type SandboxRun, type TestRunner } from './isolated-tests';
+import { sandboxDeadlineMs, sandboxId, type SandboxRun, type TestRunner } from './isolated-tests';
 import { TEST_BUDGET_MS, TEST_OUTPUT_BYTES } from '../engine/lib/isolated-tests.mjs';
 import { parseTestRecipe, type TestRecipe } from './test-recipe';
 // A failed ingest is retried twice, a minute and then two minutes later, before the push counts as failed.
@@ -234,10 +234,12 @@ export class ProjectDO extends DurableObject<Env> {
   }
   private sandboxJobs(): SandboxJob[] { return this.store.rows<{ data: string }>("SELECT data FROM meta WHERE key LIKE 'isolated:%'").map(r => JSON.parse(r.data)); }
   private runner(id: string): TestRunner | undefined { return this.env.TEST_RUNNER?.get(id) ?? this.env.TEST_SANDBOX?.getByName(id); }
-  private sandboxError(job: SandboxJob, failure: SandboxRun['failure'] = 'sandbox'): SandboxRun {
+  /** Where a result came from, for the board: what the runner reported about itself (`local`), else a fixture in dev/test, else the real Sandbox. The environment never decides this for a runner that spoke. */
+  private testOrigin(result?: SandboxRun, runner?: TestRunner): { local?: true; fixture?: true } { return result?.local || runner?.local ? { local: true } : this.env.DEV === '1' ? { fixture: true } : {}; }
+  private sandboxError(job: SandboxJob, failure: SandboxRun['failure'] = 'sandbox', runner?: TestRunner): SandboxRun {
     const recipe = this.testRecipe(), budgetMs = recipe?.budgetMs ?? TEST_BUDGET_MS;
     return { sourceSha: job.sourceSha, treeSha: job.treeSha, output: '', durationMs: Math.min(budgetMs, Date.now() - (job.startedAt ?? Date.now())), failure,
-      ...(recipe ? { budgetMs } : {}), ...(this.env.DEV === '1' ? { fixture: true } : {}) };
+      ...(recipe ? { budgetMs } : {}), ...this.testOrigin(undefined, runner) };
   }
   /** The operator's recipe for this project's sandbox tests, if it set one at creation. */
   private testRecipe(): TestRecipe | undefined { return this.store.get<{ tests?: TestRecipe }>('meta', 'project')?.tests;
@@ -289,7 +291,7 @@ export class ProjectDO extends DurableObject<Env> {
     // (the engine never writes to an agent's fork), so that job gets a canonical read grant instead.
     // Either way it is one repo, read-only, short-lived, attached outside the sandbox by TestOutbound.
     const project = this.store.get('meta', 'project'), repo = job.combined ? project.id : lane?.forkRepo, remote = job.combined ? project.canonicalRemote : lane?.forkRemote;
-    let token: { id: string; plaintext: string } | undefined, run = this.sandboxError(job);
+    let token: { id: string; plaintext: string } | undefined, run = this.sandboxError(job, 'sandbox', runner);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await this.ctx.storage.sync();
@@ -299,16 +301,16 @@ export class ProjectDO extends DurableObject<Env> {
       const recipe = this.testRecipe(), budgetMs = recipe?.budgetMs ?? TEST_BUDGET_MS;
       const result = await Promise.race([runner.run({ project: project.id, task: job.task, agent: job.agent,
         sourceSha: job.sourceSha, treeSha: job.treeSha, remote, readCredential: token.plaintext, ...(recipe ? { recipe } : {}) }),
-        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('sandbox_timeout')), Math.max(1, budgetMs - (Date.now() - job.startedAt!))); })]);
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('sandbox_timeout')), sandboxDeadlineMs(budgetMs, Date.now() - job.startedAt!, runner)); })]);
       if (result.sourceSha !== job.sourceSha || result.treeSha !== job.treeSha) throw new Error('sandbox_binding');
       // Copy only observation fields; candidate output cannot supply test counts.
       run = { sourceSha: job.sourceSha, treeSha: job.treeSha, output: result.output, durationMs: result.durationMs, ...(recipe ? { budgetMs } : {}),
-        installExitCode: result.installExitCode, testExitCode: result.testExitCode, ...(result.failure ? { failure: result.failure } : {}), ...(this.env.DEV === '1' ? { fixture: true } : {}) };
-      if (typeof run.output !== 'string' || new TextEncoder().encode(run.output).length > TEST_OUTPUT_BYTES) run = this.sandboxError(job, 'output');
-    } catch (error) { run = this.sandboxError(job, error instanceof Error && error.message === 'sandbox_timeout' ? 'timeout' : 'sandbox'); }
+        installExitCode: result.installExitCode, testExitCode: result.testExitCode, ...(result.failure ? { failure: result.failure } : {}), ...this.testOrigin(result, runner) };
+      if (typeof run.output !== 'string' || new TextEncoder().encode(run.output).length > TEST_OUTPUT_BYTES) run = this.sandboxError(job, 'output', runner);
+    } catch (error) { run = this.sandboxError(job, error instanceof Error && error.message === 'sandbox_timeout' ? 'timeout' : 'sandbox', runner); }
     finally {
       if (timer) clearTimeout(timer);
-      try { await runner?.destroy(); } catch { run = this.sandboxError(job); }
+      try { await runner?.destroy(); } catch { run = this.sandboxError(job, 'sandbox', runner); }
       if (token && repo) await this.credentials.revoke(repo, token.id);
     }
     await this.engine.serial(async () => {

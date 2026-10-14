@@ -9,13 +9,17 @@ import { publicationEvidence } from './verification';
 import { isPublished, decisionRequest, conflictMessage, combinedBlock, combinedText } from './decision';
 import { DecisionNotice } from './decision-notice';
 import { identifiers, InlineText, Narrative, parseReview, ReviewBody, RichText } from './rich-text';
-import { plural } from './format';
+import { plural, runnerLabel } from './format';
 import { CombinedLine, CombinedPanel } from './combined';
 import { Captures } from './captures';
 import { AnchorChip, AnnotationCard } from './annotation-card';
+import { AddAgent, AddHuman, NewProject, NewTask, useOperator, useSession } from './create-forms';
 
 
 const short = (s: string) => s.slice(0, 10);
+function HumanPrompt({ p, what, onHuman }: { p: string; what: string; onHuman: (human: Agent) => void }) {
+  return useOperator() ? <><p class="muted">Add your name to {what}.</p><AddHuman p={p} onAdded={onHuman}/></> : <p class="muted">Sign in as an operator to {what}.</p>;
+}
 const link = (p: string, t?: string) => `/p/${encodeURIComponent(p)}${t ? `/t/${encodeURIComponent(t)}` : ''}`;
 const whyLink = (p: string, sha: string) => `${link(p)}/why/${encodeURIComponent(sha)}`;
 const fingerprint = (key: string) => key ? `ed25519:${key.slice(0, 8)}…${key.slice(-8)}` : 'No signing key';
@@ -23,7 +27,7 @@ const message = (e: unknown) => e instanceof ApiError ? e.message : 'Could not r
 function ErrorNotice({ text }: { text: string }) { return <p class="notice error" role="alert">{text} <a href="/login">Sign in</a></p>; }
 function Badge({ candidate }: { candidate?: Candidate }) {
   const tests = candidate?.tests;
-  return <span class={`badge ${tests?.status || 'pending'}`}>{tests ? `${tests.status === 'pass' ? '✓' : tests.status === 'fail' ? '✕' : '○'} ${tests.status} · ${tests.passed}/${tests.passed + tests.failed}${tests.provenance ? ` · ${tests.provenance}` : ''}` : '○ Tests pending'}</span>;
+  return <span class={`badge ${tests?.status || 'pending'}`}>{tests ? `${tests.status === 'pass' ? '✓' : tests.status === 'fail' ? '✕' : '○'} ${tests.status} · ${tests.passed}/${tests.passed + tests.failed}${runnerLabel(tests) ? ` · ${runnerLabel(tests)}` : ''}` : '○ Tests pending'}</span>;
 }
 function Signature({ signedBy, agent }: { signedBy: string; agent?: Agent }) {
   const matches = agent?.publicKey === signedBy;
@@ -115,6 +119,7 @@ function Board({ p }: { p: string }) {
     }
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Refresh to check progress.`);
   }, () => { if (loading.current) reloadRequested.current = true; else void load(); });
+  const operator = useOperator();
   const agents = new Map(view?.agents.map(a => [a.id, a]));
   const ready = view?.tasks.reduce((n, t) => n + t.candidates.length, 0) || 0;
   const counts = (name: BoardFilter) => view?.tasks.filter(task => name === 'All tasks' || taskGroup(task) === name).length || 0;
@@ -144,7 +149,8 @@ function Board({ p }: { p: string }) {
       <a class="button compare-link" href={link(p, task.slug)}>{isPublished(task.decision) ? 'View decision' : task.decision ? 'Retry publication' : 'Compare candidates'} <span aria-hidden="true">→</span></a>
       {task.decision && isPublished(task.decision) && <a class="why-link" href={whyLink(p, task.decision.mainSha)}>Why {short(task.decision.mainSha)} landed →</a>}
     </section>)}{!counts(group) && <p class="empty-state">{group === 'Needs a decision' ? 'Nothing needs a decision right now.' : `No ${group.toLowerCase()} tasks.`}</p>}</section>)}</div>}
-    {view && !view.tasks.length && <p>No tasks yet. Create a task through the project API.</p>}
+    {operator && <NewTask p={p} onCreated={() => { void load(); }}/>}
+    {view && !view.tasks.length && <p>{operator ? 'No tasks yet. Create the first one above.' : 'No tasks yet.'}</p>}
     <footer>Artifacts holds the Git. Heddle holds the decisions.</footer></div>
     <aside class="rail-card right-rail" aria-label="Project activity and facts"><section><h2 class="rail-title">Live</h2>{!recent.length ? <p class="muted">Nothing moving right now.</p> : <ol class="activity-list">{recent.map(item => <li key={`${item.task}/${item.agent}/${item.sha}`}><span class="activity-dot" aria-hidden="true"/><div><a href={link(p, item.task)}>{item.agent} <span class="muted">· {item.kind}</span></a><p class="activity-path"><code>{item.task}</code></p><p class="muted"><code>{short(item.sha)}</code> · <time dateTime={item.at}>{new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></p></div></li>)}</ol>}</section>
     <section><h2 class="rail-title">About</h2><Facts rows={[
@@ -159,7 +165,7 @@ function Diff({ p, t, candidate }: { p: string; t: string; candidate: Candidate 
   }, [p, t, candidate.agent, candidate.sourceSha, retry]);
   return error ? <div role="alert">{error} <button class="quiet" onClick={() => setRetry(n => n + 1)}>Retry diff</button></div> : <pre class="diff" aria-label={`Diff for ${candidate.agent}`}><code>{text.split('\n').map((line, i) => <span key={i} class={line.startsWith('+') && !line.startsWith('+++') ? 'diff-add' : line.startsWith('-') && !line.startsWith('---') ? 'diff-remove' : line.startsWith('@@') ? 'diff-region' : ''}>{line}{'\n'}</span>)}</code></pre>;
 }
-function Discussion({ p, t, turns, humans, decision, onTurn }: { p: string; t: string; turns: Turn[]; humans: Agent[]; decision?: Decision; onTurn: (turn: Turn) => void }) {
+function Discussion({ p, t, turns, humans, decision, onTurn, onHuman }: { p: string; t: string; turns: Turn[]; humans: Agent[]; decision?: Decision; onTurn: (turn: Turn) => void; onHuman: (human: Agent) => void }) {
   const [body, setBody] = useState(''), [as, setAs] = useState(''), [replyTo, setReplyTo] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const sending = useRef(false), lifecycle = useRef(0);
   useEffect(() => { setBody(''); setAs(''); setReplyTo(''); setError(''); setBusy(false); sending.current = false;
@@ -190,7 +196,7 @@ function Discussion({ p, t, turns, humans, decision, onTurn }: { p: string; t: s
       <label>Your reply<textarea disabled={busy} required maxLength={10000} value={body} onInput={e => setBody(e.currentTarget.value)} placeholder="What should the team consider?"/></label>
       {replyTo && <p>Replying to {replyTo} <button type="button" class="quiet" disabled={busy} onClick={() => setReplyTo('')}>Cancel reply</button></p>}
       {error && <ErrorNotice text={error}/>}<button disabled={busy || !author || !body.trim()}>{busy ? 'Posting…' : 'Post signed reply'}</button>
-      {!humans.length && <p class="muted">Enroll a human identity through the project API to discuss or decide.</p>}
+      {!humans.length && <HumanPrompt p={p} what="discuss or decide" onHuman={onHuman}/>}
     </form></section>;
 }
 function Compare({ p, t }: { p: string; t: string }) {
@@ -232,6 +238,8 @@ function Compare({ p, t }: { p: string; t: string }) {
   },
   () => { if (!feedAvailable.current) return; feedAvailable.current = false; connectionEpoch.current++; invalidate(); });
   const humans = agents.filter(a => a.kind === 'human'), who = decider || humans[0]?.id || '';
+  const addHuman = (human: Agent) => setAgents(list => list.some(a => a.id === human.id) ? list : [...list, human]);
+  const operator = useOperator();
   const submit = async (e: Event) => { e.preventDefault(); if (!view || sending.current || busy || stale.current || loading.current || changed || reviewing) return;
     const body = decisionRequest(view, { pick, rationale, decider: who, ...(anchor.trim() ? { anchor: anchor.trim() } : {}), ...(tags.trim() ? { tags: tags.split(',').map(t => t.trim()) } : {}) }); if (!body) return; const n = lifecycle.current; sending.current = true; setBusy(true); setError('');
     try {
@@ -255,6 +263,7 @@ function Compare({ p, t }: { p: string; t: string }) {
   return <><Header p={p} live={live}/><main class="app-shell spool">
     <aside class="rail-card left-rail" aria-label="Project tasks"><h2 class="rail-title">Tasks</h2><a class="tree-project" href={link(p)}>{p}<span class="count">{project?.tasks.length || 0}</span></a><nav class="task-tree" aria-label="Tasks">{tasks?.map(task => <a key={task.slug} href={link(p, task.slug)} aria-current={task.slug === t ? 'page' : undefined}><span class="tree-label">{task.slug}<span class={`tree-status ${taskGroup(task) === 'Landed' ? 'success-text' : ''}`} aria-hidden="true">{taskGroup(task) === 'Landed' ? '✓' : taskGroup(task) === 'Needs a decision' ? '◌' : '·'}</span></span><span class="muted">{taskGroup(task)}</span></a>)}</nav><a class="rail-back" href={link(p)}>← Back to dashboard</a></aside>
     <div class="page-centre"><div class="page-title"><h1>{t}</h1><p class="path-line"><code>{view?.task.thread || `${p} / ${t}`} <span class="separator">/</span> base {base ? short(base) : 'awaiting capture'}</code></p><p class="intent">{view?.task.intent || 'Loading task…'}</p></div>
+    {operator && <AddAgent p={p} t={t}/>}
     <TaskTabs ready={!!view}/><a class="mobile-decision-link" href="#decision">Go to decision ↓</a>
     {error && <ErrorNotice text={error}/>}
     {changed && <div class="notice warning" role="status">Review the latest task state before continuing. <button class="quiet" disabled={reviewing} onClick={() => load(true)}>{view?.decision ? 'Refresh recorded decision' : 'Review current candidates'}</button></div>}
@@ -278,7 +287,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     </li>)}</ul></section>}
     </section>
     {view && <Captures key={`captures/${p}/${t}`} p={p} t={t} agents={agents} lanes={lanes} refresh={captureRefresh}/>}
-    {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} decision={view.decision} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })}/>}
+    {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} decision={view.decision} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })} onHuman={addHuman}/>}
       {view && <section id="context" tabIndex={-1} class="panel context-supplied" aria-label="Context supplied"><h2>Context supplied</h2>
         <p class="muted">{lanes.some(l => l.briefing?.annotations.length) ? "Heddle briefed each agent with earlier decisions on this code before it started." : "No earlier decisions were supplied to these lanes."}</p>
         {lanes.some(l => l.unbriefed) && <p class="muted control-note">Not briefed, as a control: {lanes.filter(l => l.unbriefed).map(l => l.agent).join(', ')}.</p>}
@@ -301,9 +310,9 @@ function Compare({ p, t }: { p: string; t: string }) {
         {!view.decision && (() => { const picked = view.candidates.find(c => c.agent === pick), blocked = combinedBlock(picked);
           return blocked ? <p class="notice warning combined-block" role="status">{blocked}</p>
             : picked?.combined?.status === 'pass' ? <p class="muted combined-note">{picked.agent} lands as Heddle's merge with main, the exact result that passed its tests.</p> : null; })()}
-        {!humans.length && <p class="muted">Enroll a human identity through the project API to decide.</p>}
+        {!humans.length && <HumanPrompt p={p} what="decide" onHuman={addHuman}/>}
       </section>
-      {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{c.tests?.provenance && <span class="tag dashed">{c.tests.provenance}</span>}</li>)}
+      {!!view.candidates.length && <section class="panel checks"><p class="eyebrow">CHECKS <span class="count">{view.candidates.length}</span></p><ul>{view.candidates.map(c => <li class={`check ${c.tests?.status || 'pending'}`}><span class="check-mark" aria-hidden="true">{c.tests?.status === 'pass' ? '✓' : c.tests?.status === 'fail' || c.tests?.status === 'error' ? '✕' : '○'}</span><strong>{c.agent}</strong><span class="check-detail">{c.tests ? `${c.tests.passed} pass · ${c.tests.failed} fail${c.tests.durationMs ? ` · ${(c.tests.durationMs / 1000).toFixed(1)} s` : ''}` : 'tests pending'}</span>{runnerLabel(c.tests) && <span class="tag dashed">{runnerLabel(c.tests)}</span>}</li>)}
         {view.candidates.filter(c => c.combined).map(c => { const line = combinedText(c)!; return <li class={`check combined ${line.tone}`}><span class="check-mark" aria-hidden="true">{line.text.slice(0, 1)}</span><strong>{c.agent} + main</strong><span class="check-detail">{line.text.slice(2)}</span></li>; })}</ul></section>}
     </>}</aside>
   </main></>;
@@ -348,6 +357,13 @@ function App() {
     if (path[2] === 't' && path[3] && path.length === 4) return <Compare p={path[1]} t={path[3]}/>;
     if (path[2] === 'why' && path[3] && path.length === 4) return <Why p={path[1]} sha={path[3]}/>;
   }
-  return <><Header/><main><PageTitle eyebrow="HEDDLE / ARTIFACTS" title={location.pathname === '/' ? 'Decisions that travel with code.' : 'Page not found.'}/><form class="panel" onSubmit={e => { e.preventDefault(); const value = new FormData(e.currentTarget).get('project'); if (typeof value === 'string' && value.trim()) location.assign(link(value.trim())); }}><label>Project ID<input name="project" required placeholder="demo"/></label><button>Open board →</button></form></main></>;
+  return <Home/>;
+}
+function Home() {
+  const { ready, operator, demo } = useSession(), root = location.pathname === '/';
+  if (root && !ready) return <><Header/><main><p role="status">Loading…</p></main></>;
+  // Visitors at the root see the public demo board; operators keep the create form.
+  if (root && !operator && demo) return <Board p={demo}/>;
+  return <><Header/><main><PageTitle eyebrow="HEDDLE / ARTIFACTS" title={location.pathname === '/' ? 'Decisions that travel with code.' : 'Page not found.'}/>{operator && root && <NewProject/>}{operator && root && demo && <p class="muted"><a href={link(demo)}>Open the demo board →</a></p>}<form class="panel" onSubmit={e => { e.preventDefault(); const value = new FormData(e.currentTarget).get('project'); if (typeof value === 'string' && value.trim()) location.assign(link(value.trim())); }}><label>Project ID<input name="project" required placeholder="demo"/></label><button>Open board →</button></form></main></>;
 }
 render(<App/>, document.getElementById('app')!);

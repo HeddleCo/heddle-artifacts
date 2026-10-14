@@ -16,6 +16,6 @@ export function combinedRefusal(candidate, mainSha) {
     return { code: 'combined_failing', message: t?.status === 'fail' ? `${t.failed} test${t.failed === 1 ? '' : 's'} fail combined with main; the agent must fix them on the combined commit and push again`
       : 'The combined result could not be tested; the agent must update its candidate from the combined commit and push again' };
   }
-  if (combined.status !== 'pass') return { code: 'combined_untested', message: 'Main advanced; the result combined with main was not tested in the isolated sandbox' };
+  if (combined.status !== 'pass') return { code: 'combined_untested', message: 'Main advanced; the result combined with main has not been tested yet' };
   return undefined;
 }

@@ -8,7 +8,7 @@ export interface Lane { project: string; task: string; agent: string; forkRepo: 
 export interface Briefing { hash: string /* Heddle briefing_hash */; omitted: number;
   annotations: Array<{ target: string; scope: string; annotationId: string; revisionId: string; kind: string; content: string; tags?: string[]; attribution: string }>; }
 export interface Tests { status: "pass"|"fail"|"error"|"skipped"|"pending"; passed: number; failed: number; summary: string; durationMs: number;
-  provenance?: "reviewed fixture"|"isolated sandbox"|"isolated sandbox (local fixture)"; sourceSha?: string;
+  provenance?: "reviewed fixture"|"isolated sandbox"|"isolated sandbox (local fixture)"|"local run (not isolated)"; sourceSha?: string;
   /** On a failing run: the failing test names and the runner output that explains them. */
   failures?: string[]; excerpt?: string;
   observation?: { publicKey: string; payload: string; signature: string } }

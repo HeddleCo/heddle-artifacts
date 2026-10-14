@@ -1,0 +1,270 @@
+// SPDX-License-Identifier: Apache-2.0
+// `up cloudflare`: deploy this app to YOUR Cloudflare account with one command, then drive it from the UI.
+//   node cli/up.mjs cloudflare --name my-app [--domain demo.example.com] [--public-project NAME] [--yes] [--dry-run]
+//   node cli/up.mjs cloudflare --name my-app --destroy [--yes]      removes exactly what `up` created
+// It wraps docs/DEPLOY.md: creates the R2 bucket and Queue (safe to re-run), writes a git-ignored Worker config, generates an
+// operator token (kept in a 0600 file, never on a command line), builds the UI, deploys, and waits for the Worker to answer.
+import { spawn } from 'node:child_process';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
+import { writePrivate } from './private-file.mjs';
+import { randomBytes } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
+
+const SLUG = /^[a-z0-9](?:[a-z0-9]|-(?!-)){0,49}$/;
+const DOMAIN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+const NAMESPACE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+
+export function parseCloudflareArgs(argv) {
+  const o = { name: undefined, namespace: undefined, domain: undefined, publicProject: undefined, account: undefined, state: join(homedir(), '.heddle-artifacts', 'cloudflare'), yes: false, dryRun: false, destroy: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i], next = () => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new Error(`${a} needs a value`); return argv[++i]; };
+    if (a === '--name') o.name = next(); else if (a === '--namespace') o.namespace = next(); else if (a === '--domain') o.domain = next();
+    else if (a === '--public-project') o.publicProject = next(); else if (a === '--account') o.account = next(); else if (a === '--state') o.state = resolve(next());
+    else if (a === '--yes') o.yes = true; else if (a === '--dry-run') o.dryRun = true; else if (a === '--destroy') o.destroy = true;
+    else throw new Error(`Unknown option ${a}`);
+  }
+  if (!o.name) throw new Error('--name is required: the Worker name, which also names the bucket, queue and namespace (for example --name my-app)');
+  if (!SLUG.test(o.name)) throw new Error('The name must be lowercase letters, digits and single hyphens, up to 50 characters.');
+  o.namespace ??= o.name;
+  if (!NAMESPACE.test(o.namespace)) throw new Error('The namespace must start with a letter or digit and use letters, digits, . _ or -.');
+  if (o.domain !== undefined && !DOMAIN.test(o.domain)) throw new Error('--domain must be a bare host name such as demo.example.com (no https://, no path).');
+  if (o.publicProject !== undefined && !SLUG.test(o.publicProject)) throw new Error('--public-project must be a project name: lowercase letters, digits and single hyphens.');
+  return o;
+}
+
+/** The Worker config for a fresh account. Mirrors wrangler.example.jsonc (a test compares them); no secrets, and never the live account's pinned engine image. */
+export function cloudflareConfig({ name, accountId, queueId, namespace, domain, publicProject }) {
+  return {
+    name, account_id: accountId, main: 'worker/index.ts', compatibility_date: '2026-10-10', compatibility_flags: ['nodejs_compat'],
+    alias: { 'heddle-reviewer': './reviewer/reviewer.ts' },
+    artifacts: [{ binding: 'ARTIFACTS', namespace }],
+    durable_objects: { bindings: [{ name: 'PROJECT', class_name: 'ProjectDO' }, { name: 'ENGINE', class_name: 'HeddleEngine' }, { name: 'TEST_SANDBOX', class_name: 'CandidateTestSandbox' }] },
+    migrations: [{ tag: 'v1', new_sqlite_classes: ['ProjectDO', 'HeddleEngine'] }, { tag: 'v2-isolated-candidate-tests', new_sqlite_classes: ['CandidateTestSandbox'] }],
+    containers: [{ class_name: 'HeddleEngine', image: './engine/Dockerfile', image_build_context: '.', instance_type: 'standard-1', max_instances: 10 },
+      { class_name: 'CandidateTestSandbox', image: './sandbox/Dockerfile', image_build_context: './sandbox', instance_type: 'standard-4', max_instances: 3 }],
+    queues: { producers: [{ binding: 'EVENTS', queue: `${name}-events` }], consumers: [{ queue: `${name}-events`, max_batch_size: 100, max_batch_timeout: 1, max_retries: 3 }] },
+    r2_buckets: [{ binding: 'STATE', bucket_name: `${name}-state` }],
+    ai: { binding: 'AI' },
+    assets: { directory: './ui/dist', binding: 'ASSETS', not_found_handling: 'single-page-application', run_worker_first: ['/api/*', '/login', '/__dev/*'] },
+    // A project stays open for work this long after creation (the maximum the Worker allows), so your own projects do not lapse in an hour.
+    vars: { ARTIFACTS_NAMESPACE: namespace, CF_ACCOUNT_ID: accountId, EVENTS_QUEUE_ID: queueId, ACTOR_EMAIL_DOMAIN: 'noreply.heddle.sh', DEMO_CREDENTIAL_TTL_SECONDS: '14400', ...(publicProject ? { DEMO_PROJECT: publicProject } : {}) },
+    workers_dev: true, preview_urls: false, observability: { enabled: true },
+    ...(domain ? { routes: [{ pattern: domain, custom_domain: true }] } : {}),
+  };
+}
+
+const wrangler = (...args) => ['npx', 'wrangler', ...args];
+const names = name => ({ bucket: `${name}-state`, queue: `${name}-events`, config: `wrangler.live.up-${name}.json`, containers: [`${name}-heddleengine`, `${name}-candidatetestsandbox`] });
+
+async function readJson(path) { try { return JSON.parse(await readFile(path, 'utf8')); } catch { return undefined; } }
+
+/** Everything that must be true before anything is created. */
+async function checkPrerequisites(options, deps) {
+  const problems = []; let account;
+  const earlier = await readJson(join(options.state, options.name, 'created.json'));
+  if (Number(deps.nodeVersion.split('.')[0]) < 22) problems.push(`Node 22 or newer (you have ${deps.nodeVersion}).`);
+  for (const [path, fix] of [['node_modules/wrangler/bin/wrangler.js', 'npm ci'], ['ui/node_modules', 'npm ci --prefix ui']]) if (!(await deps.exists(join(deps.repo, path)))) problems.push(`Dependencies are missing. Run: ${fix}`);
+  const docker = await deps.run(['docker', 'info']);
+  if (docker.code !== 0) problems.push('Docker is not running. The first deploy builds the engine and test-sandbox images locally, so Docker must be installed and running.');
+  const who = await deps.run(wrangler('whoami', '--json'));
+  let info; try { info = JSON.parse(who.output); } catch { /* handled below */ }
+  if (who.code !== 0 || !info?.loggedIn) problems.push('You are not logged in to Cloudflare. Run: npx wrangler login');
+  else {
+    const accounts = info.accounts ?? [], wanted = options.account ? accounts.filter(a => a.id === options.account || a.name === options.account) : accounts;
+    if (wanted.length === 1) account = wanted[0];
+    else if (!wanted.length) problems.push(options.account ? `No account matches --account ${options.account}.` : 'Your login has no Cloudflare account.');
+    else problems.push(`Your login can use ${wanted.length} accounts. Choose one with --account <id or name>: ${wanted.map(a => `${a.name} (${a.id})`).join(', ')}`);
+  }
+  if (account && earlier && earlier.name === options.name && earlier.accountId !== account.id) problems.push(`"${options.name}" was set up earlier on account ${earlier.accountId}, and this run is on ${account.id}. Use --account ${earlier.accountId}, or choose another --name.`);
+  // Deploying over a Worker of the same name replaces its code, and tearing down would delete it. Only a Worker this command deployed is ours.
+  else if (account) {
+    const exists = await deps.run(wrangler('deployments', 'list', '--name', options.name), { env: { CLOUDFLARE_ACCOUNT_ID: account.id } });
+    if (exists.code === 0) { if (!(earlier?.name === options.name && earlier.worker === true && earlier.workerConfirmed === true && !earlier.workerGone)) problems.push(`A Worker named "${options.name}" already exists on this account and its ownership is not confirmed by this command, so it is left alone. Choose another --name.`); }
+    else if (!/10007|does not exist|not found/i.test(exists.output)) problems.push(`Could not check whether a Worker named "${options.name}" already exists (${reason(exists.output)}). Nothing was changed.`);
+  }
+  return { problems, account };
+}
+
+function planLines(options, account) {
+  const n = names(options.name);
+  return [
+    `This will deploy "${options.name}" to the Cloudflare account ${account.name} (${account.id}):`,
+    `  - Worker ${options.name}${options.domain ? ` at https://${options.domain}` : ''} (also on workers.dev)`,
+    `  - R2 bucket ${n.bucket}, Queue ${n.queue}, Artifacts namespace ${options.namespace} (created on first use)`,
+    `  - Containers: the Heddle engine and the test sandbox, built on THIS machine with Docker`,
+    '',
+    '  The first deploy builds the engine from Heddle source: up to about 30 minutes on a clean Docker cache, a few minutes if the layers are cached. Later deploys are fast.',
+    '  Needs the Workers Paid plan (Containers). Resources are billed to your account. Remove everything again with:',
+    `    node cli/up.mjs cloudflare --name ${options.name} --destroy`,
+    options.publicProject ? `  Project "${options.publicProject}" will be readable by anyone, as on the public demo.` : '  No project is public: visitors see nothing until you sign in with the operator token.',
+  ];
+}
+
+async function ensureToken(dir) {
+  const file = join(dir, 'operator-token');
+  let token = (await readFile(file, 'utf8').catch(() => '')).trim();
+  if (!/^[0-9a-f]{64}$/.test(token)) { token = randomBytes(32).toString('hex'); }
+  await writePrivate(file, `${token}\n`);
+  return { token, file };
+}
+
+export async function upCloudflare(options, deps) {
+  if (options.destroy) return destroyCloudflare(options, deps);
+  const { log } = deps, { problems, account } = await checkPrerequisites(options, deps);
+  if (problems.length) { log('Cannot start yet:\n'); for (const p of problems) log(`  - ${p}`); return { code: 1 }; }
+  for (const line of planLines(options, account)) log(line);
+  if (options.dryRun) { log('\nDry run: nothing was created or changed.'); return { code: 0 }; }
+  if (!options.yes && !(await deps.confirm('\nContinue? [y/N] '))) { log('Nothing was changed.'); return { code: 1 }; }
+
+  const n = names(options.name), dir = join(options.state, options.name), env = { CLOUDFLARE_ACCOUNT_ID: account.id };
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const { token, file: tokenFile } = await ensureToken(dir);
+  const recordFile = join(dir, 'created.json');
+  const record = (await readJson(recordFile)) ?? { name: options.name, accountId: account.id, namespace: options.namespace, config: n.config, bucket: false, queue: false, worker: false };
+  const save = () => writePrivate(recordFile, JSON.stringify(record, null, 1));
+  await save();
+  const exec = (argv, extra = {}) => deps.run(argv, { cwd: deps.repo, env, ...extra });
+
+  const bucket = await exec(wrangler('r2', 'bucket', 'create', n.bucket));
+  if (bucket.code === 0) { record.bucket = true; await save(); } else if (!/already exists/i.test(bucket.output)) { log(`Could not create the R2 bucket ${n.bucket}:\n${bucket.output}`); return { code: 1 }; }
+  const queue = await exec(wrangler('queues', 'create', n.queue));
+  if (queue.code === 0) record.queue = true; else if (!/already exists/i.test(queue.output)) { log(`Could not create the Queue ${n.queue}:\n${queue.output}`); return { code: 1 }; }
+  await save();
+  const info = await exec(wrangler('queues', 'info', n.queue)), queueId = /Queue ID:\s*([0-9a-f]{32})/i.exec(info.output)?.[1];
+  if (info.code !== 0 || !queueId) { log(`Could not read the Queue ID for ${n.queue}.`); return { code: 1 }; }
+
+  log('\nBuilding the UI…');
+  if ((await exec(['npm', 'run', 'build', '--prefix', 'ui'])).code !== 0) { log('The UI build failed. Run `npm run build` to see why.'); return { code: 1 }; }
+  const configPath = join(deps.repo, n.config);
+  await writePrivate(configPath, JSON.stringify(cloudflareConfig({ name: options.name, accountId: account.id, queueId, namespace: options.namespace, domain: options.domain, publicProject: options.publicProject }), null, 2));
+
+  log('\nDeploying. A first deploy builds the engine image (up to about 30 minutes on a clean Docker cache); output follows.\n');
+  const secrets = join(dir, `.secrets-${randomBytes(6).toString('hex')}.json`);
+  await writePrivate(secrets, JSON.stringify({ OPERATOR_TOKEN: token }));
+  // An attempt can fail before creating anything, or after partial creation. Do not infer ownership from the name.
+  record.deployPending = !(record.worker === true && record.workerConfirmed === true && !record.workerGone);
+  if (record.deployPending) record.worker = false;
+  await save();
+  // The secrets file holds the operator token: remove it on every way out, including being killed or the terminal closing mid-deploy.
+  const dropSecrets = () => { try { rmSync(secrets, { force: true }); } catch { /* best effort */ } };
+  const onSignal = () => { dropSecrets(); process.exit(130); };
+  const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP']; for (const name of SIGNALS) process.on(name, onSignal);
+  let deploy;
+  try { deploy = await exec(wrangler('deploy', '--config', configPath, '--secrets-file', secrets), { stream: true, logFile: join(dir, 'deploy.log') }); }
+  finally { for (const name of SIGNALS) process.off(name, onSignal); dropSecrets(); }
+  if (deploy.code !== 0) { log(`\nThe deploy failed (full output: ${join(dir, 'deploy.log')}). Fix the problem and run the same command again; it is safe to repeat.`); return { code: 1 }; }
+
+  record.worker = true; record.workerConfirmed = true; record.deployPending = false;
+  record.workerGone = false; record.containersGone = false; await save();
+
+  const url = options.domain ? `https://${options.domain}` : /https:\/\/[a-z0-9.-]+\.workers\.dev/i.exec(deploy.output)?.[0];
+  const workersDev = /https:\/\/[a-z0-9.-]+\.workers\.dev/i.exec(deploy.output)?.[0] ?? url;
+  if (!url) { log('\nDeployed, but the Worker address was not in the output. Check the Cloudflare dashboard.'); return { code: 1 }; }
+  log(`\nWaiting for ${url} to answer…`);
+  let up = false;
+  for (let i = 0; i < 30 && !up; i++) { try { up = (await deps.fetch(`${url}/login`)).ok; } catch { up = false; } if (!up) await deps.sleep(4000); }
+  if (!up) { log(`\nThe Worker did not answer at ${url} (also ${workersDev}). A new custom domain can take a few minutes for DNS and its certificate; try again shortly. Nothing was rolled back.`); return { code: 1 }; }
+
+  log(`\nHeddle Artifacts is running on your Cloudflare account.\n\n  Open        ${url}\n  Sign in     with the operator token in ${tokenFile}\n              (print it with: cat "${tokenFile}")\n  Remove      node cli/up.mjs cloudflare --name ${options.name} --destroy\n`);
+  log('Next: in the app, create a project (optionally from a public repository), add a task, then give your own agent the `ha join …` command it shows.\nThe first request to a new project starts its engine container (10 to 60 seconds). Candidate tests run in a keyless Sandbox.');
+  return { code: 0, url, tokenFile };
+}
+
+const ANSI = /\u001b\[[0-9;]*m/g;
+/** The line that explains a wrangler failure: its output ends with a "logs were written" footer that says nothing. */
+function reason(output) {
+  const lines = output.replace(ANSI, '').split('\n').map(l => l.trim()).filter(l => l && !/Logs were written|If you think this is a bug|update available|^[─┌┐└┘├┤│ ]+$/.test(l) && !/^✘?\s*\[?ERROR\]?/.test(l) && !/^A request to the Cloudflare API/.test(l));
+  return lines.at(-1) ?? 'no detail from wrangler';
+}
+
+/**
+ * Removes exactly what `up cloudflare` recorded for this name; refuses anything it did not create.
+ * Order matters (Cloudflare enforces it): a Worker that consumes a Queue cannot be deleted, and a Queue still bound to a Worker cannot be deleted.
+ * Wrangler has no way to list R2 objects, so a bucket that still holds data is given a one-day expiry rule and removed by a second run.
+ */
+export async function destroyCloudflare(options, deps) {
+  const { log } = deps, dir = join(options.state, options.name), record = await readJson(join(dir, 'created.json'));
+  if (!record || record.name !== options.name) { log(`This command did not create "${options.name}" on this machine (no record in ${dir}), so nothing is removed.`); return { code: 1 }; }
+  const n = names(options.name);
+  // Only what this command recorded creating: a Worker only after a successful deploy, a bucket or queue only if it made them.
+  const ownsWorker = record.worker === true && record.workerConfirmed === true && !record.workerGone;
+  const ownsContainers = record.worker === true && record.workerConfirmed === true && !record.containersGone;
+  const list = [ownsWorker && `Worker ${options.name}`, ownsContainers && `its containers (${n.containers.join(', ')})`, record.queue && !record.queueGone && `Queue ${n.queue}`, record.bucket && `R2 bucket ${n.bucket}`, 'the local operator token and config'].filter(Boolean);
+  log(`This removes ${list.join(', ')}.\nArtifacts repositories in namespace ${record.namespace} are not removed by this command.`);
+  if (!options.yes && !(await deps.confirm('\nRemove them? [y/N] '))) { log('Nothing was changed.'); return { code: 1 }; }
+  const env = { CLOUDFLARE_ACCOUNT_ID: record.accountId }, exec = argv => deps.run(argv, { cwd: deps.repo, env }), left = [], save = () => writePrivate(join(dir, 'created.json'), JSON.stringify(record, null, 1));
+  const missing = /not found|does not exist|10007|10006|11000/i;
+  const attempt = async (r, what) => { if (r.code === 0 || missing.test(r.output)) return true; left.push(`${what}: ${reason(r.output)}`); return false; };
+
+  // A failed first deploy (or a legacy record made before success was confirmed) cannot authorize name-based deletion.
+  if (record.worker === true && record.workerGone && record.workerConfirmed !== true) {
+    log('The legacy deployment record cannot confirm container ownership. Nothing was removed; the local record was kept for manual verification.');
+    return { code: 1 };
+  }
+  const uncertainWorker = record.deployPending || (record.worker === true && !record.workerGone && record.workerConfirmed !== true);
+  if (uncertainWorker) {
+    const exists = await exec(wrangler('deployments', 'list', '--name', options.name));
+    if (exists.code === 0 || !/10007|(?:Worker|script).*?(?:does not exist|not found)/i.test(exists.output)) {
+      log(`Worker ownership for "${options.name}" is unconfirmed after a deployment attempt. Nothing was removed; the local record was kept. Verify the deployment in the Cloudflare dashboard before cleaning it up.`);
+      return { code: 1 };
+    }
+    record.worker = false; record.deployPending = false; await save();
+  }
+  const workerDone = record.workerGone || record.worker !== true;
+
+  if (ownsWorker) {
+    await exec(wrangler('queues', 'consumer', 'worker', 'remove', n.queue, options.name));
+    if (await attempt(await exec(wrangler('delete', options.name)), `Worker ${options.name}`)) {
+      record.workerGone = true; await save();
+    }
+  }
+  if (ownsContainers && record.workerGone) {
+    const apps = await exec(wrangler('containers', 'list'));
+    if (apps.code !== 0) left.push(`containers: ${reason(apps.output)}`);
+    else {
+      let done = true;
+      for (const row of apps.output.split('\n')) {
+        const cells = row.split('│').map(c => c.trim());
+        if (cells.length > 2 && n.containers.includes(cells[2])) {
+          if (!(await attempt(await exec(wrangler('containers', 'delete', cells[1])), `container ${cells[2]}`))) done = false;
+        }
+      }
+      if (done) { record.containersGone = true; await save(); }
+    }
+  }
+  if (record.queue && !record.queueGone && (record.workerGone || workerDone) && await attempt(await exec(wrangler('queues', 'delete', n.queue)), `Queue ${n.queue}`)) { record.queueGone = true; await save(); }
+  let expiring = false;
+  if (record.bucket && (record.workerGone || workerDone)) {
+    const gone = await exec(wrangler('r2', 'bucket', 'delete', n.bucket));
+    if (gone.code === 0 || missing.test(gone.output)) record.bucket = false;
+    else if (/not empty|10008/i.test(gone.output)) {
+      const rule = await exec(wrangler('r2', 'bucket', 'lifecycle', 'add', n.bucket, 'expire-everything', '', '--expire-days', '1', '--force'));
+      if (rule.code === 0) expiring = true; else left.push(`R2 bucket ${n.bucket} is not empty and the expiry rule could not be added: ${reason(rule.output)}`);
+    } else left.push(`R2 bucket ${n.bucket}: ${reason(gone.output)}`);
+  }
+  await save();
+  await rm(join(deps.repo, n.config), { force: true });
+  if (record.workerGone || workerDone) await rm(join(dir, 'operator-token'), { force: true });
+  if (left.length) { log(`\nRemoved most of it. Left in place:\n${left.map(l => `  - ${l}`).join('\n')}\nFix those (or in the Cloudflare dashboard) and run this command again. The local record was kept.`); return { code: 1 }; }
+  if (expiring) { log(`\nRemoved the Worker, containers and queue. The R2 bucket ${n.bucket} still holds data, and wrangler cannot list or empty a bucket, so it was set to delete its objects within 24 hours.\nRun the same --destroy command again after 24 hours to delete the empty bucket.`); return { code: 0 }; }
+  await rm(dir, { recursive: true, force: true });
+  log('\nRemoved.'); return { code: 0 };
+}
+
+/** The real thing: spawn, optionally stream to the terminal and a log file, always capture. */
+export function realDeps(repo) {
+  const run = (argv, { cwd = repo, env = {}, stream = false, logFile } = {}) => new Promise(resolveRun => {
+    const child = spawn(argv[0], argv.slice(1), { cwd, env: { ...process.env, ...env, WRANGLER_SEND_METRICS: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const chunks = []; let out = logFile ? rm(logFile, { force: true }).then(() => writeFile(logFile, '', { mode: 0o600 })) : Promise.resolve();
+    const take = chunk => { chunks.push(chunk); if (stream) process.stdout.write(chunk); };
+    child.stdout.on('data', take); child.stderr.on('data', take);
+    child.on('error', error => resolveRun({ code: 127, output: String(error.message) }));
+    child.on('close', async code => { const output = Buffer.concat(chunks).toString('utf8'); if (logFile) { await out; await writeFile(logFile, output, { mode: 0o600 }); } resolveRun({ code: code ?? 1, output }); });
+  });
+  const confirm = async question => { if (!process.stdin.isTTY) return false; const rl = createInterface({ input: process.stdin, output: process.stdout }); try { return /^y(es)?$/i.test((await rl.question(question)).trim()); } finally { rl.close(); } };
+  const exists = async path => { try { await access(path); return true; } catch { return false; } };
+  return { run, confirm, exists, fetch: (url) => fetch(url, { signal: AbortSignal.timeout(15000), redirect: 'manual' }), sleep: ms => new Promise(r => setTimeout(r, ms)), log: console.log, repo, nodeVersion: process.versions.node };
+}
