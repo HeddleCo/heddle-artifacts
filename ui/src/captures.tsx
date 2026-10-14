@@ -31,6 +31,7 @@ export function Captures({ p, t, agents, lanes, refresh }: { p: string; t: strin
     const next = all[Math.min(all.length - 1, Math.max(0, index + direction))];
     if (next) { setSelected(key(next)); if (focus) dots.current.get(key(next))?.focus(); }
   };
+  const currentAgent = agents.find(a => a.id === current?.agent);
   return <section id="captures" tabIndex={-1} class="panel captures" aria-label="Captures" onKeyDown={e => {
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); step(e.key === 'ArrowRight' ? 1 : -1, true); }
   }}>
@@ -61,8 +62,17 @@ export function Captures({ p, t, agents, lanes, refresh }: { p: string; t: strin
     {history && !all.length && <p class="muted">No captures yet. Pushes will appear here live.</p>}
     {current && <div class="capture-detail" aria-live="polite" aria-atomic="true">
       <p class="eyebrow">{agents.find(a => a.id === current.agent)?.displayName || current.agent} · CAPTURE {index + 1} OF {all.length}</p>
-      <h3>{current.subject}</h3><p class="capture-metadata"><time dateTime={current.capturedAt}>{new Date(current.capturedAt).toLocaleString()}</time><code title={current.sourceSha}>{current.sourceSha.slice(0, 10)}</code><span>{current.diffstat.files} files · <b class="success-text">+{current.diffstat.insertions}</b> <b class="error-text">−{current.diffstat.deletions}</b></span></p>
-      <p class={`test-summary ${current.tests?.status === 'pass' ? 'success-text' : current.tests?.status === 'fail' || current.tests?.status === 'error' ? 'error-text' : 'muted'}`}>Tests: {current.tests ? `${current.tests.status} · ${current.tests.passed} passed / ${current.tests.failed} failed · ${current.tests.summary}` : 'not recorded'}</p>
+      <h3>{current.subject}</h3><p class="capture-metadata"><code title={current.sourceSha}>{current.sourceSha.slice(0, 10)}</code><span>{current.diffstat.files} files · <b class="success-text">+{current.diffstat.insertions}</b> <b class="error-text">−{current.diffstat.deletions}</b></span></p>
+      <dl class="attribution-card" aria-label="Capture attribution">
+        <div><dt>Task</dt><dd><code>{current.task}</code></dd></div>
+        <div><dt>State</dt><dd><code>{current.state}</code></dd></div>
+        <div><dt>Agent</dt><dd>{currentAgent?.displayName || current.agent}</dd></div>
+        {currentAgent?.provider && <div><dt>Provider</dt><dd>{currentAgent.provider}</dd></div>}
+        {currentAgent?.model && <div><dt>Model</dt><dd><code>{currentAgent.model}</code></dd></div>}
+        {current.signedBy && <div><dt>Signed by</dt><dd class="attribution-signature"><code title={current.signedBy}>ed25519:{current.signedBy.slice(0, 8)}…{current.signedBy.slice(-8)}</code>{currentAgent && currentAgent.publicKey !== current.signedBy && <span class="error-text"> · key mismatch</span>}</dd></div>}
+        <div><dt>Captured</dt><dd><time dateTime={current.capturedAt}>{new Date(current.capturedAt).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></dd></div>
+        {current.tests && <div><dt>Tests</dt><dd class={`test-summary ${current.tests.status === 'pass' ? 'success-text' : current.tests.status === 'fail' || current.tests.status === 'error' ? 'error-text' : 'muted'}`}>{current.tests.status} · {current.tests.passed} passed / {current.tests.failed} failed · {current.tests.summary}</dd></div>}
+      </dl>
       <p class="muted">Semantic changes since {history?.lanes.find(l => l.agent === current.agent)?.captures[0].sourceSha === current.sourceSha ? 'the task base' : 'this lane’s previous capture'}:</p>
       {current.semantic.status === 'ready' ? current.semantic.changes.length ? <ul class="semantic-changes">{current.semantic.changes.map((c, i) => <li key={i}>{c.description}</li>)}</ul> : <p>No semantic changes reported by Heddle.</p>
         : <p role="status">Semantic summary {current.semantic.status === 'pending' ? 'pending…' : 'unavailable'}.</p>}
