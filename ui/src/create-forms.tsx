@@ -97,10 +97,10 @@ export function AddAgent({ p, t }: { p: string; t: string }) {
   const [agent, setAgent] = useState('agent-1'), [copied, setCopied] = useState('');
   let command = ''; try { command = joinCommand({ origin: location.origin, project: p, task: t, agent }); } catch { /* Shown as a prompt below. */ }
   return <details class="panel create-form" data-testid="add-agent"><summary>Put your own agent on this task</summary>
-    <label>Agent name<input value={agent} onInput={e => { setAgent(e.currentTarget.value.toLowerCase()); setCopied(''); }} aria-invalid={!!agent && !validId(agent)}/></label>
+    <div class="create-body"><label>Agent name<input value={agent} onInput={e => { setAgent(e.currentTarget.value.toLowerCase()); setCopied(''); }} aria-invalid={!!agent && !validId(agent)}/></label>
     {command ? <><pre class="join-command"><code>{command}</code></pre>
       <button type="button" class="quiet" onClick={async () => { try { await navigator.clipboard.writeText(command); setCopied('Copied'); } catch { setCopied('Select and copy the commands.'); } }}>Copy commands</button> <span class="muted" role="status">{copied}</span>
       <p class="muted">Each agent works in its own fork. Its pushes appear here as candidates, tested on their own.</p></>
       : <p class="muted">Use lowercase letters, digits and single hyphens.</p>}
-  </details>;
+    </div></details>;
 }
