@@ -325,6 +325,8 @@ test('C-T8 disconnect and reconnect keep the choice stale until an explicit revi
   await page.routeWebSocket('**/api/projects/demo/ws', socket => { sockets.push(socket); });
   await choose(page); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeEnabled();
   await sockets[0].close(); await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
+  await expect(page.locator('.notice.warning')).toContainText('Review the latest task state before continuing.');
+  await expect(page.getByLabel('Why this candidate?')).toBeDisabled();
   await expect.poll(() => sockets.length).toBe(2); await expect(page.locator('.live')).toHaveText('Live');
   await expect(page.getByRole('button', { name: 'Land candidate →' })).toBeDisabled();
   await page.getByRole('button', { name: 'Review current candidates' }).click();

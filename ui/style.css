@@ -63,6 +63,8 @@ code, pre, kbd, .briefing-target, .briefing .tag { font-family: var(--font-mono)
 code, pre, kbd { font-size: 12.5px; font-feature-settings: "liga" 0; }
 p > code, li > code, span > code, strong > code { font-size: 0.86em; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* Fragment targets accept focus without outlining the entire section. */
+section[tabindex="-1"]:focus { outline: none; }
 
 /* Controls inherit the reading face rather than the user agent's system font. */
 button, input, select, textarea { font-family: inherit; }

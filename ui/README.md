@@ -87,7 +87,7 @@ captures for the compare and Why pages. Browser evidence covers the local mock, 
 Assets use a restrictive same-origin CSP and do not load remote scripts or fonts. Interface and reading
 text are set in Cal Sans and code in Paper Mono, both self-hosted from `fonts/` under the SIL Open Font
 License 1.1 (licence texts alongside). Diff and narrative content are rendered as text. The directory-match badge compares public keys; it is not a cryptographic
-signature verification claim. Disconnects immediately mark compare data stale; refresh explicitly after reconnecting before landing. Initial decisions also wait for a post-subscription snapshot. Malformed live messages close the socket and recover through the same reconnect path.
+signature verification claim. Losing a previously opened feed immediately marks compare data stale; refresh explicitly after reconnecting before landing. Read-only visitors whose feed never opens see no stale-state banner, while decisions still wait for a post-subscription snapshot. Malformed live messages close the socket and recover through the same reconnect path.
 
 Cloudflare routing references: [Workers SPA assets](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/)
 and [Wrangler local development](https://developers.cloudflare.com/workers/wrangler/commands/#dev).
