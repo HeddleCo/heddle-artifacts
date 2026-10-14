@@ -86,7 +86,7 @@ function planLines(options, account) {
     `  - R2 bucket ${n.bucket}, Queue ${n.queue}, Artifacts namespace ${options.namespace} (created on first use)`,
     `  - Containers: the Heddle engine and the test sandbox, built on THIS machine with Docker`,
     '',
-    '  The first deploy builds the engine from Heddle source and takes about 30 minutes. Later deploys are fast.',
+    '  The first deploy builds the engine from Heddle source: up to about 30 minutes on a clean Docker cache, a few minutes if the layers are cached. Later deploys are fast.',
     '  Needs the Workers Paid plan (Containers). Resources are billed to your account. Remove everything again with:',
     `    node cli/up.mjs cloudflare --name ${options.name} --destroy`,
     options.publicProject ? `  Project "${options.publicProject}" will be readable by anyone, as on the public demo.` : '  No project is public: visitors see nothing until you sign in with the operator token.',
@@ -131,7 +131,7 @@ export async function upCloudflare(options, deps) {
   const configPath = join(deps.repo, n.config);
   await writeFile(configPath, JSON.stringify(cloudflareConfig({ name: options.name, accountId: account.id, queueId, namespace: options.namespace, domain: options.domain, publicProject: options.publicProject }), null, 2), { mode: 0o600 });
 
-  log('\nDeploying. The first deploy builds the engine image (about 30 minutes); output follows.\n');
+  log('\nDeploying. A first deploy builds the engine image (up to about 30 minutes on a clean Docker cache); output follows.\n');
   const secrets = join(dir, `.secrets-${randomBytes(6).toString('hex')}.json`);
   await writeFile(secrets, JSON.stringify({ OPERATOR_TOKEN: token }), { mode: 0o600 });
   let deploy;

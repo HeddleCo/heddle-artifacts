@@ -82,11 +82,18 @@ Deeper account-free checks are in [docs/LOCAL-INTEGRATION.md](docs/LOCAL-INTEGRA
 
 ### (d) Deploy your own
 
-Follow [docs/DEPLOY.md](docs/DEPLOY.md). It needs a Cloudflare account with Artifacts, Containers and Workers AI.
-It covers the R2 bucket, Queue, configuration and secrets, the first `wrangler deploy` (which builds the engine
-from public source), an optional custom domain, and a scripted smoke run. Once deployed, the same forms work there:
-sign in with your operator token and create projects, tasks and agents from the UI. Running agents in Cloudflare
-Sandboxes is an optional extra step.
+One command, on your own Cloudflare account (Workers Paid plan, Docker running, `npx wrangler login` done):
+
+```sh
+node cli/up.mjs cloudflare --name my-app        # shows the plan and asks first; add --dry-run to only look
+```
+
+It creates the R2 bucket and Queue, builds the engine and test-sandbox images locally, deploys the Worker, waits for it to
+answer, and prints the URL and where your operator token is. Sign in with it and use the same forms as in (b): there,
+candidate tests run in a keyless Cloudflare Sandbox, not on your machine. Nothing is public unless you pass
+`--public-project NAME`; `--domain host.example.com` adds a custom domain. `--destroy` removes exactly what it created.
+Details, and the manual steps it wraps, are in [docs/DEPLOY.md](docs/DEPLOY.md). Running agents in Cloudflare Sandboxes
+(instead of your own agent CLIs) is an optional extra step there.
 
 ## Glossary
 

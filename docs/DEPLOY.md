@@ -1,6 +1,31 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Deploy your own
 
+## The one-command way
+
+```sh
+npm ci && npm ci --prefix ui
+npx wrangler login
+node cli/up.mjs cloudflare --name my-app
+```
+
+It shows what it will create and asks before doing anything (`--dry-run` only looks, `--yes` skips the question). It then creates the
+R2 bucket `my-app-state` and Queue `my-app-events` (safe to re-run), builds the UI, writes a git-ignored `wrangler.live.up-my-app.json`,
+generates an operator token into `~/.heddle-artifacts/cloudflare/my-app/operator-token` (mode 0600, never on a command line), deploys, and
+waits for the Worker to answer. A first deploy builds the engine image from Heddle source: up to about 30 minutes on a clean Docker cache,
+a few minutes if the layers are cached.
+
+Options: `--domain host.example.com` (custom domain on a zone in the same account), `--public-project NAME` (make one project readable by
+anyone, as on the public demo; otherwise nothing is public), `--namespace NS` (Artifacts namespace; default is the name), `--account ID`
+(when your login has several accounts), `--state DIR`.
+
+`node cli/up.mjs cloudflare --name my-app --destroy` removes the Worker, its containers, the Queue and the bucket, and only those it
+recorded creating. Wrangler cannot list or empty an R2 bucket, so a bucket that still holds data is given a one-day expiry rule and
+removed by running the same command again after 24 hours. Artifacts repositories in the namespace are not removed (delete them with
+`wrangler artifacts repos delete`).
+
+The steps below are what it wraps, for doing it by hand.
+
 These are the steps used for the live deployment, with your own names. You need a Cloudflare account on
 the Workers Paid plan (Containers and Sandboxes), Node 22+, Docker running locally, and `npx wrangler login`.
 
@@ -21,10 +46,9 @@ npx wrangler queues info artifacts-events     # note the Queue ID
 npx wrangler artifacts namespaces list        # the namespace named in wrangler.jsonc
 ```
 
-`wrangler.jsonc` binds the Artifacts namespace `heddle-demo`. Wrangler 4.149 lists and gets namespaces but has
-no create command. If yours is missing, create it as the
-[Artifacts docs](https://developers.cloudflare.com/artifacts/) describe, and set the same name in
-`artifacts[0].namespace` and `vars.ARTIFACTS_NAMESPACE`.
+`wrangler.jsonc` binds the Artifacts namespace `heddle-demo`. You do not need to create it first: Artifacts creates a namespace
+automatically the first time a repository is created under it. Use your own name (set the same name in `artifacts[0].namespace`
+and `vars.ARTIFACTS_NAMESPACE`) rather than sharing another deployment's.
 
 ## 3. Configure
 
@@ -49,8 +73,8 @@ npx wrangler deploy --config wrangler.live.jsonc --secrets-file .secrets.json &&
 ```
 
 The first deploy builds the engine image from source (`engine/Dockerfile` compiles the pinned public Heddle
-CLI) and takes about 30 minutes. Operators who already have a verified engine image in their registry can point
-`containers[0].image` at `engine/Dockerfile.layer` with their image digest to ship only the engine JavaScript.
+CLI): up to about 30 minutes on a clean Docker cache. `engine/Dockerfile.layer` is not for a fresh account: it starts from an image
+pinned in the Heddle account's own registry. It only suits someone who has pushed their own verified engine image and edits its `FROM`.
 
 ### Optional: a custom domain
 
