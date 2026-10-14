@@ -153,23 +153,52 @@ export async function upCloudflare(options, deps) {
   return { code: 0, url, tokenFile };
 }
 
-/** Removes exactly what `up cloudflare` recorded for this name; refuses anything it did not create. */
+const ANSI = /\u001b\[[0-9;]*m/g;
+/** The line that explains a wrangler failure: its output ends with a "logs were written" footer that says nothing. */
+function reason(output) {
+  const lines = output.replace(ANSI, '').split('\n').map(l => l.trim()).filter(l => l && !/Logs were written|If you think this is a bug|update available|^[─┌┐└┘├┤│ ]+$/.test(l) && !/^✘?\s*\[?ERROR\]?/.test(l) && !/^A request to the Cloudflare API/.test(l));
+  return lines.at(-1) ?? 'no detail from wrangler';
+}
+
+/**
+ * Removes exactly what `up cloudflare` recorded for this name; refuses anything it did not create.
+ * Order matters (Cloudflare enforces it): a Worker that consumes a Queue cannot be deleted, and a Queue still bound to a Worker cannot be deleted.
+ * Wrangler has no way to list R2 objects, so a bucket that still holds data is given a one-day expiry rule and removed by a second run.
+ */
 export async function destroyCloudflare(options, deps) {
   const { log } = deps, dir = join(options.state, options.name), record = await readJson(join(dir, 'created.json'));
   if (!record || record.name !== options.name) { log(`This command did not create "${options.name}" on this machine (no record in ${dir}), so nothing is removed.`); return { code: 1 }; }
   const n = names(options.name);
-  const list = [`Worker ${options.name}`, `its containers (${n.containers.join(', ')})`, record.bucket && `R2 bucket ${n.bucket}`, record.queue && `Queue ${n.queue}`, 'the local operator token and config'].filter(Boolean);
+  const list = [!record.workerGone && `Worker ${options.name}`, !record.workerGone && `its containers (${n.containers.join(', ')})`, record.queue && !record.queueGone && `Queue ${n.queue}`, record.bucket && `R2 bucket ${n.bucket}`, 'the local operator token and config'].filter(Boolean);
   log(`This removes ${list.join(', ')}.\nArtifacts repositories in namespace ${record.namespace} are not removed by this command.`);
   if (!options.yes && !(await deps.confirm('\nRemove them? [y/N] '))) { log('Nothing was changed.'); return { code: 1 }; }
-  const env = { CLOUDFLARE_ACCOUNT_ID: record.accountId }, exec = argv => deps.run(argv, { cwd: deps.repo, env }), left = [];
-  const gone = (r, what) => { if (r.code !== 0 && !/not found|does not exist|10007|10006/i.test(r.output)) left.push(`${what}: ${r.output.trim().split('\n').pop()}`); };
-  gone(await exec(wrangler('delete', options.name)), `Worker ${options.name}`);
-  const apps = await exec(wrangler('containers', 'list'));
-  for (const row of apps.output.split('\n')) { const cells = row.split('│').map(c => c.trim()); if (cells.length > 2 && n.containers.includes(cells[2])) gone(await exec(wrangler('containers', 'delete', cells[1])), `container ${cells[2]}`); }
-  if (record.queue) gone(await exec(wrangler('queues', 'delete', n.queue)), `Queue ${n.queue}`);
-  if (record.bucket) gone(await exec(wrangler('r2', 'bucket', 'delete', n.bucket)), `R2 bucket ${n.bucket} (a bucket must be empty to be deleted)`);
+  const env = { CLOUDFLARE_ACCOUNT_ID: record.accountId }, exec = argv => deps.run(argv, { cwd: deps.repo, env }), left = [], save = () => writeFile(join(dir, 'created.json'), JSON.stringify(record, null, 1), { mode: 0o600 });
+  const missing = /not found|does not exist|10007|10006|11000/i;
+  const attempt = async (r, what) => { if (r.code === 0 || missing.test(r.output)) return true; left.push(`${what}: ${reason(r.output)}`); return false; };
+
+  if (!record.workerGone) {
+    await exec(wrangler('queues', 'consumer', 'worker', 'remove', n.queue, options.name));
+    if (await attempt(await exec(wrangler('delete', options.name)), `Worker ${options.name}`)) {
+      record.workerGone = true; await save();
+      const apps = await exec(wrangler('containers', 'list'));
+      for (const row of apps.output.split('\n')) { const cells = row.split('│').map(c => c.trim()); if (cells.length > 2 && n.containers.includes(cells[2])) await attempt(await exec(wrangler('containers', 'delete', cells[1])), `container ${cells[2]}`); }
+    }
+  }
+  if (record.queue && !record.queueGone && record.workerGone && await attempt(await exec(wrangler('queues', 'delete', n.queue)), `Queue ${n.queue}`)) { record.queueGone = true; await save(); }
+  let expiring = false;
+  if (record.bucket && record.workerGone) {
+    const gone = await exec(wrangler('r2', 'bucket', 'delete', n.bucket));
+    if (gone.code === 0 || missing.test(gone.output)) record.bucket = false;
+    else if (/not empty|10008/i.test(gone.output)) {
+      const rule = await exec(wrangler('r2', 'bucket', 'lifecycle', 'add', n.bucket, 'expire-everything', '', '--expire-days', '1', '--force'));
+      if (rule.code === 0) expiring = true; else left.push(`R2 bucket ${n.bucket} is not empty and the expiry rule could not be added: ${reason(rule.output)}`);
+    } else left.push(`R2 bucket ${n.bucket}: ${reason(gone.output)}`);
+  }
+  await save();
   await rm(join(deps.repo, n.config), { force: true });
-  if (left.length) { log(`\nRemoved most of it. Left in place:\n${left.map(l => `  - ${l}`).join('\n')}\nFix those in the Cloudflare dashboard, or re-run this command. The local record was kept.`); return { code: 1 }; }
+  if (record.workerGone) await rm(join(dir, 'operator-token'), { force: true });
+  if (left.length) { log(`\nRemoved most of it. Left in place:\n${left.map(l => `  - ${l}`).join('\n')}\nFix those (or in the Cloudflare dashboard) and run this command again. The local record was kept.`); return { code: 1 }; }
+  if (expiring) { log(`\nRemoved the Worker, containers and queue. The R2 bucket ${n.bucket} still holds data, and wrangler cannot list or empty a bucket, so it was set to delete its objects within 24 hours.\nRun the same --destroy command again after 24 hours to delete the empty bucket.`); return { code: 0 }; }
   await rm(dir, { recursive: true, force: true });
   log('\nRemoved.'); return { code: 0 };
 }
