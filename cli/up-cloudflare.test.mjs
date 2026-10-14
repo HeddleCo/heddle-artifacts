@@ -11,7 +11,7 @@ const exampleText = await readFile(new URL('../wrangler.example.jsonc', import.m
 const example = JSON.parse(exampleText.replace(/^\s*\/\/.*$/gm, ''));
 
 /** A scripted wrangler/docker/npm: answers by argv prefix and records every call. */
-function world({ loggedIn = true, accounts = [{ id: ACCOUNT, name: 'Acme' }], docker = true, existing = [], failOn = [], containers = [], bucketHasObjects = false } = {}) {
+function world({ loggedIn = true, accounts = [{ id: ACCOUNT, name: 'Acme' }], docker = true, existing = [], failOn = [], containers = [], bucketHasObjects = false, foreignWorkers = [] } = {}) {
   const calls = [], resources = new Set(existing); let consumer = true, worker = false, emptied = false;
   const noise = msg => ({ code: 1, output: `\u001b[31m✘ [ERROR]\u001b[0m A request failed.\n  ${msg} [code: 1]\n  If you think this is a bug, please open an issue\n🪵  Logs were written to "/x.log"` });
   const run = async (argv, opts = {}) => {
@@ -24,8 +24,9 @@ function world({ loggedIn = true, accounts = [{ id: ACCOUNT, name: 'Acme' }], do
     if (line.includes('queues info')) return { code: 0, output: `Queue Name: ${argv.at(-1)}\nQueue ID: ${QUEUE_ID}\n` };
     if (line.includes('containers list')) return { code: 0, output: containers.map(c => `│ ${c.id} │ ${c.name} │ ready │ 0 │ x │`).join('\n') };
     if (line.includes(' deploy ')) { worker = true; return { code: 0, output: 'Uploaded\n  https://my-app.acme.workers.dev\nCurrent Version ID: 1' }; }
-    if (line.includes('queues consumer')) { consumer = false; return { code: 0, output: 'Removed' }; }
-    if (/wrangler delete /.test(line)) { if (consumer) return noise('Cannot delete this Worker as it is a consumer for a Queue. Remove it from the Queue\'s consumers first, then retry.'); worker = false; return { code: 0, output: 'Deleted' }; }
+    if (line.includes('deployments list')) { const n = argv[argv.indexOf('--name') + 1]; return foreignWorkers.includes(n) || (worker && n === 'my-app') ? { code: 0, output: 'Created: today' } : { code: 1, output: 'This Worker does not exist on your account. [code: 10007]' }; }
+    if (line.includes('queues consumer')) { if (!worker) return { code: 1, output: 'not found [code: 10007]' }; consumer = false; return { code: 0, output: 'Removed' }; }
+    if (/wrangler delete /.test(line)) { if (!worker && !foreignWorkers.includes(argv.at(-1))) return { code: 1, output: 'Worker not found [code: 10007]' }; if (consumer) return noise('Cannot delete this Worker as it is a consumer for a Queue. Remove it from the Queue\'s consumers first, then retry.'); worker = false; return { code: 0, output: 'Deleted' }; }
     if (line.includes('queues delete')) { if (worker) return noise('Cannot delete queue that is still referenced by a binding in a Worker.'); return { code: 0, output: 'Deleted' }; }
     if (line.includes('r2 bucket delete')) { if (bucketHasObjects && !emptied) return noise('The bucket you tried to delete is not empty (10008).'); return { code: 0, output: 'Deleted' }; }
     if (line.includes('r2 bucket lifecycle add')) { emptied = true; return { code: 0, output: 'Added rule' }; }
@@ -210,4 +211,72 @@ test('when something cannot be removed, the reason shown is wrangler\'s real err
   const result = await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps);
   assert.equal(result.code, 1); const out = s.logs.join('\n');
   assert.match(out, /because reasons \[code: 10064\]/); assert.doesNotMatch(out, /Logs were written|\u001b/);
+});
+
+const deletes = calls => calls.filter(c => /wrangler delete |queues delete|r2 bucket delete|queues consumer|containers delete/.test(c.line)).map(c => c.line);
+
+test('a Worker that already exists under this name, and was not deployed by this command, is never replaced and never touched: nothing is created, and teardown refuses', async t => {
+  const s = await setup({ foreignWorkers: ['my-app'] }, ['--yes']); t.after(s.done);
+  const result = await upCloudflare(s.options, s.deps);
+  assert.equal(result.code, 1); assert.match(s.logs.join('\n'), /already exists/i); assert.match(s.logs.join('\n'), /my-app/);
+  assert.deepEqual(s.w.calls.filter(c => /create|deploy|build/.test(c.line)), [], 'no resource created, no deploy over it');
+  const gone = await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps);
+  assert.equal(gone.code, 1); assert.deepEqual(deletes(s.w.calls), [], 'not one delete issued against the foreign Worker');
+  const dry = await setup({ foreignWorkers: ['my-app'] }, ['--dry-run']); t.after(dry.done);
+  assert.equal((await upCloudflare(dry.options, dry.deps)).code, 1, 'the plan itself reports the clash'); assert.match(dry.logs.join('\n'), /already exists/i);
+});
+
+test('a Worker this command deployed earlier can be deployed over again (that is what re-running means)', async t => {
+  const s = await setup({}, ['--yes']); t.after(s.done);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 0);
+  s.w.calls.length = 0; s.logs.length = 0;
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 0, s.logs.join('\n'));
+  assert.ok(s.w.calls.some(c => / deploy /.test(c.line)));
+});
+
+test('teardown after a run that failed before any Worker was deployed touches no Worker, consumer or container', async t => {
+  const s = await setup({ failOn: ['r2 bucket create'] }, ['--yes']); t.after(s.done);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 1); s.w.calls.length = 0;
+  const gone = await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps);
+  assert.equal(gone.code, 0, s.logs.join('\n')); assert.deepEqual(deletes(s.w.calls), []);
+});
+
+test('teardown never deletes a bucket or queue that already existed and was not created by this command', async t => {
+  const s = await setup({ existing: ['r2:my-app-state', 'q:my-app-events'], failOn: [' deploy '] }, ['--yes']); t.after(s.done);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 1); s.w.calls.length = 0;
+  const gone = await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps);
+  assert.equal(gone.code, 0, s.logs.join('\n'));
+  assert.deepEqual(deletes(s.w.calls).filter(l => /r2 bucket delete|queues delete/.test(l)), [], 'the pre-existing bucket and queue are left alone');
+});
+
+test('teardown trusts the record only for the name it was written for', async t => {
+  const s = await setup({}, ['--yes']); t.after(s.done);
+  await upCloudflare(s.options, s.deps);
+  const file = join(s.state, 'my-app', 'created.json'), record = JSON.parse(await readFile(file, 'utf8'));
+  await writeFile(file, JSON.stringify({ ...record, name: 'someone-elses-app' })); s.w.calls.length = 0;
+  assert.equal((await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps)).code, 1); assert.deepEqual(deletes(s.w.calls), []);
+});
+
+test('a re-run under a different account is refused, so resources are never recorded against one account and created in another', async t => {
+  const other = 'c'.repeat(32), accounts = [{ id: ACCOUNT, name: 'Acme' }, { id: other, name: 'Other' }];
+  const s = await setup({ accounts }, ['--yes', '--account', ACCOUNT]); t.after(s.done);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 0); s.w.calls.length = 0; s.logs.length = 0;
+  const second = await upCloudflare({ ...s.options, account: other }, s.deps);
+  assert.equal(second.code, 1); assert.match(s.logs.join('\n'), new RegExp(ACCOUNT)); assert.deepEqual(s.w.calls.filter(c => /create|deploy/.test(c.line)), []);
+});
+
+test('an option value that looks like another option is refused, so a flag is never swallowed as a path or name', () => {
+  assert.throws(() => parseCloudflareArgs(['--name', 'x', '--state', '--dry-run']), /--state needs a value/);
+  assert.throws(() => parseCloudflareArgs(['--name', '--yes']), /--name needs a value/);
+});
+
+test('the secrets file is removed even if running wrangler throws, and a pre-existing token file is tightened to 0600', async t => {
+  const s = await setup({}, ['--yes']); t.after(s.done);
+  await mkdir(join(s.state, 'my-app'), { recursive: true }); const tokenFile = join(s.state, 'my-app', 'operator-token');
+  await writeFile(tokenFile, `${'d'.repeat(64)}\n`, { mode: 0o644 });
+  let seen; const run = s.deps.run;
+  s.deps.run = async (argv, opts) => { if (argv.includes('--secrets-file')) { seen = argv[argv.indexOf('--secrets-file') + 1]; throw new Error('killed'); } return run(argv, opts); };
+  await assert.rejects(() => upCloudflare(s.options, s.deps), /killed/);
+  await assert.rejects(() => stat(seen), /ENOENT/, 'secrets file gone although the deploy threw');
+  assert.equal((await stat(tokenFile)).mode & 0o777, 0o600, 'an existing token file is tightened, not trusted');
 });

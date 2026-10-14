@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { checkPrerequisites, localWranglerConfig, localDevVars, parseArgs, root, HEDDLE_VERSION, HEDDLE_INSTALL, uiNeedsBuild, readOrCreateToken, waitUntil } from './up.mjs';
+import { checkPrerequisites, localWranglerConfig, localDevVars, writePrivate, parseArgs, root, HEDDLE_VERSION, HEDDLE_INSTALL, uiNeedsBuild, readOrCreateToken, waitUntil } from './up.mjs';
 import { mkdtemp, mkdir, writeFile, utimes, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
@@ -102,4 +102,19 @@ test('waiting for the app stops at once if the process behind it has died or the
   assert.ok(Date.now() - started < 3000, 'did not wait for the 30 s limit');
   await waitUntil(async () => true, 1000, 'The app', () => null);
   await assert.rejects(() => waitUntil(async () => false, 600, 'The app', () => null), /did not start in/);
+});
+
+test('a token the file check accepts is a token the dev-vars file accepts, so a valid long token cannot stop `up local` from starting', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'tok2-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'operator-token'), longest = 'e'.repeat(128);
+  await writeFile(file, `${longest}\n`, { mode: 0o600 });
+  assert.equal(await readOrCreateToken(file), longest); assert.doesNotThrow(() => localDevVars({ token: longest, runnerSecret: 'b'.repeat(48) }));
+  await writeFile(file, `${'f'.repeat(129)}\n`, { mode: 0o600 });
+  assert.match(await readOrCreateToken(file), /^[0-9a-f]{64}$/, 'longer than any consumer accepts: replaced');
+});
+
+test('writing a private file tightens one that already exists with looser permissions', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'priv-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, '.dev.vars'); await writeFile(file, 'old', { mode: 0o644 });
+  await writePrivate(file, 'new'); assert.equal((await stat(file)).mode & 0o777, 0o600); assert.equal(await (await import('node:fs/promises')).readFile(file, 'utf8'), 'new');
 });
