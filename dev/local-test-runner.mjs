@@ -87,6 +87,7 @@ export async function runCandidateLocally(input, { root, allowFileRemotes = fals
       const waiting = Date.now(); await beforeSteps(); waitedMs = Date.now() - waiting; deadline += waitedMs;
     }
     const env = { PATH: process.env.PATH, CI: '1', NO_COLOR: '1', HOME: home, TMPDIR: home, NPM_CONFIG_UPDATE_NOTIFIER: 'false', GIT_CONFIG_NOSYSTEM: '1' };
+    result.installExitCode = 0;
     for (const args of recipe.setup) {
       const run = await go(args, env);
       result.installExitCode = run.code;
@@ -152,7 +153,8 @@ export async function startLocalTestRunner({ port = 0, root, secret, slots = 2, 
     origin: `http://127.0.0.1:${server.address().port}`, root,
     async close() {
       closing = true; lifecycle.abort(); for (const w of waiters.splice(0)) w(false);
-      killLive(); server.closeAllConnections();
+      // lifecycle.abort() stops only this runner’s groups; the global kill is for whole-app shutdown.
+      server.closeAllConnections();
       await new Promise(resolve => server.close(resolve));
       if (own) await rm(root, { recursive: true, force: true });
     },

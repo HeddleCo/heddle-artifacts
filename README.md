@@ -133,7 +133,7 @@ Design details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   come from candidate-authored tests, so they can still misrepresent correctness; the review looks at the diff too.
 - Artifacts rejected atomic multi-ref push, so publication updates `main` last, after verifying the other refs.
   Auxiliary refs may be briefly pending; there is no all-refs-atomic view.
-- The local fixture in (b) uses canned data. Its Why page shows the fixture narrative, not the reason you typed.
+- The UI preview in (c) uses canned data. Its Why page shows the fixture narrative, not the reason you typed.
 - Live compatibility evidence is in [docs/LIVE-ARTIFACTS-20261010.md](docs/LIVE-ARTIFACTS-20261010.md).
 
 ## Run the storyline against a deployment

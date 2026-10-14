@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isolatedTestResult } from '../../engine/lib/isolated-tests.mjs';
 import { runCandidateLocally, startLocalTestRunner } from '../local-test-runner.mjs';
 import { startFakeArtifacts } from '../fake-artifacts/server.mjs';
 
@@ -31,6 +32,9 @@ test('a passing candidate is actually executed and reports its own counts', () =
   assert.equal(run.testExitCode, 0); assert.equal(run.local, true, 'the runner says what it is, so the board labels the result from it');
   assert.equal(run.sourceSha, c.sourceSha); assert.equal(run.treeSha, c.treeSha);
   assert.match(run.output, /^(?:#|ℹ) pass 2$/m); assert.match(run.output, /^(?:#|ℹ) fail 0$/m);
+  const result = isolatedTestResult(run);
+  assert.equal(result.status, 'pass', result.summary);
+  assert.equal(result.summary, 'Local run (not isolated): 2 passed, 0 failed');
 }));
 
 test('a failing candidate is reported failing: the result comes from running it, not from a fixture', () => withRoot(async root => {
@@ -229,4 +233,27 @@ test('local restart preserves clone remotes and metadata, refreshes event hooks,
     const fetched = await runCandidateLocally(input({ ...c, sourceSha: git(c.remote, 'rev-parse', 'HEAD'), treeSha: git(c.remote, 'rev-parse', 'HEAD^{tree}'), remote, readCredential: token.plaintext }), { root: join(root, 'tests') });
     assert.equal(fetched.testExitCode, 0, 'test checkout still reaches the persisted remote');
   } finally { if (fake) await fake.close(); await new Promise(r => listener.close(r)); }
+}));
+
+test('a failed setup still reports dependency install failure and never runs tests', () => withRoot(async root => {
+  const c = await candidate(root, 'install-fail', "import test from 'node:test'; test('ok', () => {});");
+  const run = await runCandidate(c, root, { recipe: { setup: [['node', '-e', 'process.exit(1)']], test: ['node', '--test'], budgetMs: 30000 } });
+  assert.equal(run.installExitCode, 1); assert.equal(run.testExitCode, undefined);
+  assert.equal(isolatedTestResult(run).summary, 'Local run (not isolated) dependency install failed');
+}));
+
+test('closing one runner does not kill another runner’s candidate', { timeout: 20000 }, () => withRoot(async root => {
+  const marker = join(root, 'other-started'), release = join(root, 'other-release');
+  const c = await candidate(root, 'other-runner', `import { existsSync, writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'started'); while (!existsSync(${JSON.stringify(release)})) await new Promise(r => setTimeout(r, 20));`);
+  const first = await startLocalTestRunner({ root: join(root, 'first'), secret: SECRET });
+  const second = await startLocalTestRunner({ root: join(root, 'second'), secret: SECRET, allowFileRemotes: true });
+  try {
+    const running = post(second.origin, input(c, { recipe: { setup: [], test: ['node', 'a.test.mjs'], budgetMs: 10000 } })).catch(() => undefined);
+    let started = false;
+    for (let i = 0; i < 100 && !started; i++) { started = await stat(marker).then(() => true, () => false); if (!started) await new Promise(r => setTimeout(r, 30)); }
+    assert.equal(started, true);
+    await first.close(); await writeFile(release, 'go');
+    const response = await running; assert.equal(response?.status, 200);
+    assert.equal((await response.json()).testExitCode, 0, 'the second runner keeps its own candidate alive');
+  } finally { await first.close(); await second.close(); }
 }));

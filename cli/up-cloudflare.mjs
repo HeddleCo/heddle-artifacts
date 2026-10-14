@@ -82,7 +82,7 @@ async function checkPrerequisites(options, deps) {
   // Deploying over a Worker of the same name replaces its code, and tearing down would delete it. Only a Worker this command deployed is ours.
   else if (account) {
     const exists = await deps.run(wrangler('deployments', 'list', '--name', options.name), { env: { CLOUDFLARE_ACCOUNT_ID: account.id } });
-    if (exists.code === 0) { if (!(earlier?.name === options.name && earlier.worker === true)) problems.push(`A Worker named "${options.name}" already exists on this account and was not deployed by this command, so it is left alone. Choose another --name.`); }
+    if (exists.code === 0) { if (!(earlier?.name === options.name && earlier.worker === true && earlier.workerConfirmed === true && !earlier.workerGone)) problems.push(`A Worker named "${options.name}" already exists on this account and its ownership is not confirmed by this command, so it is left alone. Choose another --name.`); }
     else if (!/10007|does not exist|not found/i.test(exists.output)) problems.push(`Could not check whether a Worker named "${options.name}" already exists (${reason(exists.output)}). Nothing was changed.`);
   }
   return { problems, account };
@@ -144,8 +144,10 @@ export async function upCloudflare(options, deps) {
   log('\nDeploying. A first deploy builds the engine image (up to about 30 minutes on a clean Docker cache); output follows.\n');
   const secrets = join(dir, `.secrets-${randomBytes(6).toString('hex')}.json`);
   await writePrivate(secrets, JSON.stringify({ OPERATOR_TOKEN: token }));
-  // From here a Worker may exist on the account because of this run, so a later --destroy may remove it. Before this point it never will.
-  record.worker = true; record.workerGone = false; record.containersGone = false; await save();
+  // An attempt can fail before creating anything, or after partial creation. Do not infer ownership from the name.
+  record.deployPending = !(record.worker === true && record.workerConfirmed === true && !record.workerGone);
+  if (record.deployPending) record.worker = false;
+  await save();
   // The secrets file holds the operator token: remove it on every way out, including being killed or the terminal closing mid-deploy.
   const dropSecrets = () => { try { rmSync(secrets, { force: true }); } catch { /* best effort */ } };
   const onSignal = () => { dropSecrets(); process.exit(130); };
@@ -154,6 +156,9 @@ export async function upCloudflare(options, deps) {
   try { deploy = await exec(wrangler('deploy', '--config', configPath, '--secrets-file', secrets), { stream: true, logFile: join(dir, 'deploy.log') }); }
   finally { for (const name of SIGNALS) process.off(name, onSignal); dropSecrets(); }
   if (deploy.code !== 0) { log(`\nThe deploy failed (full output: ${join(dir, 'deploy.log')}). Fix the problem and run the same command again; it is safe to repeat.`); return { code: 1 }; }
+
+  record.worker = true; record.workerConfirmed = true; record.deployPending = false;
+  record.workerGone = false; record.containersGone = false; await save();
 
   const url = options.domain ? `https://${options.domain}` : /https:\/\/[a-z0-9.-]+\.workers\.dev/i.exec(deploy.output)?.[0];
   const workersDev = /https:\/\/[a-z0-9.-]+\.workers\.dev/i.exec(deploy.output)?.[0] ?? url;
@@ -184,15 +189,31 @@ export async function destroyCloudflare(options, deps) {
   const { log } = deps, dir = join(options.state, options.name), record = await readJson(join(dir, 'created.json'));
   if (!record || record.name !== options.name) { log(`This command did not create "${options.name}" on this machine (no record in ${dir}), so nothing is removed.`); return { code: 1 }; }
   const n = names(options.name);
-  // Only what this command recorded creating: a Worker only once a deploy was attempted, a bucket or queue only if it made them.
-  const ownsWorker = record.worker === true && !record.workerGone, workerDone = record.workerGone || record.worker !== true;
-  const ownsContainers = record.worker === true && !record.containersGone;
+  // Only what this command recorded creating: a Worker only after a successful deploy, a bucket or queue only if it made them.
+  const ownsWorker = record.worker === true && record.workerConfirmed === true && !record.workerGone;
+  const ownsContainers = record.worker === true && record.workerConfirmed === true && !record.containersGone;
   const list = [ownsWorker && `Worker ${options.name}`, ownsContainers && `its containers (${n.containers.join(', ')})`, record.queue && !record.queueGone && `Queue ${n.queue}`, record.bucket && `R2 bucket ${n.bucket}`, 'the local operator token and config'].filter(Boolean);
   log(`This removes ${list.join(', ')}.\nArtifacts repositories in namespace ${record.namespace} are not removed by this command.`);
   if (!options.yes && !(await deps.confirm('\nRemove them? [y/N] '))) { log('Nothing was changed.'); return { code: 1 }; }
   const env = { CLOUDFLARE_ACCOUNT_ID: record.accountId }, exec = argv => deps.run(argv, { cwd: deps.repo, env }), left = [], save = () => writePrivate(join(dir, 'created.json'), JSON.stringify(record, null, 1));
   const missing = /not found|does not exist|10007|10006|11000/i;
   const attempt = async (r, what) => { if (r.code === 0 || missing.test(r.output)) return true; left.push(`${what}: ${reason(r.output)}`); return false; };
+
+  // A failed first deploy (or a legacy record made before success was confirmed) cannot authorize name-based deletion.
+  if (record.worker === true && record.workerGone && record.workerConfirmed !== true) {
+    log('The legacy deployment record cannot confirm container ownership. Nothing was removed; the local record was kept for manual verification.');
+    return { code: 1 };
+  }
+  const uncertainWorker = record.deployPending || (record.worker === true && !record.workerGone && record.workerConfirmed !== true);
+  if (uncertainWorker) {
+    const exists = await exec(wrangler('deployments', 'list', '--name', options.name));
+    if (exists.code === 0 || !/10007|(?:Worker|script).*?(?:does not exist|not found)/i.test(exists.output)) {
+      log(`Worker ownership for "${options.name}" is unconfirmed after a deployment attempt. Nothing was removed; the local record was kept. Verify the deployment in the Cloudflare dashboard before cleaning it up.`);
+      return { code: 1 };
+    }
+    record.worker = false; record.deployPending = false; await save();
+  }
+  const workerDone = record.workerGone || record.worker !== true;
 
   if (ownsWorker) {
     await exec(wrangler('queues', 'consumer', 'worker', 'remove', n.queue, options.name));

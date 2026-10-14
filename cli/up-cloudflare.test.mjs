@@ -310,3 +310,71 @@ test('container listing and deletion failures retain independent cleanup state f
     await assert.rejects(() => stat(join(s.state, 'my-app')), /ENOENT/);
   }
 });
+
+test('a failed first deploy cannot claim or destroy a later same-name Worker', async t => {
+  const s = await setup({ failOn: [' deploy '] }, ['--yes']); t.after(s.done);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 1);
+  const file = join(s.state, 'my-app', 'created.json');
+  assert.equal(JSON.parse(await readFile(file)).worker, false, 'attempting a deploy is not proof of ownership');
+  const run = s.deps.run;
+  s.deps.run = (argv, opts) => argv.includes('deployments') ? Promise.resolve({ code: 0, output: 'later foreign deployment' }) : run(argv, opts);
+  s.w.calls.length = 0;
+  assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 1, 'uncertain ownership is retained for review');
+  assert.deepEqual(deletes(s.w.calls), [], 'no Worker, container, queue, or bucket deletion against the uncertain deployment');
+  await stat(file);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 1, 'retry cannot overwrite the foreign Worker either');
+});
+
+test('failed deployment with confirmed absence permits cleanup of the owned bucket and queue only', async t => {
+  const s = await setup({ failOn: [' deploy '] }, ['--yes']); t.after(s.done);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 1); s.w.calls.length = 0;
+  assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 0);
+  const lines = deletes(s.w.calls);
+  assert.ok(lines.some(l => l.includes('r2 bucket delete')) && lines.some(l => l.includes('queues delete')));
+  assert.ok(!lines.some(l => /wrangler delete |queues consumer|containers delete/.test(l)));
+});
+
+test('legacy attempt-only ownership records cannot authorize replacing or deleting an existing Worker', async t => {
+  const s = await setup({}, ['--yes']); t.after(s.done);
+  await upCloudflare(s.options, s.deps);
+  const file = join(s.state, 'my-app', 'created.json'), record = JSON.parse(await readFile(file));
+  delete record.workerConfirmed; await writeFile(file, JSON.stringify(record)); s.w.calls.length = 0;
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 1);
+  assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 1);
+  assert.deepEqual(deletes(s.w.calls), []);
+  await stat(file);
+});
+
+test('unknown inventory after a failed first deploy stops cleanup without discarding its record', async t => {
+  const s = await setup({ failOn: [' deploy '] }, ['--yes']); t.after(s.done);
+  await upCloudflare(s.options, s.deps);
+  const run = s.deps.run;
+  s.deps.run = (argv, opts) => argv.includes('deployments') ? Promise.resolve({ code: 1, output: 'inventory unavailable [code: 10006]' }) : run(argv, opts);
+  s.w.calls.length = 0;
+  assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 1);
+  assert.deepEqual(deletes(s.w.calls), []);
+  assert.equal(JSON.parse(await readFile(join(s.state, 'my-app', 'created.json'))).deployPending, true);
+});
+
+test('legacy records retain unconfirmed container cleanup after Worker deletion', async t => {
+  const s = await setup({}, ['--yes']); t.after(s.done);
+  await upCloudflare(s.options, s.deps);
+  const file = join(s.state, 'my-app', 'created.json'), record = JSON.parse(await readFile(file));
+  delete record.workerConfirmed; record.workerGone = true;
+  await writeFile(file, JSON.stringify(record)); s.w.calls.length = 0;
+  assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 1);
+  assert.deepEqual(deletes(s.w.calls), []);
+  await stat(file);
+});
+
+test('a failed redeploy preserves previously confirmed ownership for cleanup', async t => {
+  const s = await setup({}, ['--yes']); t.after(s.done);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 0);
+  const run = s.deps.run;
+  s.deps.run = (argv, opts) => argv.includes('deploy') ? Promise.resolve({ code: 1, output: 'redeploy failed' }) : run(argv, opts);
+  assert.equal((await upCloudflare(s.options, s.deps)).code, 1);
+  const record = JSON.parse(await readFile(join(s.state, 'my-app', 'created.json')));
+  assert.equal(record.worker, true); assert.equal(record.workerConfirmed, true);
+  assert.equal((await destroyCloudflare({ ...s.options, yes: true }, s.deps)).code, 0);
+  assert.ok(s.w.calls.some(c => /wrangler delete my-app/.test(c.line)));
+});
