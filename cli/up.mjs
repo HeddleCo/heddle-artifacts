@@ -11,6 +11,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { isMain } from './ha.mjs';
+import { writePrivate } from './private-file.mjs';
+export { writePrivate };
 
 const execFileAsync = promisify(execFile);
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -80,7 +82,8 @@ export async function uiNeedsBuild(repo = root) {
 /** The operator token: an existing good one is kept; a missing, empty, short or odd one is replaced. Always mode 0600. */
 export async function readOrCreateToken(file) {
   let token = (await readFile(file, 'utf8').catch(() => '')).trim();
-  if (!/^[A-Za-z0-9._-]{32,256}$/.test(token)) { token = randomBytes(32).toString('hex'); await writeFile(file, `${token}\n`, { mode: 0o600 }); }
+  // The same alphabet and an upper bound no larger than localDevVars accepts, so a token this keeps can always be used.
+  if (!/^[A-Za-z0-9._-]{32,128}$/.test(token)) { token = randomBytes(32).toString('hex'); await writeFile(file, `${token}\n`, { mode: 0o600 }); }
   await chmod(file, 0o600);
   return token;
 }
@@ -123,8 +126,10 @@ export async function upLocal(options, log = console.log) {
   const stop = async () => { for (const closeIt of started.splice(0).reverse()) { try { await closeIt(); } catch { /* best effort */ } } };
   const hardKill = () => { killLiveCandidates(); try { if (wrangler?.pid) process.kill(-wrangler.pid, 'SIGKILL'); } catch { /* gone */ } };
   const onSignal = () => { signals++; stopRequested = true; buildChild?.kill(); wake(); if (signals > 1) { hardKill(); process.exit(130); } };
-  process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal);
-  const detach = () => { process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); };
+  // SIGHUP: the terminal was closed. wrangler and the candidates run in their own sessions, so without this they would outlive us.
+  const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  for (const name of SIGNALS) process.on(name, onSignal);
+  const detach = () => { for (const name of SIGNALS) process.off(name, onSignal); };
 
   try {
     const tokenFile = join(options.state, 'operator-token'), token = await readOrCreateToken(tokenFile);
@@ -139,8 +144,8 @@ export async function upLocal(options, log = console.log) {
     // No root given: the runner makes its own private directory outside the state directory, so candidate code does not run next to your token.
     const runner = await startLocalTestRunner({ secret: runnerSecret }); started.push(() => runner.close());
     const config = join(options.state, 'wrangler.local.json');
-    await writeFile(config, JSON.stringify(localWranglerConfig({ vars: { FAKE_ARTIFACTS_URL: fake.origin, ENGINE_DEV_URL: engine.origin, LOCAL_TEST_RUNNER_URL: runner.origin } }), null, 1), { mode: 0o600 });
-    await writeFile(join(options.state, '.dev.vars'), localDevVars({ token, runnerSecret }), { mode: 0o600 });
+    await writePrivate(config, JSON.stringify(localWranglerConfig({ vars: { FAKE_ARTIFACTS_URL: fake.origin, ENGINE_DEV_URL: engine.origin, LOCAL_TEST_RUNNER_URL: runner.origin } }), null, 1));
+    await writePrivate(join(options.state, '.dev.vars'), localDevVars({ token, runnerSecret }));
     let wranglerExited = false;
     wrangler = spawn(process.execPath, [join(root, 'node_modules/wrangler/bin/wrangler.js'), 'dev', '--config', config, '--port', String(port), '--ip', '127.0.0.1', '--inspector-port', '0', '--persist-to', join(options.state, 'wrangler')],
       { cwd: root, detached: true, stdio: ['ignore', 'ignore', 'ignore'], env: { ...process.env, WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: join(options.state, 'wrangler.log'), XDG_CONFIG_HOME: join(options.state, 'config') } });

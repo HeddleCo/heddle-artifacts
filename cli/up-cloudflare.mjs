@@ -5,7 +5,9 @@
 // It wraps docs/DEPLOY.md: creates the R2 bucket and Queue (safe to re-run), writes a git-ignored Worker config, generates an
 // operator token (kept in a 0600 file, never on a command line), builds the UI, deploys, and waits for the Worker to answer.
 import { spawn } from 'node:child_process';
-import { access, chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
+import { writePrivate } from './private-file.mjs';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -18,7 +20,7 @@ const NAMESPACE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 export function parseCloudflareArgs(argv) {
   const o = { name: undefined, namespace: undefined, domain: undefined, publicProject: undefined, account: undefined, state: join(homedir(), '.heddle-artifacts', 'cloudflare'), yes: false, dryRun: false, destroy: false };
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i], next = () => { if (i + 1 >= argv.length) throw new Error(`${a} needs a value`); return argv[++i]; };
+    const a = argv[i], next = () => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new Error(`${a} needs a value`); return argv[++i]; };
     if (a === '--name') o.name = next(); else if (a === '--namespace') o.namespace = next(); else if (a === '--domain') o.domain = next();
     else if (a === '--public-project') o.publicProject = next(); else if (a === '--account') o.account = next(); else if (a === '--state') o.state = resolve(next());
     else if (a === '--yes') o.yes = true; else if (a === '--dry-run') o.dryRun = true; else if (a === '--destroy') o.destroy = true;
@@ -62,6 +64,7 @@ async function readJson(path) { try { return JSON.parse(await readFile(path, 'ut
 /** Everything that must be true before anything is created. */
 async function checkPrerequisites(options, deps) {
   const problems = []; let account;
+  const earlier = await readJson(join(options.state, options.name, 'created.json'));
   if (Number(deps.nodeVersion.split('.')[0]) < 22) problems.push(`Node 22 or newer (you have ${deps.nodeVersion}).`);
   for (const [path, fix] of [['node_modules/wrangler/bin/wrangler.js', 'npm ci'], ['ui/node_modules', 'npm ci --prefix ui']]) if (!(await deps.exists(join(deps.repo, path)))) problems.push(`Dependencies are missing. Run: ${fix}`);
   const docker = await deps.run(['docker', 'info']);
@@ -74,6 +77,13 @@ async function checkPrerequisites(options, deps) {
     if (wanted.length === 1) account = wanted[0];
     else if (!wanted.length) problems.push(options.account ? `No account matches --account ${options.account}.` : 'Your login has no Cloudflare account.');
     else problems.push(`Your login can use ${wanted.length} accounts. Choose one with --account <id or name>: ${wanted.map(a => `${a.name} (${a.id})`).join(', ')}`);
+  }
+  if (account && earlier && earlier.name === options.name && earlier.accountId !== account.id) problems.push(`"${options.name}" was set up earlier on account ${earlier.accountId}, and this run is on ${account.id}. Use --account ${earlier.accountId}, or choose another --name.`);
+  // Deploying over a Worker of the same name replaces its code, and tearing down would delete it. Only a Worker this command deployed is ours.
+  else if (account) {
+    const exists = await deps.run(wrangler('deployments', 'list', '--name', options.name), { env: { CLOUDFLARE_ACCOUNT_ID: account.id } });
+    if (exists.code === 0) { if (!(earlier?.name === options.name && earlier.worker === true)) problems.push(`A Worker named "${options.name}" already exists on this account and was not deployed by this command, so it is left alone. Choose another --name.`); }
+    else if (!/10007|does not exist|not found/i.test(exists.output)) problems.push(`Could not check whether a Worker named "${options.name}" already exists (${reason(exists.output)}). Nothing was changed.`);
   }
   return { problems, account };
 }
@@ -96,8 +106,8 @@ function planLines(options, account) {
 async function ensureToken(dir) {
   const file = join(dir, 'operator-token');
   let token = (await readFile(file, 'utf8').catch(() => '')).trim();
-  if (!/^[0-9a-f]{64}$/.test(token)) { token = randomBytes(32).toString('hex'); await writeFile(file, `${token}\n`, { mode: 0o600 }); }
-  await chmod(file, 0o600);
+  if (!/^[0-9a-f]{64}$/.test(token)) { token = randomBytes(32).toString('hex'); }
+  await writePrivate(file, `${token}\n`);
   return { token, file };
 }
 
@@ -114,7 +124,7 @@ export async function upCloudflare(options, deps) {
   const { token, file: tokenFile } = await ensureToken(dir);
   const recordFile = join(dir, 'created.json');
   const record = (await readJson(recordFile)) ?? { name: options.name, accountId: account.id, namespace: options.namespace, config: n.config, bucket: false, queue: false, worker: false };
-  const save = () => writeFile(recordFile, JSON.stringify(record, null, 1), { mode: 0o600 });
+  const save = () => writePrivate(recordFile, JSON.stringify(record, null, 1));
   await save();
   const exec = (argv, extra = {}) => deps.run(argv, { cwd: deps.repo, env, ...extra });
 
@@ -129,15 +139,20 @@ export async function upCloudflare(options, deps) {
   log('\nBuilding the UI…');
   if ((await exec(['npm', 'run', 'build', '--prefix', 'ui'])).code !== 0) { log('The UI build failed. Run `npm run build` to see why.'); return { code: 1 }; }
   const configPath = join(deps.repo, n.config);
-  await writeFile(configPath, JSON.stringify(cloudflareConfig({ name: options.name, accountId: account.id, queueId, namespace: options.namespace, domain: options.domain, publicProject: options.publicProject }), null, 2), { mode: 0o600 });
+  await writePrivate(configPath, JSON.stringify(cloudflareConfig({ name: options.name, accountId: account.id, queueId, namespace: options.namespace, domain: options.domain, publicProject: options.publicProject }), null, 2));
 
   log('\nDeploying. A first deploy builds the engine image (up to about 30 minutes on a clean Docker cache); output follows.\n');
   const secrets = join(dir, `.secrets-${randomBytes(6).toString('hex')}.json`);
-  await writeFile(secrets, JSON.stringify({ OPERATOR_TOKEN: token }), { mode: 0o600 });
+  await writePrivate(secrets, JSON.stringify({ OPERATOR_TOKEN: token }));
+  // From here a Worker may exist on the account because of this run, so a later --destroy may remove it. Before this point it never will.
+  record.worker = true; await save();
+  // The secrets file holds the operator token: remove it on every way out, including being killed or the terminal closing mid-deploy.
+  const dropSecrets = () => { try { rmSync(secrets, { force: true }); } catch { /* best effort */ } };
+  const onSignal = () => { dropSecrets(); process.exit(130); };
+  const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP']; for (const name of SIGNALS) process.on(name, onSignal);
   let deploy;
   try { deploy = await exec(wrangler('deploy', '--config', configPath, '--secrets-file', secrets), { stream: true, logFile: join(dir, 'deploy.log') }); }
-  finally { await rm(secrets, { force: true }); }
-  record.worker = deploy.code === 0 || record.worker; await save();
+  finally { for (const name of SIGNALS) process.off(name, onSignal); dropSecrets(); }
   if (deploy.code !== 0) { log(`\nThe deploy failed (full output: ${join(dir, 'deploy.log')}). Fix the problem and run the same command again; it is safe to repeat.`); return { code: 1 }; }
 
   const url = options.domain ? `https://${options.domain}` : /https:\/\/[a-z0-9.-]+\.workers\.dev/i.exec(deploy.output)?.[0];
@@ -169,14 +184,16 @@ export async function destroyCloudflare(options, deps) {
   const { log } = deps, dir = join(options.state, options.name), record = await readJson(join(dir, 'created.json'));
   if (!record || record.name !== options.name) { log(`This command did not create "${options.name}" on this machine (no record in ${dir}), so nothing is removed.`); return { code: 1 }; }
   const n = names(options.name);
-  const list = [!record.workerGone && `Worker ${options.name}`, !record.workerGone && `its containers (${n.containers.join(', ')})`, record.queue && !record.queueGone && `Queue ${n.queue}`, record.bucket && `R2 bucket ${n.bucket}`, 'the local operator token and config'].filter(Boolean);
+  // Only what this command recorded creating: a Worker only once a deploy was attempted, a bucket or queue only if it made them.
+  const ownsWorker = record.worker === true && !record.workerGone, workerDone = record.workerGone || record.worker !== true;
+  const list = [ownsWorker && `Worker ${options.name}`, ownsWorker && `its containers (${n.containers.join(', ')})`, record.queue && !record.queueGone && `Queue ${n.queue}`, record.bucket && `R2 bucket ${n.bucket}`, 'the local operator token and config'].filter(Boolean);
   log(`This removes ${list.join(', ')}.\nArtifacts repositories in namespace ${record.namespace} are not removed by this command.`);
   if (!options.yes && !(await deps.confirm('\nRemove them? [y/N] '))) { log('Nothing was changed.'); return { code: 1 }; }
-  const env = { CLOUDFLARE_ACCOUNT_ID: record.accountId }, exec = argv => deps.run(argv, { cwd: deps.repo, env }), left = [], save = () => writeFile(join(dir, 'created.json'), JSON.stringify(record, null, 1), { mode: 0o600 });
+  const env = { CLOUDFLARE_ACCOUNT_ID: record.accountId }, exec = argv => deps.run(argv, { cwd: deps.repo, env }), left = [], save = () => writePrivate(join(dir, 'created.json'), JSON.stringify(record, null, 1));
   const missing = /not found|does not exist|10007|10006|11000/i;
   const attempt = async (r, what) => { if (r.code === 0 || missing.test(r.output)) return true; left.push(`${what}: ${reason(r.output)}`); return false; };
 
-  if (!record.workerGone) {
+  if (ownsWorker) {
     await exec(wrangler('queues', 'consumer', 'worker', 'remove', n.queue, options.name));
     if (await attempt(await exec(wrangler('delete', options.name)), `Worker ${options.name}`)) {
       record.workerGone = true; await save();
@@ -184,9 +201,9 @@ export async function destroyCloudflare(options, deps) {
       for (const row of apps.output.split('\n')) { const cells = row.split('│').map(c => c.trim()); if (cells.length > 2 && n.containers.includes(cells[2])) await attempt(await exec(wrangler('containers', 'delete', cells[1])), `container ${cells[2]}`); }
     }
   }
-  if (record.queue && !record.queueGone && record.workerGone && await attempt(await exec(wrangler('queues', 'delete', n.queue)), `Queue ${n.queue}`)) { record.queueGone = true; await save(); }
+  if (record.queue && !record.queueGone && (record.workerGone || workerDone) && await attempt(await exec(wrangler('queues', 'delete', n.queue)), `Queue ${n.queue}`)) { record.queueGone = true; await save(); }
   let expiring = false;
-  if (record.bucket && record.workerGone) {
+  if (record.bucket && (record.workerGone || workerDone)) {
     const gone = await exec(wrangler('r2', 'bucket', 'delete', n.bucket));
     if (gone.code === 0 || missing.test(gone.output)) record.bucket = false;
     else if (/not empty|10008/i.test(gone.output)) {
@@ -196,7 +213,7 @@ export async function destroyCloudflare(options, deps) {
   }
   await save();
   await rm(join(deps.repo, n.config), { force: true });
-  if (record.workerGone) await rm(join(dir, 'operator-token'), { force: true });
+  if (record.workerGone || workerDone) await rm(join(dir, 'operator-token'), { force: true });
   if (left.length) { log(`\nRemoved most of it. Left in place:\n${left.map(l => `  - ${l}`).join('\n')}\nFix those (or in the Cloudflare dashboard) and run this command again. The local record was kept.`); return { code: 1 }; }
   if (expiring) { log(`\nRemoved the Worker, containers and queue. The R2 bucket ${n.bucket} still holds data, and wrangler cannot list or empty a bucket, so it was set to delete its objects within 24 hours.\nRun the same --destroy command again after 24 hours to delete the empty bucket.`); return { code: 0 }; }
   await rm(dir, { recursive: true, force: true });

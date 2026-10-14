@@ -79,7 +79,7 @@ test('each missing prerequisite is named with how to fix it, and nothing is crea
     const s = await setup(opts, ['--yes']); t.after(s.done);
     const result = await upCloudflare(s.options, s.deps);
     assert.equal(result.code, 1, label); assert.match(s.logs.join('\n'), pattern, label);
-    assert.deepEqual(s.w.calls.filter(c => /create|deploy|build/.test(c.line)), [], `${label}: nothing mutated`);
+    assert.deepEqual(s.w.calls.filter(c => /create| deploy |build/.test(c.line)), [], `${label}: nothing mutated`);
   }
 });
 
@@ -137,10 +137,10 @@ test('without --yes the plan is shown and a "no" changes nothing; --dry-run neve
   const no = await setup({ confirm: false }); t.after(no.done);
   assert.equal((await upCloudflare(no.options, no.deps)).code, 1);
   assert.match(no.logs.join('\n'), /30 minutes/); assert.match(no.logs.join('\n'), /my-app-state/);
-  assert.deepEqual(no.w.calls.filter(c => /create|deploy|ui/.test(c.line)), []);
+  assert.deepEqual(no.w.calls.filter(c => /create| deploy |ui/.test(c.line)), []);
   const dry = await setup({ confirm: false }, ['--dry-run']); t.after(dry.done);
   assert.equal((await upCloudflare(dry.options, dry.deps)).code, 0);
-  assert.deepEqual(dry.w.calls.filter(c => /create|deploy|ui/.test(c.line)), []);
+  assert.deepEqual(dry.w.calls.filter(c => /create| deploy |ui/.test(c.line)), []);
   assert.deepEqual(await readdir(dry.repo), [], 'dry run writes no config');
   assert.match(dry.logs.join('\n'), /Dry run/i);
 });
@@ -219,7 +219,7 @@ test('a Worker that already exists under this name, and was not deployed by this
   const s = await setup({ foreignWorkers: ['my-app'] }, ['--yes']); t.after(s.done);
   const result = await upCloudflare(s.options, s.deps);
   assert.equal(result.code, 1); assert.match(s.logs.join('\n'), /already exists/i); assert.match(s.logs.join('\n'), /my-app/);
-  assert.deepEqual(s.w.calls.filter(c => /create|deploy|build/.test(c.line)), [], 'no resource created, no deploy over it');
+  assert.deepEqual(s.w.calls.filter(c => /create| deploy |build/.test(c.line)), [], 'no resource created, no deploy over it');
   const gone = await destroyCloudflare({ ...s.options, destroy: true, yes: true }, s.deps);
   assert.equal(gone.code, 1); assert.deepEqual(deletes(s.w.calls), [], 'not one delete issued against the foreign Worker');
   const dry = await setup({ foreignWorkers: ['my-app'] }, ['--dry-run']); t.after(dry.done);
@@ -262,7 +262,7 @@ test('a re-run under a different account is refused, so resources are never reco
   const s = await setup({ accounts }, ['--yes', '--account', ACCOUNT]); t.after(s.done);
   assert.equal((await upCloudflare(s.options, s.deps)).code, 0); s.w.calls.length = 0; s.logs.length = 0;
   const second = await upCloudflare({ ...s.options, account: other }, s.deps);
-  assert.equal(second.code, 1); assert.match(s.logs.join('\n'), new RegExp(ACCOUNT)); assert.deepEqual(s.w.calls.filter(c => /create|deploy/.test(c.line)), []);
+  assert.equal(second.code, 1); assert.match(s.logs.join('\n'), new RegExp(ACCOUNT)); assert.deepEqual(s.w.calls.filter(c => /create| deploy /.test(c.line)), []);
 });
 
 test('an option value that looks like another option is refused, so a flag is never swallowed as a path or name', () => {

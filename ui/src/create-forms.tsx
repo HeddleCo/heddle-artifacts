@@ -13,7 +13,7 @@ let session: Promise<Session> | undefined;
 export function useSession(): Session {
   const [value, setValue] = useState<Session>({ ready: false, operator: false });
   useEffect(() => {
-    session ??= fetch('/api/session', { credentials: 'same-origin' }).then(r => r.ok ? r.json() as Promise<Body> : ({} as Body))
+    session ??= fetch('/api/session', { credentials: 'same-origin' }).then(r => { if (!r.ok) throw new Error(`session ${r.status}`); return r.json() as Promise<Body>; })
       .then((b): Session => ({ ready: true, operator: b.operator === true, ...(typeof b.demo === 'string' && b.demo ? { demo: b.demo } : {}) }))
       // A failed lookup is not remembered: the next mount asks again, instead of treating an operator as a visitor until the page is reloaded.
       .catch((): Session => { session = undefined; return { ready: true, operator: false }; });
