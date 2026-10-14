@@ -2,6 +2,7 @@
 import { it, expect } from 'vitest';
 import { SELF, env as testEnv, runInDurableObject } from 'cloudflare:test';
 import type { Env } from '../env';
+import { sandboxDeadlineMs } from '../isolated-tests';
 import { FakeTestRunner } from '../../dev/fake-test-runner';
 import { memoryArtifacts } from '../../dev/memory-artifacts';
 const env = testEnv as unknown as Env;
@@ -60,6 +61,24 @@ it('the board names where tests ran from what the runner reported, not from the 
     labels[name] = view.candidates[0].tests.provenance;
   }
   expect(labels).toEqual({ sandbox: 'isolated sandbox', fixture: 'isolated sandbox (local fixture)', local: 'local run (not isolated)', decoy: 'isolated sandbox (local fixture)' });
+});
+it('an error is labelled by the runner that produced it: a local runner that fails reads "Local run (not isolated)", never sandbox or fixture', async () => {
+  const summaries: Record<string, string> = {};
+  for (const [name, vars, local] of [['sandbox', {}, false], ['fixture', { DEV: '1' }, false], ['local', { DEV: '1' }, true]] as const) {
+    const f = await fixture(); f.fake.local = local; f.fake.reject = true;
+    await runInDurableObject(f.project, instance => { Object.assign((instance as any).env, vars); });
+    await f.project.notePush(f.fork, 'refs/heads/main', sha(1), 'event');
+    const view = await waitFor(f.task, v => v.candidates[0]?.tests && v.candidates[0].tests.status !== 'pending');
+    expect(view.candidates[0].tests.status).toBe('error');
+    summaries[name] = view.candidates[0].tests.summary;
+  }
+  expect(summaries).toEqual({ sandbox: 'Isolated sandbox failed', fixture: 'Isolated sandbox (local fixture) failed', local: 'Local run (not isolated) failed' });
+});
+it('the time a job waits in a runner\'s queue is not charged to its test budget, but the budget itself still applies', () => {
+  expect(sandboxDeadlineMs(180000, 5000, {})).toBe(175000);
+  expect(sandboxDeadlineMs(180000, 5000, { queueAllowanceMs: 600000 })).toBe(775000);
+  expect(sandboxDeadlineMs(180000, 999999, {})).toBe(1);
+  expect(sandboxDeadlineMs(180000, 0, { queueAllowanceMs: -5 })).toBe(180000);
 });
 it('pending isolated tests keep board responsive and block decision and automatic review', async () => {
   const f = await fixture(); f.fake.delayMs = 1000;

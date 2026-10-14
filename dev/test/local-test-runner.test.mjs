@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, stat, readFile } from 'node:fs/promises';
 import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
@@ -131,3 +131,35 @@ test('the runner works in a private directory it creates itself, and removes it 
   await runner.close(); await assert.rejects(() => stat(dir), /ENOENT/);
   await assert.rejects(() => runCandidateLocally(input({ remote: '/x', sourceSha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })), /private work directory/, 'no shared, predictable default directory');
 });
+
+test('when the client gives up, a running candidate is stopped and its slot is freed', { timeout: 30000 }, () => withRoot(async root => {
+  const pidFile = join(root, 'pid');
+  const hang = await candidate(root, 'abandoned', `import test from 'node:test'; import { writeFileSync } from 'node:fs'; test('hang', () => { writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); return new Promise(() => setInterval(() => {}, 1000)); });`);
+  const quick = await candidate(root, 'next', "import test from 'node:test'; test('ok', () => {});");
+  const runner = await startLocalTestRunner({ root: join(root, 'work'), secret: SECRET, slots: 1, allowFileRemotes: true });
+  try {
+    const abort = new AbortController();
+    const first = fetch(`${runner.origin}/run`, { method: 'POST', signal: abort.signal, headers: { 'content-type': 'application/json', 'x-runner-secret': SECRET }, body: JSON.stringify(input(hang, { recipe: { setup: [], test: ['node', '--test'], budgetMs: 300000 } })) }).catch(() => undefined);
+    let pid; for (let i = 0; i < 80 && !pid; i++) { await new Promise(r => setTimeout(r, 100)); try { pid = Number(await readFile(pidFile, 'utf8')); } catch { /* not yet */ } }
+    assert.ok(pid > 0, 'the candidate started'); abort.abort(); await first;
+    let alive = true; for (let i = 0; i < 50 && alive; i++) { try { process.kill(pid, 0); await new Promise(r => setTimeout(r, 100)); } catch { alive = false; } }
+    assert.equal(alive, false, 'the abandoned candidate was killed, not left to run out its 5 minute budget');
+    const next = await post(runner.origin, input(quick)); assert.equal(next.status, 200, 'the slot was freed'); assert.equal((await next.json()).testExitCode, 0);
+  } finally { await runner.close(); }
+}));
+
+test('a request that gives up while still waiting in the queue never runs', { timeout: 30000 }, () => withRoot(async root => {
+  const marker = join(root, 'ran'), slow = "import test from 'node:test'; test('t', async () => { await new Promise(r => setTimeout(r, 1200)); });";
+  const first = await candidate(root, 'holder', slow);
+  const waiter = await candidate(root, 'waiter', `import test from 'node:test'; import { writeFileSync } from 'node:fs'; test('t', () => { writeFileSync(${JSON.stringify(marker)}, 'ran'); });`);
+  const runner = await startLocalTestRunner({ root: join(root, 'work'), secret: SECRET, slots: 1, allowFileRemotes: true });
+  try {
+    const holding = post(runner.origin, input(first));
+    await new Promise(r => setTimeout(r, 300));
+    const abort = new AbortController();
+    const queued = fetch(`${runner.origin}/run`, { method: 'POST', signal: abort.signal, headers: { 'content-type': 'application/json', 'x-runner-secret': SECRET }, body: JSON.stringify(input(waiter)) }).catch(() => undefined);
+    await new Promise(r => setTimeout(r, 300)); abort.abort(); await queued;
+    assert.equal((await holding).status, 200); await new Promise(r => setTimeout(r, 800));
+    await assert.rejects(() => stat(marker), /ENOENT/, 'the abandoned queued job was never executed');
+  } finally { await runner.close(); }
+}));
