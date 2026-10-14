@@ -75,7 +75,7 @@ No Heddle needed; this serves the UI against a fixture API with invented data, t
 cd heddle-artifacts/ui && npm ci && UI_FIXTURE=conflict npm run dev
 ```
 
-Open <http://127.0.0.1:4173/p/demo/t/parser-escapes>. Port 4173 in use? Add `PORT=4174`. `UI_FIXTURE=pushing` plus
+Open the address it prints. Port 4173 in use? Add `PORT=4174`. `UI_FIXTURE=pushing` plus
 `curl -X POST http://127.0.0.1:4173/__mock/replay` replays a story onto the board; `UI_FIXTURE=decided` starts after the decision.
 Deeper account-free checks are in [docs/LOCAL-INTEGRATION.md](docs/LOCAL-INTEGRATION.md) and [ui/README.md](ui/README.md).
 
