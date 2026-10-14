@@ -17,7 +17,8 @@ it('a valid operator bearer or session cookie is an operator', async () => {
 });
 
 it('a wrong or near-miss token is not an operator', async () => {
-  for (const headers of [{ authorization: 'Bearer test-operato' }, { authorization: 'Bearer ' }, { cookie: 'heddle_session=wrong' }, { cookie: 'other=test-operator' }])
+  const nearMisses: Array<Record<string, string>> = [{ authorization: 'Bearer test-operato' }, { authorization: 'Bearer ' }, { cookie: 'heddle_session=wrong' }, { cookie: 'other=test-operator' }];
+  for (const headers of nearMisses)
     expect(await (await get(headers)).json()).toEqual({ operator: false });
 });
 
