@@ -39,7 +39,7 @@ for (const theme of ['light', 'dark'] as const) for (const [width, height] of [[
       const session = answered(page); await page.goto('/'); await session;
       const intro = page.getByRole('note', { name: 'About this demo' });
       await expect(intro).toContainText('version control for agent work');
-      await expect(intro.getByRole('link', { name: 'Source on GitHub' })).toHaveAttribute('href', 'https://github.com/HeddleCo/heddle-artifacts');
+      await expect(intro.getByRole('link', { name: 'Source', exact: true })).toHaveAttribute('href', 'https://github.com/HeddleCo/heddle-artifacts');
       await expect(intro.getByRole('link', { name: 'Run it yourself' })).toHaveAttribute('href', 'https://github.com/HeddleCo/heddle-artifacts#a-run-it-yourself-on-your-own-machine');
       await shot(page, `visitor-intro-${label}`, intro, 0);
       await context.request.post('/login', { form: { token: 'fixture-operator' } });
