@@ -35,6 +35,18 @@ for (const theme of ['light', 'dark'] as const) for (const [width, height] of [[
       await shot(page, `visitor-root-${label}`);
     });
 
+    test('a visitor is told what this is and where the code is; an operator is not', async ({ page, context }) => {
+      const session = answered(page); await page.goto('/'); await session;
+      const intro = page.getByRole('note', { name: 'About this demo' });
+      await expect(intro).toContainText('version control for agent work');
+      await expect(intro.getByRole('link', { name: 'Source on GitHub' })).toHaveAttribute('href', 'https://github.com/HeddleCo/heddle-artifacts');
+      await expect(intro.getByRole('link', { name: 'Run it yourself' })).toHaveAttribute('href', 'https://github.com/HeddleCo/heddle-artifacts#a-run-it-yourself-on-your-own-machine');
+      await shot(page, `visitor-intro-${label}`, intro, 0);
+      await context.request.post('/login', { form: { token: 'fixture-operator' } });
+      await page.goto('/'); await expect(page.getByRole('form', { name: 'New project' })).toBeVisible();
+      await expect(page.getByRole('note', { name: 'About this demo' })).toHaveCount(0);
+    });
+
     test('an operator at the root gets the new-project form', async ({ page, context }) => {
       await context.request.post('/login', { form: { token: 'fixture-operator' } });
       await page.goto('/');
