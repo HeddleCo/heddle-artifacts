@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # heddle-artifacts
 
-Several coding agents work on the same task at once, each pushing plain `git` to its own Cloudflare Artifacts fork.
+Heddle is version control for agent work. This runs it on Cloudflare: several coding agents work on the same task at once, each pushing plain `git` to its own Cloudflare Artifacts fork.
 Overlapping pushes are kept side by side as **candidates**, with test results and an AI review, instead of being rejected.
 A human picks one and writes why. The pick, the reason and the rejected alternatives land on `main` as Git notes.
 
@@ -9,10 +9,12 @@ A human picks one and writes why. The pick, the reason and the rejected alternat
 
 *The compare page, from the canned preview in [Try it (b)](#b-preview-the-ui-only-canned-data).*
 
+**See it live:** <https://demo.heddle.sh> (read-only; open a task such as `parser-escapes` to see the agents' candidates, sandbox test results, the AI review and the recorded reason) · **Run it yourself:** [Try it (a)](#a-run-it-yourself-on-your-own-machine) · Apache-2.0.
+
 ## Built on Heddle
 
 The engine is [Heddle](https://github.com/HeddleCo/heddle), our open-source (Apache-2.0) version control for agent
-work. The engine Container builds the Heddle CLI from source at the 0.31.1 release commit
+work. The engine Container builds the Heddle CLI from source at the commit that sets version 0.31.1 (not a tagged release)
 ([`0b5eec4`](https://github.com/HeddleCo/heddle/commit/0b5eec40276510d2723a1572bdea0e9640e66e33), see
 [`engine/Dockerfile`](engine/Dockerfile)) and runs it for every capture, merge, discussion, briefing and decision.
 This repository is the platform around it on Cloudflare: agents push plain Git to Artifacts forks, and Workers,
@@ -28,7 +30,7 @@ cargo install --locked --git https://github.com/HeddleCo/heddle --rev 0b5eec4027
 
 ### (a) Run it yourself, on your own machine
 
-One command starts the real stack locally: the Heddle engine, a git server standing in for Artifacts, the Worker and
+After a one-time Heddle install (below: about 20 minutes and 8 GB of memory), one command starts the real stack locally: the Heddle engine, a git server standing in for Artifacts, the Worker and
 the UI. You bring a repository and your own agents; nothing here is a canned example.
 
 Needs Node 22+, Git, `tar`, `zstd`, a Rust toolchain, and the Heddle 0.31.1 CLI (the command checks and tells you exactly what is
@@ -157,7 +159,7 @@ notes disappear. `--mode live` runs real coding agents instead. See [demo/README
 live mode and local testing. A second take needs the operator's cleanup command, because the API has no
 project-delete route.
 
-Prepared parser candidates have 18 tests: Bob passes; Alice fails the escape edge cases. Carol's independent
+In this scripted mode, the prepared parser candidates have 18 tests: Bob passes; Alice fails the escape edge cases. (The live demo uses real agents, so its counts differ.) Carol's independent
 documentation candidate passes the 14 baseline tests.
 
 ### Join the docs task from your own clone

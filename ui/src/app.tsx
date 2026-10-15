@@ -119,7 +119,7 @@ function Board({ p }: { p: string }) {
     }
     if (event.type === 'engine.error') setError(`Engine operation failed (${event.code}). Refresh to check progress.`);
   }, () => { if (loading.current) reloadRequested.current = true; else void load(); });
-  const operator = useOperator();
+  const session = useSession(), operator = session.operator;
   const agents = new Map(view?.agents.map(a => [a.id, a]));
   const ready = view?.tasks.reduce((n, t) => n + t.candidates.length, 0) || 0;
   const counts = (name: BoardFilter) => view?.tasks.filter(task => name === 'All tasks' || taskGroup(task) === name).length || 0;
@@ -127,6 +127,7 @@ function Board({ p }: { p: string }) {
   return <><Header p={p} live={live}/><main class="app-shell dashboard">
     <aside class="rail-card left-rail" aria-label="Views"><h2 class="rail-title">Views</h2><nav class="view-list" aria-label="Task views">{views.map(name => <button class="view-row" key={name} aria-pressed={filter === name} onClick={() => setFilter(name)}><span>{name}</span><span class="count">{counts(name)}</span></button>)}</nav><p class="rail-note">Each agent works in its own lane. You decide what lands.</p></aside>
     <div class="page-centre"><div class="page-title"><p class="date-line">{new Date().toLocaleDateString('en', { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>{p}</h1><p class="path-line"><code>artifacts / {p}</code></p><p class="intent">Each agent pushes to its own fork. Its latest push shows here as a candidate.</p></div>
+    {session.ready && !session.operator && <p class="visitor-intro" role="note" aria-label="About this demo"><strong>Heddle is version control for agent work.</strong> This is a live, read-only demo: agents work on the same task in their own sandboxes, Heddle keeps every candidate, and a human picks one and writes why. Open a task to see the candidates, test results and reasons. <a href="https://github.com/HeddleCo/heddle-artifacts">Source on GitHub</a> · <a href="https://github.com/HeddleCo/heddle-artifacts#a-run-it-yourself-on-your-own-machine">Run it yourself</a></p>}
     {error && <ErrorNotice text={error}/>}
     <div class="toolbar"><span>{view?.tasks.length || 0} tasks <span class="separator">/</span> {view?.agents.filter(a => a.kind === 'agent').length || 0} agents <span class="separator">/</span> {ready} candidates</span><button class="quiet" disabled={refreshing} onClick={load}>{refreshing ? 'Refreshing…' : 'Refresh board'}</button></div>
     {!view ? <p role="status">Loading project…</p> : <div class="board">{views.filter(name => name !== 'All tasks' && (filter === 'All tasks' || filter === name)).map(group => <section class="task-group" key={group} aria-label={`${group} tasks`}><h2>{group} <span class="count">{counts(group)}</span></h2>

@@ -43,7 +43,8 @@ for (const theme of ['light', 'dark'] as const) for (const [width, height] of [[
       await expect(intro.getByRole('link', { name: 'Run it yourself' })).toHaveAttribute('href', 'https://github.com/HeddleCo/heddle-artifacts#a-run-it-yourself-on-your-own-machine');
       await shot(page, `visitor-intro-${label}`, intro, 0);
       await context.request.post('/login', { form: { token: 'fixture-operator' } });
-      await page.goto('/'); await expect(page.getByRole('form', { name: 'New project' })).toBeVisible();
+      await page.goto('/p/demo'); await expect(page.getByRole('heading', { name: 'demo' })).toBeVisible();
+      await expect(page.getByTestId('new-task')).toBeVisible();   // an operator's board, so the next line cannot pass on the wrong page
       await expect(page.getByRole('note', { name: 'About this demo' })).toHaveCount(0);
     });
 
