@@ -28,7 +28,13 @@ test('C-T1 fixture screens: pushing board, conflict compare, decided why', async
   await expect(page.getByLabel('bob candidate')).toContainText('ed25519:bbbbbbbb…bbbbbbbb');
   await expect(page.getByLabel('bob candidate')).toContainText('anthropic / sonnet');
   await expect(page.getByRole('heading', { name: 'Recommendation: bob' })).toBeVisible();
-  await reset(request, 'decided'); await page.goto(why);
+  await reset(request, 'decided'); await page.goto('/p/demo/t/parser-escapes');
+  await expect(page.getByRole('heading', { name: 'Recorded decision' })).toBeVisible();
+  await expect(page.getByLabel('Point this reason at')).toHaveCount(0);
+  await expect(page.getByLabel('Tags', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.decision .recorded-anchor, .decision .recorded-tags')).toHaveCount(0);
+  await expect(page.locator('.decision')).not.toContainText('src/table.ts:parseRow');
+  await page.goto(why);
   await expect(page.locator('.narrative')).toContainText('Chosen:    bob');
   await expect(page.locator('.narrative')).toContainText('Rejected:  alice');
   await expect(page.locator('.verification')).toContainText('Unavailable from the current API');
@@ -71,7 +77,8 @@ for (const status of [200, 403, 409]) test(`C-T3 decision exact body and ${statu
 test('decision sends optional symbol anchor and comma-separated tags, then displays both at 1920×1080', async ({ page, request }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await reset(request); await choose(page);
-  await expect(page.getByLabel('Point this reason at')).toHaveAttribute('placeholder', 'src/table.ts:parseRow');
+  await expect(page.getByLabel('Point this reason at')).toHaveAttribute('placeholder', 'path/to/file.ts:symbol');
+  await expect(page.getByLabel('Tags', { exact: true })).toHaveAttribute('placeholder', 'tag-one, tag-two');
   await page.getByLabel('Point this reason at').fill('src/table.ts:parseRow');
   await page.getByLabel('Tags', { exact: true }).fill('parseRow, whitespace');
   await page.screenshot({ path: `${shots}/decision-anchor-tags-1920.png`, fullPage: true });
@@ -80,6 +87,10 @@ test('decision sends optional symbol anchor and comma-separated tags, then displ
   expect((await posted).postDataJSON()).toEqual({ pick: 'bob', rationale: 'API stability matters more than the shorter regex.', decider: 'luke', expectHeads: ['state-alice-1', 'state-bob-1'], anchor: 'src/table.ts:parseRow', tags: ['parseRow', 'whitespace'] });
   await expect(page.locator('.notice.landed .anchor-chip')).toHaveAttribute('title', 'src/table.ts:parseRow');
   await expect(page.locator('.notice.landed .tag')).toHaveText(['parseRow', 'whitespace']);
+  await expect(page.getByLabel('Point this reason at')).toHaveCount(0);
+  await expect(page.getByLabel('Tags', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.decision .recorded-anchor .anchor-chip')).toHaveAttribute('title', 'src/table.ts:parseRow');
+  await expect(page.locator('.decision .recorded-tags .tag')).toHaveText(['parseRow', 'whitespace']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   await page.screenshot({ path: `${shots}/decision-anchor-tags-landed-1920.png`, fullPage: true });
 });
