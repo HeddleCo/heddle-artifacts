@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { mkdir, writeFile, readFile, chmod, readdir } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, chmod, readdir, access, appendFile } from 'node:fs/promises';
 import { resolve, join as pathJoin } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -164,11 +164,76 @@ export async function joinProject(input, options = {}) {
   await writeFile(pathJoin(gitdir, 'ha.json'), JSON.stringify(state) + '\n', { mode: 0o600 });
   // Setup scripts may write headers in .git/config; protect that too.
   await chmod(pathJoin(gitdir, 'config'), 0o600);
-  return { cwd, ...state };
+  // A control lane (briefing:false) is opened without a briefing on purpose, so it gets no briefing file either.
+  const briefed = options.briefing === false ? undefined : await writeBriefing(cwd, state, joined.briefing);
+  return { cwd, ...state, ...(briefed ? { briefing: briefed } : {}) };
+}
+
+/**
+ * The lane's briefing as Markdown for the agent working in the clone: the task, and the earlier decisions'
+ * reasons Heddle carried forward to this code. Annotation text is the deciders' own words, quoted as written.
+ */
+export function briefingMarkdown({ project, task, agent, intent, briefing }) {
+  const lines = [`# Heddle briefing: ${project} / ${task}`, '',
+    `You are working as \`${agent}\` on this task, in your own fork. Other agents may be working on the same task in theirs;`,
+    'a person compares the candidates and lands one. Commit your work and push it with `git push origin HEAD:main`.', ''];
+  if (intent) lines.push('## Task', '', intent.trim(), '');
+  const notes = briefing?.annotations ?? [];
+  lines.push(`## Earlier decisions on this code (${notes.length})`, '');
+  if (!notes.length) lines.push('Heddle supplied no earlier decisions for this task.', '');
+  else {
+    lines.push('People who landed earlier work on this code recorded why. Keep to these reasons unless the task above says otherwise.', '');
+    for (const note of notes) {
+      // A whole-file scope adds nothing to the path; a symbol scope says which function.
+      const where = [note.target, note.scope?.startsWith('symbol:') ? note.scope.slice(7) : undefined].filter(Boolean).join(' · ');
+      lines.push(`### ${note.kind ? note.kind[0].toUpperCase() + note.kind.slice(1) : 'Reason'}${where ? `: ${where}` : ''}`, '',
+        ...note.content.trim().split('\n').map(line => `> ${line}`), '',
+        `by ${String(note.attribution ?? 'unknown').replace(/\s*<[^>]*>\s*$/, '')}${note.tags?.length ? ` · tags: ${note.tags.join(', ')}` : ''}`, '');
+    }
+  }
+  if (briefing?.omitted) lines.push(`(${briefing.omitted} more did not fit in the briefing.)`, '');
+  if (briefing?.hash) lines.push(`Heddle briefing ${briefing.hash}. To refresh this file, run \`node <heddle-artifacts>/cli/ha.mjs brief\` in this folder.`, '');
+  return lines.join('\n');
+}
+const BRIEFING = '.heddle/BRIEFING.md';
+const POINTER = `# Read this first\n\nThis folder is a Heddle lane. Before you change anything, read ${BRIEFING}: it states the task and the\nreasons people recorded for earlier decisions on this code. (This file and ${BRIEFING} are local to this clone\nand excluded from Git, so they are never committed.)\n`;
+/**
+ * Write the briefing into the clone where coding agents look: .heddle/BRIEFING.md, plus an AGENTS.md (Codex, OpenCode)
+ * and CLAUDE.md (Claude Code) pointing at it when the repository has none of its own. All are listed in .git/info/exclude.
+ */
+export async function writeBriefing(cwd, state, briefing) {
+  let intent;
+  try {
+    const view = await request(state.api, state.agentKey);
+    intent = view.tasks?.find(t => t.slug === state.task)?.intent;
+    briefing ??= view.tasks?.find(t => t.slug === state.task)?.lanes?.find(l => l.agent === state.agent)?.briefing;
+  } catch { /* The enrollment response's briefing is enough on its own. */ }
+  await mkdir(pathJoin(cwd, '.heddle'), { recursive: true });
+  await writeFile(pathJoin(cwd, BRIEFING), briefingMarkdown({ ...state, intent, briefing }));
+  const exclude = pathJoin(await gitDirectory(cwd), 'info', 'exclude'), written = ['/.heddle/'];
+  for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+    const path = pathJoin(cwd, name);
+    let present = true; try { await access(path); } catch { present = false; }
+    if (!present) { await writeFile(path, POINTER); written.push(`/${name}`); }
+    else if ((await readFile(path, 'utf8')) === POINTER) written.push(`/${name}`);
+  }
+  await mkdir(pathJoin(exclude, '..'), { recursive: true });
+  const listed = (await readFile(exclude, 'utf8').catch(() => '')).split('\n');
+  const missing = written.filter(entry => !listed.includes(entry));
+  if (missing.length) await appendFile(exclude, `${listed.at(-1) === '' || !listed.join('') ? '' : '\n'}# Heddle lane files (ha join)\n${missing.join('\n')}\n`);
+  return { path: pathJoin(cwd, BRIEFING), pointers: written.filter(entry => entry.endsWith('.md')).map(entry => entry.slice(1)), decisions: briefing?.annotations?.length ?? 0 };
+}
+/** A commit for `ha why`: a full SHA as given, or anything Git resolves here (a short SHA, upstream/main, HEAD~1). */
+export async function resolveCommit(value, cwd = process.cwd()) {
+  if (/^[a-f0-9]{40}$/.test(value ?? '')) return value;
+  if (typeof value !== 'string' || !value || value.startsWith('-') || /[\s\0]/.test(value)) throw new Error('why needs a commit: a SHA (a short one is fine) or a ref such as upstream/main');
+  try { return await command('git', ['rev-parse', '--verify', '--quiet', '--end-of-options', `${value}^{commit}`], { cwd }); }
+  catch { throw new Error(`No commit ${value} in this clone. Fetch it first (git fetch upstream main), or pass the full SHA`); }
 }
 export async function localState(cwd = process.cwd()) {
   return JSON.parse(await readFile(pathJoin(await gitDirectory(cwd), 'ha.json'), 'utf8'));
 }
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 export function redact(value) {
   if (Array.isArray(value)) return value.map(redact);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
@@ -186,12 +251,17 @@ export async function main(args = process.argv.slice(2)) {
     }
     const result = await joinProject(value, options);
     console.log(`Joined ${result.project}/${result.task} as ${result.agent}. Clone: ${result.cwd}`);
+    if (result.briefing) console.log(`Briefing (${plural(result.briefing.decisions, 'earlier decision')}): ${result.briefing.path}${result.briefing.pointers.length ? `\nYour agent is pointed at it by ${result.briefing.pointers.join(' and ')} (local, not committed).` : '\nThis repository has its own AGENTS.md and CLAUDE.md: tell your agent to read .heddle/BRIEFING.md first.'}`);
+  } else if (action === 'brief') {
+    const root = await command('git', ['rev-parse', '--show-toplevel']), state = await localState(root);
+    const written = await writeBriefing(root, state);
+    console.log(await readFile(written.path, 'utf8'));
   } else if (action === 'status' || action === 'why') {
     const state = await localState();
-    if (action === 'why' && !/^[a-f0-9]{40,64}$/.test(value ?? '')) throw new Error('why requires a full Git SHA');
-    const result = await request(action === 'status' ? state.api : `${state.api}/why/${value}`, state.agentKey);
+    const sha = action === 'why' ? await resolveCommit(value) : undefined;
+    const result = await request(action === 'status' ? state.api : `${state.api}/why/${sha}`, state.agentKey);
     console.log(action === 'status' ? JSON.stringify(redact(result), null, 2) : redact(result.narrative));
-  } else throw new Error('Usage: node cli/ha.mjs join <url> --task t --as a [--dir dir] | status | why <sha>');
+  } else throw new Error('Usage: node cli/ha.mjs join <url> --task t --as a [--dir dir] | status | brief | why <commit>');
 }
 if (isMain(import.meta.url)) {
   main().catch(error => { console.error(`ha: ${error.message}`); process.exitCode = 1; });

@@ -48,6 +48,16 @@ test('the local Worker config uses the real local Worker and no reviewer, and ca
   assert.doesNotMatch(JSON.stringify(config), /test-worker|fake-test-runner|stub-reviewer|stub-engine/);
 });
 
+test('--review swaps in the real reviewer and a remote Workers AI binding, and needs a Cloudflare login', async () => {
+  assert.equal(parseArgs(['local']).review, false); assert.equal(parseArgs(['local', '--review']).review, true);
+  const config = localWranglerConfig({ repo: '/repo', review: true, vars: {} });
+  assert.equal(config.alias['heddle-reviewer'], '/repo/reviewer/reviewer.ts'); assert.deepEqual(config.ai, { binding: 'AI', remote: true });
+  assert.equal(localWranglerConfig({ repo: '/repo', vars: {} }).ai, undefined, 'no AI binding without --review');
+  const signedOut = await checkPrerequisites({ ...good, review: true, run: async (file, args) => args?.includes('whoami') ? ok('You are not authenticated. Please run `wrangler login`.') : good.run(file) });
+  assert.match(signedOut.map(p => p.fix).join('\n'), /wrangler login/);
+  assert.deepEqual(await checkPrerequisites({ ...good, review: true, env: { CLOUDFLARE_API_TOKEN: 'x' } }), []);
+});
+
 test('dev/local-worker.ts never imports a test fixture, so a local run cannot show invented results', async () => {
   for (const file of ['dev/local-worker.ts', 'dev/no-reviewer.ts']) {
     const source = await readFile(join(root, file), 'utf8');

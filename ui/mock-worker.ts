@@ -35,7 +35,7 @@ export class FixtureProject {
 export default {
   async fetch(request: Request, env: { ASSETS: { fetch(request: Request): Promise<Response> }; FIXTURE_PROJECT: DurableObjectNamespace }) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/__mock/') || (url.pathname === '/login' && request.method === 'POST'))
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/__mock/') || (['/login', '/logout'].includes(url.pathname) && request.method === 'POST'))
       return env.FIXTURE_PROJECT.get(env.FIXTURE_PROJECT.idFromName('demo')).fetch(request);
     return env.ASSETS.fetch(request);
   }

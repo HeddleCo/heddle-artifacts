@@ -48,7 +48,7 @@ export function cloudflareConfig({ name, accountId, queueId, namespace, domain, 
     queues: { producers: [{ binding: 'EVENTS', queue: `${name}-events` }], consumers: [{ queue: `${name}-events`, max_batch_size: 100, max_batch_timeout: 1, max_retries: 3 }] },
     r2_buckets: [{ binding: 'STATE', bucket_name: `${name}-state` }],
     ai: { binding: 'AI' },
-    assets: { directory: './ui/dist', binding: 'ASSETS', not_found_handling: 'single-page-application', run_worker_first: ['/api/*', '/login', '/__dev/*'] },
+    assets: { directory: './ui/dist', binding: 'ASSETS', not_found_handling: 'single-page-application', run_worker_first: ['/api/*', '/login', '/logout', '/__dev/*'] },
     // A project stays open for work this long after creation (the maximum the Worker allows), so your own projects do not lapse in an hour.
     vars: { ARTIFACTS_NAMESPACE: namespace, CF_ACCOUNT_ID: accountId, EVENTS_QUEUE_ID: queueId, ACTOR_EMAIL_DOMAIN: 'noreply.heddle.sh', DEMO_CREDENTIAL_TTL_SECONDS: '14400', ...(publicProject ? { DEMO_PROJECT: publicProject } : {}) },
     workers_dev: true, preview_urls: false, observability: { enabled: true },

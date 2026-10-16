@@ -56,7 +56,7 @@ export function ReviewBody({ review }: { review: Review }) {
   </div>;
 }
 
-const PROOF = /^(\s*)(Test|Turn|Decision) proof:\s*(\{.*\})\s*$/;
+const PROOF = /^(\s*)(Test|Combined|Turn|Decision) proof:\s*(\{.*\})\s*$/;
 const REVIEW = /^(\s*Review:\s+)(.*?):\s*(\{.*\})\s*$/;
 function parsed(json: string): Record<string, unknown> | undefined {
   try { const v = JSON.parse(json); return v && typeof v === 'object' ? v : undefined; } catch { return undefined; }

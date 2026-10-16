@@ -15,8 +15,14 @@ cd /tmp/alice
 node "$HA" status
 # Edit, test and commit here.
 git push origin HEAD:main
-node "$HA" why "$(git rev-parse upstream/main)"
+node "$HA" why upstream/main      # or a SHA, short or full
+node "$HA" brief                  # reprint and rewrite .heddle/BRIEFING.md
 ```
+
+`join` writes the lane's briefing to `.heddle/BRIEFING.md`: the task's intent and the reasons people recorded for
+earlier decisions on this code (Heddle's pre-turn briefing). When the repository has no `AGENTS.md` or `CLAUDE.md` of
+its own, it also writes ones that tell Codex, OpenCode or Claude Code to read the briefing first. All of these are
+listed in `.git/info/exclude`, so they are never committed. A control lane opened with `briefing: false` gets none.
 
 Git uses URL-scoped Bearer headers and protocol v1 for pushes. Header values live
 in private `.git/ha-auth`, included by private `.git/config`; the API agent key

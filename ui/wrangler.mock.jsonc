@@ -7,5 +7,5 @@
   "durable_objects": { "bindings": [{ "name": "FIXTURE_PROJECT", "class_name": "FixtureProject" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FixtureProject"] }],
   "rules": [{ "type": "Text", "globs": ["**/*.jsonl"], "fallthrough": true }],
-  "assets": { "directory": "./dist", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/__mock/*", "/login"] }
+  "assets": { "directory": "./dist", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/__mock/*", "/login", "/logout"] }
 }

@@ -37,13 +37,14 @@ export function createMock(initial = 'conflict') {
     return histories;
   };
   let histories = makeHistories();
-  let decisionStatus = 200;
+  let decisionStatus = 200, reviewAvailable = true;
   const requests: { path: string; body: unknown }[] = [];
   const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
   const taskView = (slug: string): TaskView | undefined => {
     const task = state.tasks.find(t => t.slug === slug);
     if (!task) return;
-    return { task: { slug, intent: task.intent, status: task.status }, candidates: task.candidates,
+    // The fixtures model a deployment with Workers AI and an enrolled reviewer.
+    return { task: { slug, intent: task.intent, status: task.status }, reviewer: { available: reviewAvailable, enrolled: state.agents.some(a => a.kind === 'reviewer') }, candidates: task.candidates,
       turns: state.turns.filter(t => t.task === slug), ...(slug === 'parser-escapes' && state.review ? { review: state.review } : {}),
       ...(task.decision ? { decision: task.decision } : {}), heads: task.candidates.map(c => c.state) };
   };
@@ -65,17 +66,27 @@ export function createMock(initial = 'conflict') {
   };
   const handle = async (request: Request): Promise<Response | undefined> => {
     const { pathname } = new URL(request.url);
+    // As the real Worker (worker/auth.ts checkOrigin): a cross-origin or opaque ("null") Origin is refused.
+    if (['/login', '/logout'].includes(pathname) && request.method === 'POST') {
+      const origin = request.headers.get('origin');
+      if (origin && origin !== new URL(request.url).origin) return json({ error: 'origin' }, 403);
+    }
     if (pathname === '/login' && request.method === 'POST') {
       const body = await request.formData();
-      if (body.get('token') !== 'fixture-operator') return new Response('Fixture login requires fixture-operator.', { status: 403 });
+      // As the real Worker: a wrong token returns to the sign-in page with a message.
+      if (body.get('token') !== 'fixture-operator') return new Response(null, { status: 303, headers: { Location: '/login?error=token' } });
       return new Response(null, { status: 303, headers: { Location: '/p/demo', 'Set-Cookie': 'fixture_session=local; HttpOnly; SameSite=Strict; Path=/' } });
     }
+    if (pathname === '/logout' && request.method === 'POST') return new Response(null, { status: 303, headers: { Location: '/', 'Set-Cookie': 'fixture_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' } });
     if (pathname === '/__mock/reset' && request.method === 'POST') {
-      const body = await request.json() as { fixture: keyof typeof fixtures; decisionStatus?: number; pendingPublication?: boolean; noHumans?: boolean };
+      const body = await request.json() as { fixture: keyof typeof fixtures; decisionStatus?: number; pendingPublication?: boolean; noHumans?: boolean; noReview?: boolean };
       if (!fixtures[body.fixture]) return json({ error: 'unknown fixture' }, 400);
       state = structuredClone(fixtures[body.fixture]); decisionStatus = body.decisionStatus || 200; requests.length = 0;
       histories = makeHistories();
       if (body.noHumans) state.agents = state.agents.filter(a => a.kind !== 'human');
+      // A stack without Workers AI (`up local` without --review): no reviewer, no review.
+      reviewAvailable = !body.noReview;
+      if (body.noReview) { state.agents = state.agents.filter(a => a.kind !== 'reviewer'); delete state.review; state.turns = state.turns.filter(t => t.kind !== 'reviewer'); }
       if (body.pendingPublication) { state.tasks[0].decision = { ...decided.tasks[0].decision!, mainSha: '' }; state.tasks[0].status = 'reviewing'; }
       return json({ ok: true });
     }
@@ -87,6 +98,10 @@ export function createMock(initial = 'conflict') {
     // Operator surface, as the real Worker has it: /api/session answers one boolean; creating things needs the operator session.
     const isOperator = /(?:^|;\s*)fixture_session=local(?:;|$)/.test(request.headers.get('cookie') ?? '');
     if (pathname === '/api/session') return request.method === 'GET' ? json({ operator: isOperator, demo: 'demo' }) : new Response(null, { status: 405 });
+    if (request.method === 'POST' && /^\/api\/projects\/[^/]+\/read-token$/.test(pathname)) {
+      await request.text(); if (!isOperator) return json({ error: 'forbidden' }, 403); requests.push({ path: pathname, body: {} });
+      return json({ remote: state.project.canonicalRemote, readToken: 'fixture-read-token', expiresAt: '2026-10-17T12:00:00.000Z' });
+    }
     if (request.method === 'POST' && (pathname === '/api/projects' || /^\/api\/projects\/[^/]+\/(tasks|humans)$/.test(pathname))) {
       const body = await request.json().catch(() => ({})) as Record<string, any>;
       if (!isOperator) return json({ error: 'forbidden' }, 403); requests.push({ path: pathname, body });
@@ -97,7 +112,11 @@ export function createMock(initial = 'conflict') {
     const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent);
     if (parts[0] !== 'api' || parts[1] !== 'projects' || parts[2] !== 'demo') return json({ error: 'not_found' }, 404);
     if (parts.length === 3 && request.method === 'GET') return json({ project: state.project, agents: state.agents, tasks: state.tasks });
-    if (parts[3] === 'why' && parts.length === 5) return parts[4] === state.why.sha ? json(state.why) : json({ error: 'not_found' }, 404);
+    if (parts[3] === 'why' && parts.length === 5) {
+      // As the real Worker: the decider's display name rides along with the decision.
+      const deciderName = state.why.decision && state.agents.find(a => a.id === state.why.decision!.decider)?.displayName;
+      return parts[4] === state.why.sha ? json({ ...state.why, ...(deciderName ? { deciderName } : {}) }) : json({ error: 'not_found' }, 404);
+    }
     if (parts[3] !== 'tasks') return json({ error: 'not_found' }, 404);
     const slug = parts[4], task = taskView(slug);
     if (!task) return json({ error: 'not_found' }, 404);

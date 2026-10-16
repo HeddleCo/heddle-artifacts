@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
+# same-origin, not no-referrer: with no-referrer a browser sends "Origin: null" on the sign-in and sign-out form posts,
+# which the Worker's origin check (worker/auth.ts checkOrigin) must refuse. Other sites still get no referrer.
 /*
   X-Content-Type-Options: nosniff
-  Referrer-Policy: no-referrer
+  Referrer-Policy: same-origin
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'self'

@@ -20,7 +20,7 @@ export const HEDDLE_VERSION = '0.31.1', HEDDLE_REV = '0b5eec40276510d2723a1572bd
 export const HEDDLE_INSTALL = `cargo install --locked --git https://github.com/HeddleCo/heddle --rev ${HEDDLE_REV} heddle-cli`;
 
 /** Everything `up local` needs, checked before anything starts. Returns one problem per missing item, with how to fix it. */
-export async function checkPrerequisites({ run = defaultRun, exists = defaultExists, nodeVersion = process.versions.node, env = process.env } = {}) {
+export async function checkPrerequisites({ run = defaultRun, exists = defaultExists, nodeVersion = process.versions.node, env = process.env, review = false } = {}) {
   const problems = [];
   if (Number(nodeVersion.split('.')[0]) < 22) problems.push({ item: 'Node 22 or newer', fix: `You have Node ${nodeVersion}. Install Node 22+ (https://nodejs.org).` });
   for (const [name, args] of [['git', ['--version']], ['tar', ['--version']], ['zstd', ['--version']]]) {
@@ -32,6 +32,11 @@ export async function checkPrerequisites({ run = defaultRun, exists = defaultExi
   }
   if (!(await exists(join(root, 'node_modules/wrangler/bin/wrangler.js')))) problems.push({ item: 'dependencies', fix: 'Run: npm ci' });
   if (!(await exists(join(root, 'ui/node_modules')))) problems.push({ item: 'UI dependencies', fix: 'Run: npm ci --prefix ui' });
+  // --review calls the Workers AI model on your Cloudflare account through a remote binding, so Wrangler must be signed in.
+  if (review && !env.CLOUDFLARE_API_TOKEN && problems.every(p => p.item !== 'dependencies')) {
+    const whoami = await run(process.execPath, [join(root, 'node_modules/wrangler/bin/wrangler.js'), 'whoami']);
+    if (!whoami.ok || /not authenticated/i.test(whoami.output)) problems.push({ item: 'a Cloudflare login (for --review)', fix: 'Run: npx wrangler login\n    (or set CLOUDFLARE_API_TOKEN, plus CLOUDFLARE_ACCOUNT_ID if you have several accounts). Or start without --review.' });
+  }
   return problems;
 }
 async function defaultRun(file, args) { try { const { stdout, stderr } = await execFileAsync(file, args, { timeout: 15000 }); return { ok: true, output: `${stdout}${stderr}` }; } catch { return { ok: false, output: '' }; } }
@@ -46,12 +51,14 @@ export async function freePort() {
 
 /** The Wrangler config for the local stack, written (mode 0600) into the state directory so no secret is ever on a command line. */
 const SECRET_VARS = ['OPERATOR_TOKEN', 'LOCAL_RUNNER_SECRET'];
-export function localWranglerConfig({ repo = root, vars }) {
+// With `review`, the real reviewer and a remote Workers AI binding: the model runs on your Cloudflare account.
+export function localWranglerConfig({ repo = root, vars, review = false }) {
   // Wrangler prints a config's vars (secrets included) to the terminal and to its log. Secrets belong in localDevVars().
   for (const key of SECRET_VARS) if (key in vars) throw new Error(`${key} is a secret: pass it through localDevVars(), not the Worker config`);
   return {
     name: 'heddle-artifacts-local', main: join(repo, 'dev/local-worker.ts'), compatibility_date: '2026-08-15', compatibility_flags: ['nodejs_compat'],
-    alias: { 'heddle-reviewer': join(repo, 'dev/no-reviewer.ts') },
+    alias: { 'heddle-reviewer': join(repo, review ? 'reviewer/reviewer.ts' : 'dev/no-reviewer.ts') },
+    ...(review ? { ai: { binding: 'AI', remote: true } } : {}),
     durable_objects: { bindings: [{ name: 'PROJECT', class_name: 'ProjectDO' }] },
     migrations: [{ tag: 'v1', new_sqlite_classes: ['ProjectDO'] }],
     r2_buckets: [{ binding: 'STATE', bucket_name: 'heddle-artifacts-state' }],
@@ -89,9 +96,10 @@ export async function readOrCreateToken(file) {
 }
 
 export function parseArgs(argv) {
-  const [target, ...rest] = argv, options = { target, state: join(homedir(), '.heddle-artifacts', 'local'), port: undefined };
+  const [target, ...rest] = argv, options = { target, state: join(homedir(), '.heddle-artifacts', 'local'), port: undefined, review: false };
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === '--state') options.state = resolve(rest[++i] ?? ''); else if (rest[i] === '--port') options.port = Number(rest[++i]);
+    else if (rest[i] === '--review') options.review = true;
     else throw new Error(`Unknown option ${rest[i]}`);
   }
   if (options.port !== undefined && !(Number.isInteger(options.port) && options.port > 0 && options.port < 65536)) throw new Error('--port must be a port number');
@@ -132,7 +140,7 @@ export async function startPersistentArtifacts(state, eventUrl) {
 }
 
 export async function upLocal(options, log = console.log) {
-  const problems = await checkPrerequisites();
+  const problems = await checkPrerequisites({ review: options.review });
   if (problems.length) {
     log('Cannot start yet. Missing:\n'); for (const p of problems) log(`  - ${p.item}\n    ${p.fix}\n`);
     return { code: 1 };
@@ -165,15 +173,16 @@ export async function upLocal(options, log = console.log) {
     // No root given: the runner makes its own private directory outside the state directory, so candidate code does not run next to your token.
     const runner = await startLocalTestRunner({ secret: runnerSecret }); started.push(() => runner.close());
     const config = join(options.state, 'wrangler.local.json');
-    await writePrivate(config, JSON.stringify(localWranglerConfig({ vars: { FAKE_ARTIFACTS_URL: fake.origin, ENGINE_DEV_URL: engine.origin, LOCAL_TEST_RUNNER_URL: runner.origin } }), null, 1));
+    await writePrivate(config, JSON.stringify(localWranglerConfig({ review: options.review, vars: { FAKE_ARTIFACTS_URL: fake.origin, ENGINE_DEV_URL: engine.origin, LOCAL_TEST_RUNNER_URL: runner.origin } }), null, 1));
     await writePrivate(join(options.state, '.dev.vars'), localDevVars({ token, runnerSecret }));
     let wranglerExited = false;
     wrangler = spawn(process.execPath, [join(root, 'node_modules/wrangler/bin/wrangler.js'), 'dev', '--config', config, '--port', String(port), '--ip', '127.0.0.1', '--inspector-port', '0', '--persist-to', join(options.state, 'wrangler')],
-      { cwd: root, detached: true, stdio: ['ignore', 'ignore', 'ignore'], env: { ...process.env, WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: join(options.state, 'wrangler.log'), XDG_CONFIG_HOME: join(options.state, 'config') } });
+      // Without --review, Wrangler gets a config home of its own so it never uses your Cloudflare login. With it, the remote AI binding needs that login.
+      { cwd: root, detached: true, stdio: ['ignore', 'ignore', 'ignore'], env: { ...process.env, WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: join(options.state, 'wrangler.log'), ...(options.review ? {} : { XDG_CONFIG_HOME: join(options.state, 'config') }) } });
     wrangler.on('exit', () => { wranglerExited = true; wake(); });
     started.push(async () => { try { process.kill(-wrangler.pid, 'SIGTERM'); } catch { /* gone */ } await new Promise(r => setTimeout(r, 1500)); try { process.kill(-wrangler.pid, 'SIGKILL'); } catch { /* gone */ } });
     await waitUntil(async () => (await fetch(`${origin}/login`)).ok, 90000, 'The app', () => stopRequested ? 'stopped' : wranglerExited ? `wrangler exited before it was ready (see ${join(options.state, 'wrangler.log')})` : null);
-    log(`\nHeddle Artifacts is running locally.\n\n  Open        ${origin}\n  Sign in     with the operator token in ${tokenFile}\n              (print it with: cat "${tokenFile}")\n  State       ${options.state}\n`);
+    log(`\nHeddle Artifacts is running locally.\n\n  Open        ${origin}\n  Sign in     with the operator token in ${tokenFile}\n              (print it with: cat "${tokenFile}")\n  State       ${options.state}\n  AI review   ${options.review ? 'available: Workers AI on your Cloudflare account. Turn it on per project from a task page.' : 'off. Restart with --review to use Workers AI on your Cloudflare account (needs npx wrangler login).'}\n`);
     log('Next: in the app, create a project (optionally from a public repo), add a task, then give your own agent the\n`ha join …` command it shows. Candidate tests run on THIS machine, in a throwaway checkout, NOT in a sandbox:\ncandidate code can read your files, including the operator token above. Use it for your own agents only.\nPress Ctrl-C to stop.\n');
     await new Promise(resolveStop => { wake = resolveStop; if (stopRequested || wranglerExited) resolveStop(); });
     await stop(); detach();
@@ -196,7 +205,7 @@ if (isMain(import.meta.url)) {
       return;
     }
     const options = parseArgs(process.argv.slice(2));
-    if (options.target !== 'local') throw new Error('Usage: node cli/up.mjs local [--state DIR] [--port N]\n       node cli/up.mjs cloudflare --name NAME [--domain HOST] [--public-project NAME] [--yes] [--dry-run] [--destroy]');
+    if (options.target !== 'local') throw new Error('Usage: node cli/up.mjs local [--state DIR] [--port N] [--review]\n       node cli/up.mjs cloudflare --name NAME [--domain HOST] [--public-project NAME] [--yes] [--dry-run] [--destroy]');
     process.exitCode = (await upLocal(options)).code;
   }).catch(error => { console.error(`up: ${error.message}`); process.exitCode = 1; });
 }

@@ -133,7 +133,7 @@ for (const theme of ['light', 'dark'] as const) for (const [width, height] of [[
     await expect(notice).toContainText('Landed bob on main');
     await expect(recorded.locator('.annotation-heading')).toHaveText('Reason');
     await expect(recorded.locator('.rich-text')).toHaveText(reason);
-    await expect(recorded.locator('.annotation-author')).toHaveText('by luke');
+    await expect(recorded.locator('.annotation-author')).toHaveText('by Luke');
     await expect(recorded.locator('.anchor-chip')).toHaveAttribute('title', 'src/table.ts:parseRow');
     await expect(recorded.locator('.symbol-chip')).toHaveText('◆ parseRow');
     await expect(recorded.locator('.tag')).toHaveText(['public-api', 'escapes']);
@@ -145,7 +145,7 @@ for (const theme of ['light', 'dark'] as const) for (const [width, height] of [[
     await expect(whyReason.locator('.annotation-heading')).toHaveText('Reason');
     await expect(whyReason.locator('.rich-text')).toHaveText(reason);
     await expect(whyReason.locator('.tag')).toHaveText(['public-api', 'escapes']);
-    await expect(whyReason.locator('.annotation-author')).toHaveText('by luke');
+    await expect(whyReason.locator('.annotation-author')).toHaveText('by Luke');
     await noOverflow(page); await shot(page, `why-reason-${suffix}`);
   });
 }

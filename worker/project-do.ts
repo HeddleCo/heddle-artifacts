@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createReviewer } from 'heddle-reviewer';
+import { REVIEW_MODEL } from '../reviewer/reviewer';
 import { DurableObject } from 'cloudflare:workers';
 import type { Agent, Candidate, Decision, FeedEvent, Lane, Review, Turn } from '../contracts/types';
 import type { Env } from './env';
@@ -469,6 +470,11 @@ export class ProjectDO extends DurableObject<Env> {
     const row = this.store.rows<{ data: string; keyExpiresAt: string | null }>('SELECT data,keyExpiresAt FROM agents WHERE keyHash=?', hash)[0];
     if (!row?.keyExpiresAt || !Number.isFinite(Date.parse(row.keyExpiresAt)) || Date.parse(row.keyExpiresAt) <= Date.now()) throw new HttpError(403, 'forbidden'); return { op: false, agent: JSON.parse(row.data) };
   }
+  /** Whether this deployment can run AI review (a Workers AI binding), and whether this project has a reviewer enrolled. */
+  private reviewStatus() {
+    const reviewer = this.store.all<Agent>('agents').find(a => a.kind === 'reviewer');
+    return { available: !!this.env.AI, enrolled: !!reviewer, ...(reviewer?.model ? { model: reviewer.model } : {}) };
+  }
   async fetch(request: Request): Promise<Response> {
     try {
       const url = new URL(request.url), parts = url.pathname.split('/').filter(Boolean), projectId = slug(parts[2]);
@@ -538,7 +544,7 @@ export class ProjectDO extends DurableObject<Env> {
         this.scheduleDrain();
         if (parts.length === 3) return Response.json({ project: this.store.get('meta', 'project'), agents: this.store.all('agents'), tasks: this.store.all<Task>('tasks').map(task => ({ ...task, lanes: this.store.all<Lane>('lanes').filter(l => l.task === task.slug), candidates: this.candidates(task.slug), decision: this.store.get('decisions', task.slug) })) });
         const taskId = slug(parts[4]), task = this.task(taskId);
-        return Response.json({ task, candidates: this.candidates(taskId), turns: this.store.all<Turn>('turns').filter(t => t.task === taskId), review: this.store.get('meta', `review:${taskId}`), reviewAttempt: this.store.get('meta', this.store.get<string>('meta', `lastReviewAttempt:${taskId}`) ?? ''), decision: this.store.get('decisions', taskId), heads: this.heads(taskId) });
+        return Response.json({ task, reviewer: this.reviewStatus(), candidates: this.candidates(taskId), turns: this.store.all<Turn>('turns').filter(t => t.task === taskId), review: this.store.get('meta', `review:${taskId}`), reviewAttempt: this.store.get('meta', this.store.get<string>('meta', `lastReviewAttempt:${taskId}`) ?? ''), decision: this.store.get('decisions', taskId), heads: this.heads(taskId) });
       }
       const response = await this.engine.serial(async () => {
         if (!anonymousRead) await this.recover();
@@ -571,6 +577,30 @@ export class ProjectDO extends DurableObject<Env> {
           return Response.json({ ...project, readToken: token.plaintext, expiresAt: token.expiresAt, projectExpiresAt: this.credentials.lifetime()!.expiresAt }, { headers: { 'cache-control': 'no-store' } });
         }
         if (!this.store.get('meta', 'project')) throw new HttpError(404, 'project_not_found');
+        // A read-only token for the canonical repository, so the operator can clone it and fetch its notes with plain Git.
+        // (Creating the project returns one too, but the UI does not keep it; agents get theirs from enrollment.)
+        if (parts[3] === 'read-token' && parts.length === 4 && request.method === 'POST') {
+          if (!actor.op) throw new HttpError(403, 'forbidden');
+          if (request.body) await bodyText(request, 4096);
+          const token = await this.credentials.issue(projectId, 'read', 'canonical-read', 'operator');
+          await this.nextAlarm();
+          return Response.json({ remote: this.store.get('meta', 'project').canonicalRemote, readToken: token.plaintext, expiresAt: token.expiresAt }, { headers: { 'cache-control': 'no-store' } });
+        }
+        // Turn on AI review for this project: enrol the reviewer identity (its own signing key, no fork or lane), then
+        // review every open task that already has candidates. Needs the Workers AI binding; `up local` has it with --review.
+        if (parts[3] === 'reviewer' && parts.length === 4 && request.method === 'POST') {
+          if (!actor.op) throw new HttpError(403, 'forbidden');
+          if (request.body) await bodyText(request, 4096);
+          if (!this.env.AI) throw new HttpError(409, 'review_unavailable');
+          const existing = this.store.all<Agent>('agents').find(a => a.kind === 'reviewer');
+          if (!existing && this.store.get<Agent>('agents', 'reviewer')) throw new HttpError(409, 'identity_exists');
+          if (!existing) await this.engine.mutate('agent.enroll', { opId: 'enroll:reviewer', agent: { id: 'reviewer', kind: 'reviewer', displayName: 'AI reviewer', provider: 'workers-ai', model: REVIEW_MODEL } });
+          for (const task of this.store.all<Task>('tasks')) {
+            if (task.status === 'open' && !this.store.get('decisions', task.slug) && !this.store.get('meta', `review:${task.slug}`) && this.candidates(task.slug).length) this.store.put('meta', `reviewDue:${task.slug}`, Date.now() + 1000);
+          }
+          await this.nextAlarm();
+          return Response.json({ reviewer: this.reviewStatus() });
+        }
         if (parts[3] === 'humans' && request.method === 'POST') {
           const { id, displayName, email: address } = human!;
           const prior = this.store.get<Agent>('agents', id); if (prior && (prior.kind !== 'human' || prior.email !== address)) throw new HttpError(409, 'identity_exists');
@@ -583,7 +613,8 @@ export class ProjectDO extends DurableObject<Env> {
           const sha = parts[4]; if (!/^[a-f0-9]{40}$/.test(sha)) throw new HttpError(400, 'invalid_sha');
           const why = await this.engine.read('why', { sha });
           const verify = this.store.get('meta', `verify:${sha}`);
-          return Response.json({ sha, ...why, ...(verify?.sha === sha ? { verify } : {}), decision: this.store.all<Decision>('decisions').find(d => d.mainSha === sha), candidate: this.store.all<Candidate>('candidates').find(c => c.sourceSha === sha) });
+          const decision = this.store.all<Decision>('decisions').find(d => d.mainSha === sha), deciderName = decision && this.store.get<Agent>('agents', decision.decider)?.displayName;
+          return Response.json({ sha, ...why, ...(verify?.sha === sha ? { verify } : {}), decision, ...(deciderName ? { deciderName } : {}), candidate: this.store.all<Candidate>('candidates').find(c => c.sourceSha === sha) });
         }
         if (parts[3] === 'agents' && parts[5] === 'token' && request.method === 'POST') {
           if (!actor.agent || actor.agent.id !== parts[4]) throw new HttpError(403, 'forbidden');
