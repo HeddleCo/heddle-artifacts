@@ -184,7 +184,8 @@ export function briefingMarkdown({ project, task, agent, intent, briefing }) {
   else {
     lines.push('People who landed earlier work on this code recorded why. Keep to these reasons unless the task above says otherwise.', '');
     for (const note of notes) {
-      const where = [note.target, note.scope?.startsWith('symbol:') ? note.scope.slice(7) : note.scope].filter(Boolean).join(' · ');
+      // A whole-file scope adds nothing to the path; a symbol scope says which function.
+      const where = [note.target, note.scope?.startsWith('symbol:') ? note.scope.slice(7) : undefined].filter(Boolean).join(' · ');
       lines.push(`### ${note.kind ? note.kind[0].toUpperCase() + note.kind.slice(1) : 'Reason'}${where ? `: ${where}` : ''}`, '',
         ...note.content.trim().split('\n').map(line => `> ${line}`), '',
         `by ${String(note.attribution ?? 'unknown').replace(/\s*<[^>]*>\s*$/, '')}${note.tags?.length ? ` · tags: ${note.tags.join(', ')}` : ''}`, '');

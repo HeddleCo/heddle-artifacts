@@ -66,6 +66,11 @@ export function createMock(initial = 'conflict') {
   };
   const handle = async (request: Request): Promise<Response | undefined> => {
     const { pathname } = new URL(request.url);
+    // As the real Worker (worker/auth.ts checkOrigin): a cross-origin or opaque ("null") Origin is refused.
+    if (['/login', '/logout'].includes(pathname) && request.method === 'POST') {
+      const origin = request.headers.get('origin');
+      if (origin && origin !== new URL(request.url).origin) return json({ error: 'origin' }, 403);
+    }
     if (pathname === '/login' && request.method === 'POST') {
       const body = await request.formData();
       // As the real Worker: a wrong token returns to the sign-in page with a message.

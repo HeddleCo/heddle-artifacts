@@ -71,6 +71,7 @@ test('the briefing quotes carried-forward reasons with where they apply and who 
   assert.match(text, /> Keep parsing explicit\.\n> No lookbehind\./);
   assert.match(text, /by Luke Judge · tags: parser/);
   assert.match(text, /1 more did not fit/);
+  assert.match(briefingMarkdown({ project: 'p', task: 't', agent: 'a', briefing: { omitted: 0, annotations: [{ target: 'src/a.ts', scope: 'file', kind: 'rationale', content: 'x', attribution: 'L' }] } }), /### Rationale: src\/a\.ts\n/);
 });
 test('why accepts a short SHA or a ref, and refuses option-like input', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'heddle-D-why-')); t.after(() => rm(dir, { recursive: true, force: true }));
