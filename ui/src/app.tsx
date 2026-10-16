@@ -3,13 +3,13 @@ import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Agent, Candidate, Decision, FeedEvent, Lane, Turn } from '../../contracts/types';
 import { ApiError, diff, projectPath, request, taskPath } from './api';
-import type { ProjectView, Task, TaskView, WhyView } from './api';
+import type { ProjectView, ReviewStatus, Task, TaskView, WhyView } from './api';
 import { updateBoard, updateTask } from './feed';
 import { publicationEvidence } from './verification';
 import { isPublished, decisionRequest, conflictMessage, combinedBlock, combinedText } from './decision';
 import { DecisionNotice } from './decision-notice';
 import { identifiers, InlineText, Narrative, parseReview, ReviewBody, RichText } from './rich-text';
-import { plural, runnerLabel } from './format';
+import { cloneRemote, plural, runnerLabel } from './format';
 import { CombinedLine, CombinedPanel } from './combined';
 import { Captures } from './captures';
 import { AnchorChip, AnnotationCard } from './annotation-card';
@@ -61,7 +61,13 @@ function Header({ p, live }: { p?: string; live?: string }) {
   useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem('heddle-theme', theme); } catch { /* Theme still works without storage. */ } }, [theme]);
   return <header><a class="brand" href={p ? link(p) : '/'}><span class="brand-mark" aria-hidden="true"><i/><i/><i/></span><span class="wordmark">HEDDLE.</span><span class="brand-sub">{p ? `artifacts / ${p}` : 'artifacts'}</span></a>
     <nav aria-label="Main"><span class="live"><span class={live === 'Live' ? 'live-dot' : ''} />{live || 'Decisions that travel with code'}</span>
-      <button class="quiet" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>{theme === 'dark' ? '☀ Light' : '☾ Dark'}</button><a href="/login">Sign in</a></nav></header>;
+      <button class="quiet" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>{theme === 'dark' ? '☀ Light' : '☾ Dark'}</button><SessionControl/></nav></header>;
+}
+/** The header's sign-in state: the session cookie is HttpOnly, so the page asks /api/session. */
+function SessionControl() {
+  const { ready, operator } = useSession();
+  if (!ready) return null;
+  return operator ? <form class="session" method="post" action="/logout"><span class="muted">Signed in as operator</span><button class="quiet">Sign out</button></form> : <a href="/login">Sign in</a>;
 }
 function PageTitle({ eyebrow, title, children }: { eyebrow: string; title: string; children?: preact.ComponentChildren }) {
   return <div class="page-title"><p class="eyebrow">{eyebrow}</p><h1>{title}</h1>{children}</div>;
@@ -78,9 +84,12 @@ function Facts({ rows }: { rows: [string, preact.ComponentChildren][] }) {
   return <dl class="facts">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
 }
 function RepositoryLink({ remote }: { remote?: string }) {
-  // Metadata can contain an arbitrary remote; only navigate to ordinary HTTPS URLs.
-  try { const url = new URL(remote || ''); if (url.protocol === 'https:' && !url.username && !url.password) return <a href={url.href} title={remote}>Canonical repo ↗</a>; } catch { /* No link until metadata is available. */ }
-  return <span class="muted">Unavailable</span>;
+  // Metadata can contain an arbitrary remote; only show ordinary HTTPS URLs, or the local stack's loopback git server.
+  const clone = cloneRemote(remote);
+  if (!clone) return <span class="muted">{remote === undefined ? 'Loading…' : 'Unavailable'}</span>;
+  // A loopback remote is not a page a browser can open; show the clone address to copy.
+  if (clone.startsWith('http:')) return <code class="repo-remote" title={`${clone} (clone with a read token: see the Why page)`}>{clone.replace(/^http:\/\//, '')}</code>;
+  return <a href={clone} title={clone}>Canonical repo ↗</a>;
 }
 function TaskTabs({ ready }: { ready: boolean }) {
   const sections = ['Candidates', 'Captures', 'Discussion', 'Context'];
@@ -155,7 +164,7 @@ function Board({ p }: { p: string }) {
     <footer>Artifacts holds the Git. Heddle holds the decisions.</footer></div>
     <aside class="rail-card right-rail" aria-label="Project activity and facts"><section><h2 class="rail-title">Live</h2>{!recent.length ? <p class="muted">Nothing moving right now.</p> : <ol class="activity-list">{recent.map(item => <li key={`${item.task}/${item.agent}/${item.sha}`}><span class="activity-dot" aria-hidden="true"/><div><a href={link(p, item.task)}>{item.agent} <span class="muted">· {item.kind}</span></a><p class="activity-path"><code>{item.task}</code></p><p class="muted"><code>{short(item.sha)}</code> · <time dateTime={item.at}>{new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></p></div></li>)}</ol>}</section>
     <section><h2 class="rail-title">About</h2><Facts rows={[
-      ['Project', p], ['Agents', view?.agents.filter(a => a.kind === 'agent').length || 0], ['Tasks', view?.tasks.length || 0], ['Candidates', ready], ['Repository', <RepositoryLink remote={typeof view?.project === 'object' ? view.project.canonicalRemote : undefined}/>]
+      ['Project', p], ['Agents', view?.agents.filter(a => a.kind === 'agent').length || 0], ['Tasks', view?.tasks.length || 0], ['Candidates', ready], ['Repository', <RepositoryLink remote={view ? typeof view.project === 'object' ? view.project.canonicalRemote ?? '' : '' : undefined}/>]
     ]}/></section></aside></main></>;
 }
 function Diff({ p, t, candidate }: { p: string; t: string; candidate: Candidate }) {
@@ -268,7 +277,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     <TaskTabs ready={!!view}/><a class="mobile-decision-link" href="#decision">Go to decision ↓</a>
     {error && <ErrorNotice text={error}/>}
     {changed && <div class="notice warning" role="status">Review the latest task state before continuing. <button class="quiet" disabled={reviewing} onClick={() => load(true)}>{view?.decision ? 'Refresh recorded decision' : 'Review current candidates'}</button></div>}
-    {view?.decision && <DecisionNotice project={p} decision={view.decision}/>}
+    {view?.decision && <DecisionNotice project={p} decision={view.decision} deciderName={agents.find(a => a.id === view.decision!.decider)?.displayName}/>}
     {!!regions.size && <section class="conflict-banner" aria-label="Conflict regions"><strong>⚑ Overlapping work, preserved as alternatives</strong>{[...regions].map(([region, ids]) => <p><code>{region}</code><span>{[...ids].join(' ↔ ')}</span></p>)}</section>}
     <div class="compare-main"><section id="candidates" tabIndex={-1} class="candidates-section" aria-label="Candidates"><h2 class="section-title">Candidates <span class="count">{view?.candidates.length || 0}</span></h2>
     <div class="candidate-grid" style={{'--candidate-count': Math.min(view?.candidates.length || 1, 3)}}>{view?.candidates.map(candidate => { const agent = agents.find(a => a.id === candidate.agent); return <section class="candidate panel" key={candidate.agent} aria-label={`${candidate.agent} candidate`}>
@@ -286,6 +295,7 @@ function Compare({ p, t }: { p: string; t: string }) {
     <ul class="review-rows">{view.review.perCandidate.map(c => <li class={`review-row review-${c.verdict}`} key={c.agent}>
       <span class="review-glyph" role="img" aria-label={c.verdict}>{c.verdict === 'approve' ? '✓' : '–'}</span><div><strong class="review-agent">{c.agent}</strong><blockquote><InlineText text={c.notes}/></blockquote></div>
     </li>)}</ul></section>}
+  {view && !view.review && view.reviewer && !view.decision && <ReviewOff p={p} status={view.reviewer} onEnabled={reviewer => setView(v => v && { ...v, reviewer })}/>}
     </section>
     {view && <Captures key={`captures/${p}/${t}`} p={p} t={t} agents={agents} lanes={lanes} refresh={captureRefresh}/>}
     {view && <Discussion key={`${p}/${t}`} p={p} t={t} turns={view.turns} humans={humans} decision={view.decision} onTurn={turn => setView(v => v && { ...v, turns: [...v.turns.filter(x => x.id !== turn.id), turn] })} onHuman={addHuman}/>}
@@ -339,18 +349,42 @@ function Why({ p, sha }: { p: string; sha: string }) {
     return () => controller.abort();
   }, [p, sha]);
   // Accept a clean HTTPS remote only; never put userinfo, query tokens or shell syntax into copied commands.
-  let cloneRemote = '<CANONICAL_REMOTE>';
-  try { const u = new URL(remote); if (u.protocol === 'https:' && !u.username && !u.password && !u.search && /^[a-zA-Z0-9./:_-]+$/.test(remote)) cloneRemote = remote; } catch { /* Show a placeholder until an authenticated project response provides a safe remote. */ }
-  const commands = `read -r -s -p 'Artifacts read token: ' HEDDLE_READ_TOKEN; printf '\\n'\nexport HEDDLE_READ_TOKEN\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" clone '${cloneRemote}' heddle-check\ncd heddle-check\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" fetch origin '+refs/notes/*:refs/notes/*'\nunset HEDDLE_READ_TOKEN\ngit log --notes='heddle*' -3\ngit branch -r`;
+  // A placeholder until an authenticated project response provides a safe remote.
+  const canonical = cloneRemote(remote) ?? '<CANONICAL_REMOTE>';
+  const commands = `read -r -s -p 'Artifacts read token: ' HEDDLE_READ_TOKEN; printf '\\n'\nexport HEDDLE_READ_TOKEN\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" clone '${canonical}' heddle-check\ncd heddle-check\ngit -c http.extraHeader="Authorization: Bearer $HEDDLE_READ_TOKEN" fetch origin '+refs/notes/*:refs/notes/*'\nunset HEDDLE_READ_TOKEN\ngit log --notes='heddle*' -3\ngit branch -r`;
   const proof = `git fsck --strict${/^[a-f0-9]{40}$/i.test(sha) && view?.decision && /^[a-zA-Z0-9_-]+$/.test(view.decision.task) && /^[a-zA-Z0-9_-]+$/.test(view.decision.pick) ? `\ngit rev-parse '${sha}^{tree}' 'origin/candidates/${view.decision.task}/${view.decision.pick}^{tree}'` : ''}`;
   return <><Header p={p}/><main><a class="breadcrumb" href={link(p)}>← {p} / board</a><PageTitle eyebrow="THE WHY / PLAIN GIT" title="The decision stays with the code."><p>Commit <code>{short(sha)}</code> · the chosen work, the alternatives, and the reasoning.</p></PageTitle>{error && <ErrorNotice text={error}/>}
-    <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2>{view?.decision && <AnnotationCard kind="Reason" content={view.decision.rationale} attribution={view.decision.decider} anchor={view.decision.anchor} tags={view.decision.tags}/>}<Narrative text={view?.narrative || 'Loading narrative…'}/>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
+    <div class="why-layout"><section class="panel narrative"><h2>Decision narrative</h2>{view?.decision && <AnnotationCard kind="Reason" content={view.decision.rationale} attribution={view.deciderName || view.decision.decider} anchor={view.decision.anchor} tags={view.decision.tags}/>}<Narrative text={view?.narrative || 'Loading narrative…'}/>{view?.decision && <a href={link(p, view.decision.task)}>Back to the candidates →</a>}</section>
       <Verification view={view} sha={sha} proof={proof}/></div>
-    <section class="panel git-instructions"><div class="section-heading"><h2>See it in plain Git</h2><button class="quiet" onClick={async () => { try { await navigator.clipboard.writeText(commands); setCopied('Copied'); } catch { setCopied('Select and copy the commands below.'); } }}>Copy commands</button></div><p class="muted">Use Bash. Enter your repo-scoped read token at the hidden prompt.{cloneRemote === '<CANONICAL_REMOTE>' ? ' Replace <CANONICAL_REMOTE> with the project’s Artifacts HTTPS clone URL.' : ''}</p><pre tabIndex={0}><code>{commands}</code></pre><p role="status">{copied}</p></section>
+    <section class="panel git-instructions"><div class="section-heading"><h2>See it in plain Git</h2><button class="quiet" onClick={async () => { try { await navigator.clipboard.writeText(commands); setCopied('Copied'); } catch { setCopied('Select and copy the commands below.'); } }}>Copy commands</button></div><p class="muted">Use Bash. The canonical repository is private: a plain <code>git clone</code> without a token is refused (403). Enter a repo-scoped read token at the hidden prompt.{canonical === '<CANONICAL_REMOTE>' ? ' Replace <CANONICAL_REMOTE> with the project’s Artifacts HTTPS clone URL.' : ''}</p><ReadToken p={p}/><pre tabIndex={0}><code>{commands}</code></pre><p role="status">{copied}</p></section>
   </main></>;
 }
+/** Says so when no AI review will appear, and how to turn it on: review is part of comparing candidates. */
+function ReviewOff({ p, status, onEnabled }: { p: string; status: ReviewStatus; onEnabled: (status: ReviewStatus) => void }) {
+  const operator = useOperator(), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  if (status.available && status.enrolled) return <section class="panel reviewer review-off" aria-label="AI review"><h2>AI review</h2><p class="muted">On{status.model ? ` (${status.model})` : ''}. It runs once there are two candidates, or one with no overlap whose tests pass, and posts here.</p></section>;
+  const enable = async () => { setBusy(true); setError(''); try { onEnabled((await request<{ reviewer: ReviewStatus }>(`${projectPath(p)}/reviewer`, {})).reviewer); } catch (e) { setError(message(e)); } finally { setBusy(false); } };
+  return <section class="panel reviewer review-off" aria-label="AI review"><h2>AI review is off</h2>
+    {status.available
+      ? <><p class="muted">No reviewer is enrolled in this project, so candidates are compared on their tests and diffs alone.</p>
+        {operator ? <button type="button" disabled={busy} onClick={enable}>{busy ? 'Turning on…' : 'Turn on AI review'}</button> : <p class="muted">An operator can turn it on from this page.</p>}</>
+      : <><p class="muted">This stack has no Workers AI binding, so no review will be posted; candidates are compared on their tests and diffs alone.</p>
+        <p class="muted">To turn it on for a local stack, stop it and start it again with <code>node cli/up.mjs local --review</code>. That needs a Cloudflare login (<code>npx wrangler login</code>), and the review model runs on your account. A deployment made with <code>node cli/up.mjs cloudflare</code> has the binding already.</p></>}
+    {error && <ErrorNotice text={error}/>}</section>;
+}
+/** Operators can mint a short-lived, read-only token for the canonical repository here, to clone it and fetch its notes. */
+function ReadToken({ p }: { p: string }) {
+  const operator = useOperator(), [token, setToken] = useState<{ readToken: string; expiresAt: string }>(), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  if (!operator) return <p class="muted">An agent's clone made with <code>ha join</code> already has one (its <code>upstream</code> remote). The operator can also issue one from this page.</p>;
+  const issue = async () => { setBusy(true); setError(''); try { setToken(await request(`${projectPath(p)}/read-token`, {})); } catch (e) { setError(message(e)); } finally { setBusy(false); } };
+  return <div class="read-token">{token ? <><label>Read token <span class="muted">(read-only, this project, until <time dateTime={token.expiresAt}>{token.expiresAt}</time>; shown once)</span><input readOnly value={token.readToken} onFocus={e => e.currentTarget.select()}/></label></>
+    : <button type="button" class="quiet" disabled={busy} onClick={issue}>{busy ? 'Issuing…' : 'Issue a read token'}</button>}{error && <ErrorNotice text={error}/>}</div>;
+}
 function Login() {
-  return <><Header/><main class="login"><PageTitle eyebrow="OPERATOR SESSION" title="Sign in to decide."><p>Your session can discuss, review, and land candidates.</p></PageTitle><form class="panel" method="post" action="/login"><label>Operator token<input type="password" name="token" required autoComplete="off"/></label><button>Sign in</button><p class="muted">The server sets an HttpOnly session cookie.</p></form></main></>;
+  const { ready, operator } = useSession(), rejected = new URLSearchParams(location.search).get('error') === 'token';
+  return <><Header/><main class="login"><PageTitle eyebrow="OPERATOR SESSION" title="Sign in to decide."><p>Your session can discuss, review, and land candidates.</p></PageTitle>
+    {ready && operator ? <section class="panel"><p role="status">You are signed in as the operator.</p><p><a href="/">Go to your projects →</a></p></section>
+      : <form class="panel" method="post" action="/login">{rejected && <p class="notice error" role="alert">That operator token was not accepted. Check it and try again; <code>up local</code> printed the file it is in.</p>}<label>Operator token<input type="password" name="token" required autoComplete="off" aria-invalid={rejected || undefined}/></label><button>Sign in</button><p class="muted">The server sets an HttpOnly session cookie.</p></form>}</main></>;
 }
 function App() {
   const path = location.pathname.split('/').filter(Boolean).map(x => { try { return decodeURIComponent(x); } catch { return ''; } });

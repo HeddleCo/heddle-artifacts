@@ -301,6 +301,7 @@ header { height: 68px; padding: 10px 24px; background: var(--panel); }
 .wordmark { font-size: 16px; letter-spacing: -0.01em; }
 .brand-sub { padding-left: 8px; border-left: 1px solid var(--stroke); font-size: 14px; }
 header nav { flex-shrink: 0; }
+header nav .session { display: inline-flex; align-items: center; gap: 10px; margin: 0; }
 .app-shell { display: grid; grid-template-columns: 272px minmax(0, 1fr) 320px; align-items: start; gap: var(--space-5); max-width: none; margin: 0; padding: var(--space-5) var(--space-5) 0; }
 .page-centre { min-width: 0; padding: 18px 2px 40px; }
 .rail-card { position: sticky; top: 78px; min-width: 0; min-height: calc(100dvh - 78px); max-height: calc(100dvh - 78px); overflow-y: auto; scrollbar-width: thin; background: var(--panel); border: 1px solid var(--stroke); border-radius: 8px; padding: 16px; }
@@ -439,6 +440,7 @@ header nav { flex-shrink: 0; }
   .brand-sub { padding: 0; border: 0; }
   header nav { gap: 10px; font-size: 12px; }
   header nav .quiet { padding: 6px 8px; font-size: 12px; }
+  header nav .session .muted { display: none; }
   .app-shell { grid-template-columns: minmax(0, 1fr); padding: 10px; }
   .left-rail { grid-row: auto; position: static; min-height: auto; max-height: none; padding: 12px; }
   .left-rail .rail-title { margin-bottom: 12px; }
@@ -564,3 +566,4 @@ details.create-form { display: block; }
 .create-form .join-command { margin: 0; padding: 12px 14px; max-width: 100%; box-sizing: border-box; white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; border: 1px solid var(--stroke); border-radius: var(--radius); background: var(--panel-2, transparent); font: 13px/1.5 var(--mono, monospace); }
 .add-human { display: grid; gap: 8px; max-width: 360px; }
 main > form.panel.create-form { max-width: 560px; }
+.repo-remote { font-size: 11px; }

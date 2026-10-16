@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { projectURL, remoteURL, gitAuth, joinProject, request, redact, command, API_TIMEOUT_MS } from './ha.mjs';
+import { projectURL, remoteURL, gitAuth, joinProject, request, redact, command, API_TIMEOUT_MS, briefingMarkdown, resolveCommit } from './ha.mjs';
 import { startMock } from '../demo/test/mock-platform.mjs';
 test('CLI URL guards reject credentials, nonlocal HTTP and invalid identifiers', () => {
   for (const url of ['http://example.com/p/demo', 'https://x:token@example.com/p/demo', 'https://example.com/p/demo?token=abc', 'https://example.com/p/demo/extra']) assert.throws(() => projectURL(url));
@@ -49,4 +49,36 @@ for (const setupMode of ['none', 'child', 'track-A']) {
 }
 test('API timeout outlasts a measured Container cold start', () => {
   assert.ok(API_TIMEOUT_MS >= 60000, 'first engine calls boot a Container and took up to 57 s live');
+});
+
+test('join leaves a briefing where a coding agent reads it, and Git never commits it', async t => {
+  const mock = await startMock(); t.after(mock.close);
+  const dir = await mkdtemp(join(tmpdir(), 'heddle-D-brief-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  await request(`${mock.url}/api/projects`, mock.operatorToken, { id: 'cli', seed: { template: 'demo' } });
+  await request(`${mock.url}/api/projects/cli/tasks`, mock.operatorToken, { slug: 'docs', intent: 'Document the escaping rules' });
+  const result = await joinProject(`${mock.url}/p/cli`, { task: 'docs', as: 'alice', token: mock.operatorToken, directory: join(dir, 'clone') });
+  const briefing = await readFile(join(result.cwd, '.heddle/BRIEFING.md'), 'utf8');
+  assert.match(briefing, /Document the escaping rules/);
+  assert.match(briefing, /Earlier decisions on this code \(0\)/);
+  for (const name of ['AGENTS.md', 'CLAUDE.md']) assert.match(await readFile(join(result.cwd, name), 'utf8'), /\.heddle\/BRIEFING\.md/);
+  assert.deepEqual(result.briefing.pointers, ['AGENTS.md', 'CLAUDE.md']);
+  assert.equal(await command('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: result.cwd }), '');
+});
+test('the briefing quotes carried-forward reasons with where they apply and who gave them', () => {
+  const text = briefingMarkdown({ project: 'demo', task: 'parser-escapes', agent: 'dave', intent: 'Handle escapes', briefing: { hash: 'f'.repeat(64), omitted: 1,
+    annotations: [{ target: 'src/table.ts', scope: 'symbol:parseRow', kind: 'rationale', content: 'Keep parsing explicit.\nNo lookbehind.', attribution: 'Luke Judge <luke@demo.local>', tags: ['parser'], annotationId: 'a', revisionId: 'r' }] } });
+  assert.match(text, /### Rationale: src\/table\.ts · parseRow/);
+  assert.match(text, /> Keep parsing explicit\.\n> No lookbehind\./);
+  assert.match(text, /by Luke Judge · tags: parser/);
+  assert.match(text, /1 more did not fit/);
+});
+test('why accepts a short SHA or a ref, and refuses option-like input', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'heddle-D-why-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  await command('git', ['init', '--quiet', dir]);
+  await command('git', ['-c', 'user.name=T', '-c', 'user.email=t@x', 'commit', '--quiet', '--allow-empty', '-m', 'one'], { cwd: dir });
+  const full = await command('git', ['rev-parse', 'HEAD'], { cwd: dir });
+  assert.equal(await resolveCommit(full.slice(0, 8), dir), full);
+  assert.equal(await resolveCommit('HEAD', dir), full);
+  await assert.rejects(resolveCommit('--output=/tmp/x', dir), /a SHA/);
+  await assert.rejects(resolveCommit('deadbeef', dir), /git fetch upstream main/);
 });

@@ -22,7 +22,7 @@
   },
   "r2_buckets": [{ "binding": "STATE", "bucket_name": "heddle-artifacts-state" }],
   "ai": { "binding": "AI" },
-  "assets": { "directory": "./ui/dist", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/login", "/__dev/*"] },
+  "assets": { "directory": "./ui/dist", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/login", "/logout", "/__dev/*"] },
   "vars": { "ARTIFACTS_NAMESPACE": "heddle-demo", "DEMO_PROJECT": "demo", "ACTOR_EMAIL_DOMAIN": "noreply.heddle.sh" }
   // Configure OPERATOR_TOKEN and CF_EVENTS_API_TOKEN via wrangler secret put outside the sandbox.
   // Set CF_ACCOUNT_ID and EVENTS_QUEUE_ID as deployment variables for per-fork subscriptions.

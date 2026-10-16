@@ -54,20 +54,31 @@ A local stack starts empty. To try the sample, pick **The sample project** in st
    not `npm test` (npm, npx and node only).
 2. **Add a task**: say what the agents should try to do.
 3. **Put your own agent on it**: the task page shows the exact `ha join …` command. Run it in a clone, point Claude
-   Code, Codex, OpenCode or plain `git` at the folder, and `git push origin HEAD:main`.
+   Code, Codex, OpenCode or plain `git` at the folder, and `git push origin HEAD:main`. `ha join` writes the lane's
+   briefing (the task, and the reasons recorded for earlier decisions on this code) to `.heddle/BRIEFING.md`, and an
+   `AGENTS.md` and `CLAUDE.md` that point at it, so those agents read it before they start. All three stay out of Git.
 4. Each push appears as a candidate with test results. Compare, write the reason, and land one.
 
 What is different from the live deployment: candidate tests run on **your machine**, in a throwaway checkout, not in
-an isolated Sandbox (the board says "local run (not isolated)"), and there is no AI reviewer unless you enrol one.
+an isolated Sandbox (the board says "local run (not isolated)"), and AI review is off by default (the task page says so).
+To turn it on, start with `node cli/up.mjs local --review`: it uses the same Workers AI model as the live app through a
+remote binding, so it needs `npx wrangler login` (or `CLOUDFLARE_API_TOKEN`) and the model runs on your Cloudflare account.
+Then press **Turn on AI review** on a task page; the review is posted once a task has two candidates, or one with no
+overlap whose tests pass.
 **Candidate code runs as you.** It can read your files, including the operator token, and it can interfere with other
 candidates' results. Use this only for your own agents' work, never for code you do not trust. (A deployment on your
 own Cloudflare account tests in a keyless Sandbox instead; see (c).) Up to two candidates are tested at a time; the rest
 wait their turn. State lives in `~/.heddle-artifacts/local` (`--state DIR` to change, `--port N` to pin the port); Ctrl-C
 stops everything, at any point.
 
-Two `cli/ha.mjs` details: `node cli/ha.mjs why <sha>` needs the full 40-character commit SHA, and `join` also takes
-`--provider` and `--model` (for example `--provider anthropic --model claude-code`); without them the Why page lists the agent as
-`unknown / unknown`.
+Some `cli/ha.mjs` details: `node cli/ha.mjs why <commit>` takes a full or short SHA or a ref such as `upstream/main`;
+`node cli/ha.mjs brief` rewrites `.heddle/BRIEFING.md`; and `join` also takes `--provider` and `--model` (for example
+`--provider anthropic --model claude-code`); without them the Why page lists the agent as `unknown / unknown`.
+
+The canonical repository is private, so a plain `git clone` of its address is refused (403) until you send a read token.
+An agent's clone made by `ha join` already has one (its `upstream` remote), so `git fetch upstream main '+refs/notes/*:refs/notes/*'`
+works there. To clone it anywhere else, sign in, open a Why page, press **Issue a read token** and use the commands shown
+there (they pass the token as a header, never in the URL).
 
 ### (b) Preview the UI only (canned data)
 
@@ -104,8 +115,9 @@ Details, and the manual steps it wraps, are in [docs/DEPLOY.md](docs/DEPLOY.md).
 - **Decision:** a human picks one candidate and gives a reason. The decision is signed by that human and lands the
   chosen tree on `main`. The other candidates are recorded as rejected alternatives, not deleted.
 - **Why / notes:** the record of a decision (intent, chosen and rejected candidates, test results, review, discussion,
-  decider and reason). It is stored in Git as `refs/notes/heddle-why` on the landed commit, so a plain `git clone`
-  plus `git fetch origin '+refs/notes/*:refs/notes/*'` carries it, and the Why page shows it.
+  decider and reason). It is stored in Git as `refs/notes/heddle-why` on the landed commit, so a `git clone` (with a
+  read token: the repository is private) plus `git fetch origin '+refs/notes/*:refs/notes/*'` carries it, and the Why
+  page shows it. The note starts with the decision and its reason; the signed, machine-readable proofs come last.
 
 ## How it works
 

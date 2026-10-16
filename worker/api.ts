@@ -11,12 +11,24 @@ export async function fetchApi(request: Request, env: Env): Promise<Response> {
       await routeEvent(await jsonBody(request), env); return Response.json({ ok: true });
     }
     if (url.pathname === '/login') {
-      if (request.method === 'GET') return new Response('<!doctype html><meta name="viewport" content="width=device-width"><title>Heddle login</title><form method="post"><label>Operator token <input name="token" type="password" required autocomplete="current-password"></label><button>Sign in</button></form>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      if (request.method === 'GET') {
+        // The app's own sign-in page when the UI is deployed; this bare form only for an API-only Worker.
+        // Asked for by path ('/', the index), so it does not depend on the asset layer's SPA fallback rules.
+        if (env.ASSETS) return env.ASSETS.fetch(new Request(new URL('/', url), { headers: request.headers }));
+        const rejected = url.searchParams.get('error') === 'token' ? '<p role="alert">That operator token was not accepted. Check it and try again.</p>' : '';
+        return new Response(`<!doctype html><meta name="viewport" content="width=device-width"><title>Heddle login</title>${rejected}<form method="post"><label>Operator token <input name="token" type="password" required autocomplete="current-password"></label><button>Sign in</button></form>`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      }
       if (request.method !== 'POST') return new Response(null, { status: 405 });
       checkOrigin(request); if (Number(request.headers.get('content-length') ?? 0) > 4096) throw new HttpError(413, 'body_limit');
       const body = await bodyText(request, 4096); const token = new URLSearchParams(body).get('token') ?? '';
-      if (!await operator(new Request(request.url, { headers: { authorization: `Bearer ${token}` } }), env.OPERATOR_TOKEN)) throw new HttpError(403, 'forbidden');
+      // A browser form post: a wrong token goes back to the sign-in page with a message, not to a JSON error body.
+      if (!await operator(new Request(request.url, { headers: { authorization: `Bearer ${token}` } }), env.OPERATOR_TOKEN)) return new Response(null, { status: 303, headers: { location: '/login?error=token', 'cache-control': 'no-store' } });
       return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': `heddle_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${url.protocol === 'https:' ? '; Secure' : ''}`, 'cache-control': 'no-store' } });
+    }
+    if (url.pathname === '/logout') {
+      if (request.method !== 'POST') return new Response(null, { status: 405, headers: { allow: 'POST' } });
+      checkOrigin(request); if (request.body) await bodyText(request, 4096);
+      return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': `heddle_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${url.protocol === 'https:' ? '; Secure' : ''}`, 'cache-control': 'no-store' } });
     }
     // One boolean for the UI: whether to offer the create forms. The session cookie is HttpOnly, so the page cannot tell.
     if (url.pathname === '/api/session') {
